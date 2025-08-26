@@ -15,6 +15,7 @@
 *.LSOverride
 *.xcuserdata
 *.xcschememanagement.plist
+*.rpp-bak
 build-*
 ipch/*
 gui/*
