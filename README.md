@@ -2,7 +2,52 @@
 
 A VST (Virtual Studio Technology) plugin utilizing principles of granular synthesis to recreate target sounds using a library of other sounds. The basic idea is this tool would let the user ‘upload’ a collection of sounds/samples, which it would then chop up into chunks- from which a network is created mapping each chunk to each other based on similarity. Then a target/input sound could be similarly chunked out, and have its chunks replaced in real time by the closest matching chunk(s) in the uploaded collection. This tool could support multiple algorithms for matching these chunks, yielding different results. This is essentially a creative tool for creating unique sounds from collections of other sounds, while retaining key distinct characteristics of the input sound.
 
-## IPlug Template Readme:
+## Setting Up This Project Environment
+
+This is an IPlug2 non-out-of-source project, as such- there is some initial setup.
+
+1. Follow the ['Getting Started' instructions on the IPlug2 Wiki](https://github.com/iPlug2/iPlug2/wiki/02_Getting_started_windows)
+
+    - Install Git, Visual Studio 2022, and Python 3.x
+
+    - Clone the IPlug2 repo to your local machine:
+
+    ```git clone https://github.com/iPlug2/iPlug2.git```
+
+    - Run the scripts to download dependencies (if on Windows, use Git Bash to run shell scripts):
+
+    ```
+    cd iPlug2/Dependencies/IPlug
+    ./download-iplug-sdks.sh
+    cd ..
+    ./download-prebuilt-libs.sh
+    ```
+
+    - After doing these steps, you should have cloned the IPlug2 repo somewhere on your computer and have run the scripts to download all the dependencies
+
+2. Clone this repo into the 'Examples' folder:
+
+    (from the iPlug2 repo root folder):
+    ```
+    cd Examples
+    git clone https://github.com/jmelovich/SynapticResynthesis.git
+    ```
+
+3. Compile the project
+
+    - Open the Visual Studio Solution
+
+    ```
+    cd SynapticResynthesis
+    start SynapticResynthesis.sln
+    ```
+
+    - Right click the 'SynapticResynthesis-app' project in the solution explorer, and click 'Set As Startup Project'. Then click the Run/Debug button (says 'Local Windows Debugger'). This should compile & run the plugin as a standalone application.
+
+    - Now right click the 'SynapticResynthesis-vst3' project, and set it as the startup project. Hit the Run/Debug button, and Reaper should open up (if installed) to a demo project with the plugin open as a VST3.
+
+
+## Original IPlug Template Readme:
 
 A basic volume control effect plug-in which uses a platform web view to host an HTML/CSS GUI
 
