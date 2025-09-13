@@ -8,11 +8,11 @@
       -webkit-touch-callout: none;
       -webkit-user-select: none;
     }
-  
+
     p, h1 {
       pointer-events: none;
     }
-    
+
     body {
       overflow: hidden;
       padding: 0 20px;
@@ -20,7 +20,7 @@
       background-color: #ffffff;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
-  
+
     .left {
       width: 50%;
       position: absolute;
@@ -28,11 +28,11 @@
       display: table-cell;
       vertical-align: middle;
     }
-  
+
     .left span, .left input {
       vertical-align: middle;
     }
-  
+
     .right {
       width: 50%;
       position: absolute;
@@ -40,15 +40,15 @@
       display: table-cell;
       vertical-align: middle;
     }
-  
+
     .right span {
       vertical-align: middle;
     }
-  
+
     .right input {
       vertical-align: baseline;
     }
-  
+
     button {
       display: block;
     }
@@ -194,7 +194,7 @@
       font-family: inherit;
     }
   </style>
-  
+
   <script src="script.js"></script>
   <script type="module" src="knob-control.js"></script>
   <script type="module" src="button-control.js"></script>
@@ -205,14 +205,14 @@
       var bin = String.fromCharCode.apply(null, uint8);
       SAMFUI(3, -1, window.btoa(bin));
     }
-    
+
     function SendTestMIDIData() {
       SMMFUI(0x90, 60, 0x7f);
       setTimeout(function(){
         SMMFUI(0x90, 60, 0x00);
       }, 1000);
     }
-    
+
     function OnParamChange(param, value) {
       // Find the knob control with matching param-id
       const knob = document.querySelector(`knob-control[param-id="${param}"]`);
@@ -221,7 +221,7 @@
         knob.updateValueFromHost(value);
       }
     }
-  
+
     function OnControlChange(ctrlTag, value) {
     }
 
@@ -247,7 +247,7 @@
               element.setAttribute("default-value", paramInfo["default"]);
             }
           });
-          
+
           break;
         }
       }
@@ -257,17 +257,34 @@
 <body>
 <h1>IPlugWebView - testing UI</h1>
 <div class="controls-container">
+  <div class="input-container">
+    <div class="input-group">
+      <label for="chunkSize">Chunk size</label>
+      <input type="number" id="chunkSize" min="1" step="1" value="4096" />
+    </div>
+    <div class="input-group">
+      <label for="bufferWindowSize">Buffer window size</label>
+      <input type="number" id="bufferWindowSize" min="1" step="1" value="4" />
+    </div>
+    <div class="input-group">
+      <label for="algorithm">Transformer</label>
+      <select id="algorithm">
+        <option value="0" selected>Passthrough</option>
+        <option value="1">Sine match</option>
+      </select>
+    </div>
+  </div>
   <div class="button-group">
     <button-control onclick="SendTestBinaryData()">Binary Test</button-control>
     <button-control onclick="SendTestMIDIData()">MIDI Test</button-control>
   </div>
-  
+
   <div class="button-group">
     <button-control onclick="SAMFUI(0)">Small GUI</button-control>
     <button-control onclick="SAMFUI(1)">Medium GUI</button-control>
     <button-control onclick="SAMFUI(2)">Large GUI</button-control>
   </div>
-  
+
   <div class="links-group">
     <a href="https://iplug2.github.io" target="_blank" class="link-button">
       <button-control>Open iPlug2 Website</button-control>
@@ -276,11 +293,11 @@
       Download A File
     </button-control>
   </div>
-  
+
   <div class="file-input-group">
     <input type="file" id="textfile" name="textfile" accept="text/*" />
   </div>
-  
+
   <div id="dropzone" class="dropzone">
       <div id="initial-content">
         <p class="instructions">Drag and drop a WAV file here</p>
@@ -365,19 +382,83 @@
         // Set the drag data
         e.dataTransfer.setData('application/x-moz-file', currentFile); // For Firefox
         e.dataTransfer.setData('application/octet-stream', currentFile); // For other browsers
-        
+
         // Create a new File object to ensure proper file transfer
         const fileTransfer = new File([currentFile], currentFile.name, {
             type: currentFile.type,
             lastModified: currentFile.lastModified
         });
-        
+
         // Add the file to the data transfer
         e.dataTransfer.items.add(fileTransfer);
-        
+
         // Set the drag image (existing code)
         e.dataTransfer.setDragImage(icon, 40, 35);
         e.dataTransfer.effectAllowed = 'copyMove';
+    }
+
+    // Integer inputs -> send to plugin via ctrlTag (no binary payload)
+    const chunkSizeInput = document.getElementById('chunkSize');
+    const bufferWindowSizeInput = document.getElementById('bufferWindowSize');
+    const algorithmSelect = document.getElementById('algorithm');
+
+    function sanitizeInt(value, fallback, minVal = 1) {
+      const n = parseInt(value, 10);
+      if (isNaN(n)) return fallback;
+      return Math.max(minVal, n);
+    }
+
+    function sendChunkSize(value) {
+      if (typeof window['SAMFUI'] === 'function') {
+        window['SAMFUI'](4, value);
+      }
+    }
+
+    function sendBufferWindowSize(value) {
+      if (typeof window['SAMFUI'] === 'function') {
+        window['SAMFUI'](5, value);
+      }
+    }
+
+    function sendAlgorithm(value) {
+      if (typeof window['SAMFUI'] === 'function') {
+        window['SAMFUI'](6, value);
+      }
+    }
+
+    const onChunkChange = (e) => {
+      const v = sanitizeInt(e.target.value, 4096, 1);
+      e.target.value = v;
+      sendChunkSize(v);
+    };
+
+    const onBufferWindowChange = (e) => {
+      const v = sanitizeInt(e.target.value, 4, 1);
+      e.target.value = v;
+      sendBufferWindowSize(v);
+    };
+
+    const onAlgorithmChange = (e) => {
+      const v = parseInt(e.target.value, 10) || 0;
+      sendAlgorithm(v);
+    };
+
+    if (chunkSizeInput) {
+      chunkSizeInput.addEventListener('change', onChunkChange);
+      // Send default on load
+      sendChunkSize(sanitizeInt(chunkSizeInput.value, 4096, 1));
+    }
+
+    if (bufferWindowSizeInput) {
+      bufferWindowSizeInput.addEventListener('change', onBufferWindowChange);
+      // Send default on load
+      sendBufferWindowSize(sanitizeInt(bufferWindowSizeInput.value, 4, 1));
+    }
+
+    if (algorithmSelect) {
+      algorithmSelect.addEventListener('change', onAlgorithmChange);
+      // Send default on load
+      sendAlgorithm(parseInt(algorithmSelect.value, 10) || 0);
     }
 </script>
 </body>

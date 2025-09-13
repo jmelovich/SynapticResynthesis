@@ -6,33 +6,63 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
 : Plugin(info, MakeConfig(kNumParams, kNumPresets))
 {
   GetParam(kGain)->InitGain("Gain", -70., -70, 0.);
-  
+
 #ifdef DEBUG
   SetEnableDevTools(true);
 #endif
-  
+
   mEditorInitFunc = [&]()
   {
     LoadIndexHtml(__FILE__, GetBundleID());
     EnableScroll(false);
   };
-  
+
   MakePreset("One", -70.);
   MakePreset("Two", -30.);
   MakePreset("Three", 0.);
+
+  // Default transformer = passthrough
+  mTransformer = std::make_unique<synaptic::PassthroughTransformer>();
+  // Note: OnReset will be called later with proper channel counts
 }
 
 void SynapticResynthesis::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
 {
   const double gain = GetParam(kGain)->DBToAmp();
-    
-  mOscillator.ProcessBlock(inputs[0], nFrames); // comment for audio in
 
+  // Safety check for valid inputs/outputs
+  const int inChans = NInChansConnected();
+  const int outChans = NOutChansConnected();
+  if (inChans <= 0 || outChans <= 0 || !inputs || !outputs)
+  {
+    // Clear outputs and return
+    for (int ch = 0; ch < outChans; ++ch)
+      if (outputs[ch])
+        std::memset(outputs[ch], 0, sizeof(sample) * nFrames);
+    return;
+  }
+
+  // Feed the input into the chunker
+  mChunker.PushAudio(inputs, nFrames);
+
+  // Transform pending input chunks -> output queue (gate by lookahead)
+  if (mTransformer)
+  {
+    const int required = mTransformer->GetRequiredLookaheadChunks();
+    if (mChunker.GetWindowCount() >= required)
+      mTransformer->Process(mChunker);
+  }
+
+  // Render queued output to the host buffers
+  mChunker.RenderOutput(outputs, nFrames, outChans);
+
+  // Apply gain
   for (int s = 0; s < nFrames; s++)
   {
-    outputs[0][s] = inputs[0][s] * mGainSmoother.Process(gain);
-    outputs[1][s] = outputs[0][s]; // copy left    
-  }  
+    const double smoothedGain = mGainSmoother.Process(gain);
+    for (int ch = 0; ch < outChans; ++ch)
+      outputs[ch][s] *= smoothedGain;
+  }
 }
 
 void SynapticResynthesis::OnReset()
@@ -40,6 +70,17 @@ void SynapticResynthesis::OnReset()
   auto sr = GetSampleRate();
   mOscillator.SetSampleRate(sr);
   mGainSmoother.SetSmoothTime(20., sr);
+  mChunker.SetChunkSize(mChunkSize);
+  mChunker.SetBufferWindowSize(mBufferWindowSize);
+  // Ensure chunker channel count matches current connection
+  mChunker.SetNumChannels(NInChansConnected());
+  mChunker.Reset();
+
+  // Report algorithmic latency to the host (in samples)
+  SetLatency(ComputeLatencySamples());
+
+  if (mTransformer)
+    mTransformer->OnReset(sr, mChunkSize, mBufferWindowSize, NInChansConnected());
 }
 
 bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData)
@@ -56,6 +97,37 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
     DBGMSG("Data Size %i bytes\n",  dataSize);
     DBGMSG("Byte values: %i, %i, %i, %i\n", uint8Data[0], uint8Data[1], uint8Data[2], uint8Data[3]);
   }
+  else if (msgTag == kMsgTagSetChunkSize)
+  {
+    // ctrlTag carries the integer value from UI
+    mChunkSize = std::max(1, ctrlTag);
+    DBGMSG("Set Chunk Size: %i\n", mChunkSize);
+    mChunker.SetChunkSize(mChunkSize);
+    SetLatency(ComputeLatencySamples());
+    return true;
+  }
+  else if (msgTag == kMsgTagSetBufferWindowSize)
+  {
+    mBufferWindowSize = std::max(1, ctrlTag);
+    DBGMSG("Set Buffer Window Size: %i\n", mBufferWindowSize);
+    mChunker.SetBufferWindowSize(mBufferWindowSize);
+    // For passthrough, latency does not depend on window size; no change here
+    return true;
+  }
+  else if (msgTag == kMsgTagSetAlgorithm)
+  {
+    // ctrlTag selects algorithm ID; 0 = passthrough, 1 = sine match
+    if (ctrlTag == 0)
+      mTransformer = std::make_unique<synaptic::PassthroughTransformer>();
+    else if (ctrlTag == 1)
+      mTransformer = std::make_unique<synaptic::SineMatchTransformer>();
+
+    if (mTransformer)
+      mTransformer->OnReset(GetSampleRate(), mChunkSize, mBufferWindowSize, NInChansConnected());
+
+    SetLatency(ComputeLatencySamples());
+    return true;
+  }
 
   return false;
 }
@@ -68,7 +140,7 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
 void SynapticResynthesis::ProcessMidiMsg(const IMidiMsg& msg)
 {
   TRACE;
-  
+
   msg.PrintMsg();
   SendMidiMsg(msg);
 }
