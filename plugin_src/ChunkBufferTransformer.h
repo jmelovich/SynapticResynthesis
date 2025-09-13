@@ -72,57 +72,60 @@ namespace synaptic
       while (chunker.PopPendingInputChunkIndex(inIdx))
       {
         const AudioChunk* in = chunker.GetChunkConstByIndex(inIdx);
-        if (!in)
+        if (!in || in->numFrames <= 0)
           continue;
 
-        // Estimate amplitude (RMS on mono sum) and frequency (zero-crossing rate)
         const int N = in->numFrames;
-        if (N <= 0)
-          continue;
 
-        // Build a simple mono proxy by averaging channels
-        double rmsAcc = 0.0;
-        int zc = 0;
-        auto sampleAt = [&](int i) -> double {
-          double sum = 0.0;
-          int chans = (int) in->channelSamples.size();
-          for (int ch = 0; ch < chans; ++ch)
-          {
-            if (i < (int) in->channelSamples[ch].size())
-              sum += (double) in->channelSamples[ch][i];
-          }
-          return (chans > 0) ? (sum / (double) chans) : 0.0;
-        };
+        std::vector<double> freqs(numChannels);
+        std::vector<double> amps(numChannels);
 
-        double prev = sampleAt(0);
-        rmsAcc += prev * prev;
-        for (int i = 1; i < N; ++i)
+        // 1. Analyze each channel independently
+        for (int ch = 0; ch < numChannels; ++ch)
         {
-          double x = sampleAt(i);
-          rmsAcc += x * x;
-          if ((prev <= 0.0 && x > 0.0) || (prev >= 0.0 && x < 0.0))
-            ++zc;
-          prev = x;
-        }
-        const double rms = std::sqrt(rmsAcc / std::max(1, N));
-        double freq = (double) zc * mSampleRate / (2.0 * std::max(1, N));
-        if (!(freq > 0.0)) freq = 440.0;
-        const double nyquist = 0.5 * mSampleRate;
-        if (freq < 20.0) freq = 20.0;
-        if (freq > nyquist - 20.0) freq = nyquist - 20.0;
+          if (ch >= (int)in->channelSamples.size() || in->channelSamples[ch].empty())
+          {
+            freqs[ch] = 440.0;
+            amps[ch] = 0.0;
+            continue;
+          }
 
-        // Allocate an output chunk and synthesize sine
+          const auto& channelData = in->channelSamples[ch];
+
+          double rmsAcc = 0.0;
+          int zc = 0;
+          double prev = channelData[0];
+          rmsAcc += prev * prev;
+
+          for (int i = 1; i < N; ++i)
+          {
+            double x = channelData[i];
+            rmsAcc += x * x;
+            if ((prev <= 0.0 && x > 0.0) || (prev >= 0.0 && x < 0.0))
+              ++zc;
+            prev = x;
+          }
+
+          const double rms = std::sqrt(rmsAcc / N);
+          double freq = (double) zc * mSampleRate / (2.0 * N);
+
+          // Freq clamping
+          if (!(freq > 0.0)) freq = 440.0;
+          const double nyquist = 0.5 * mSampleRate;
+          if (freq < 20.0) freq = 20.0;
+          if (freq > nyquist - 20.0) freq = nyquist - 20.0;
+
+          freqs[ch] = freq;
+          amps[ch] = std::min(1.0, rms * 1.41421356237); // RMS to peak
+        }
+
+        // 2. Allocate and synthesize
         int outIdx;
         if (!chunker.AllocateWritableChunkIndex(outIdx))
           continue;
         AudioChunk* out = chunker.GetWritableChunkByIndex(outIdx);
         if (!out)
           continue;
-
-        // amplitude: convert RMS to peak for a sine (sqrt(2) factor)
-        const double amp = std::min(1.0, rms * 1.41421356237);
-        double phase = 0.0;
-        const double dphase = 2.0 * 3.14159265358979323846 * freq / mSampleRate;
 
         // Ensure channels sized
         if ((int) out->channelSamples.size() != numChannels)
@@ -134,18 +137,22 @@ namespace synaptic
         }
 
         const int framesToWrite = std::min(chunkSize, N);
-        for (int i = 0; i < framesToWrite; ++i)
+
+        for (int ch = 0; ch < numChannels; ++ch)
         {
-          const sample v = (sample) (amp * std::sin(phase));
-          for (int ch = 0; ch < numChannels; ++ch)
-            out->channelSamples[ch][i] = v;
-          phase += dphase;
-        }
-        // Zero-fill remainder if any
-        for (int i = framesToWrite; i < chunkSize; ++i)
-        {
-          for (int ch = 0; ch < numChannels; ++ch)
+          double phase = 0.0;
+          const double dphase = 2.0 * 3.14159265358979323846 * freqs[ch] / mSampleRate;
+
+          for (int i = 0; i < framesToWrite; ++i)
+          {
+            out->channelSamples[ch][i] = (sample) (amps[ch] * std::sin(phase));
+            phase += dphase;
+          }
+          // Zero-fill remainder if any
+          for (int i = framesToWrite; i < chunkSize; ++i)
+          {
             out->channelSamples[ch][i] = 0.0;
+          }
         }
 
         chunker.CommitWritableChunkIndex(outIdx, framesToWrite);
