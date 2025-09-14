@@ -193,12 +193,93 @@
     knob-control {
       font-family: inherit;
     }
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .tab-button {
+      background-color: #f3f4f6;
+      border: 2px solid #d1d5db;
+      border-radius: 6px;
+      color: #374151;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      padding: 6px 12px;
+    }
+    .tab-button.active {
+      background-color: #e5e7eb;
+      border-color: #9ca3af;
+    }
+    #brain-section { display: none; }
+    .brain-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 12px;
+    }
+    .brain-list-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 8px 10px;
+    }
+    .remove-btn {
+      background-color: #ef4444;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      padding: 4px 8px;
+      font-weight: 600;
+    }
+    .overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(255,255,255,0.6);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+    }
+    .spinner {
+      width: 24px;
+      height: 24px;
+      border: 3px solid #cbd5e1;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
   </style>
 
   <script src="script.js"></script>
   <script type="module" src="knob-control.js"></script>
   <script type="module" src="button-control.js"></script>
   <script>
+    function switchTab(which) {
+      const dspBtn = document.getElementById('tab-dsp-btn');
+      const brainBtn = document.getElementById('tab-brain-btn');
+      const dsp = document.getElementById('dsp-section');
+      const brain = document.getElementById('brain-section');
+      if (which === 'brain') {
+        dsp.style.display = 'none';
+        brain.style.display = 'block';
+        dspBtn.classList.remove('active');
+        brainBtn.classList.add('active');
+      } else {
+        dsp.style.display = 'block';
+        brain.style.display = 'none';
+        brainBtn.classList.remove('active');
+        dspBtn.classList.add('active');
+      }
+    }
     function SendTestBinaryData() {
       let uint8 = new Uint8Array([0, 0, 0, 0]);
       uint8.fill(4, 1, 3);
@@ -249,14 +330,45 @@
           });
 
           break;
+        case "brainSummary":
+          updateBrainList(json["files"] || []);
+          hideBrainOverlay();
+          break;
         }
       }
+    }
+
+    function updateBrainList(files) {
+      const list = document.getElementById('brain-files');
+      if (!list) return;
+      list.innerHTML = '';
+      files.forEach(f => {
+        const row = document.createElement('div');
+        row.className = 'brain-list-item';
+        const left = document.createElement('div');
+        left.textContent = `${f.name} (${f.chunks})`;
+        const btn = document.createElement('button');
+        btn.className = 'remove-btn';
+        btn.textContent = 'X';
+        btn.onclick = () => {
+          if (typeof window['SAMFUI'] === 'function') {
+            window['SAMFUI'](101, f.id);
+          }
+        };
+        row.appendChild(left);
+        row.appendChild(btn);
+        list.appendChild(row);
+      });
     }
   </script>
 </head>
 <body>
+<div class="tabs">
+  <button id="tab-dsp-btn" class="tab-button active" onclick="switchTab('dsp')">DSP</button>
+  <button id="tab-brain-btn" class="tab-button" onclick="switchTab('brain')">Brain</button>
+  </div>
 <h1>IPlugWebView - testing UI</h1>
-<div class="controls-container">
+<div id="dsp-section" class="controls-container">
   <div class="input-container">
     <div class="input-group">
       <label for="chunkSize">Chunk size</label>
@@ -271,6 +383,7 @@
       <select id="algorithm">
         <option value="0" selected>Passthrough</option>
         <option value="1">Sine match</option>
+        <option value="2">Simple Samplebrain</option>
       </select>
     </div>
   </div>
@@ -312,6 +425,18 @@
   <div class="knob-container">
     <knob-control label="Gain" param-id=0></knob-control>
   </div>
+</div>
+
+<div id="brain-section" class="controls-container" style="position: relative;">
+  <div id="brain-overlay" class="overlay"><div class="spinner"></div></div>
+  <div id="brain-dropzone" class="dropzone" style="height: 140px;">
+    <p class="instructions">Drag and drop audio files (wav, mp3, flac) to add to Brain</p>
+  </div>
+  <div style="margin-top:6px; color:#374151; font-size:13px;">
+    Brain chunk size: <span id="brain-chunk-size">-</span>
+  </div>
+  <div id="brain-files" class="brain-list"></div>
+  <p style="color:#6b7280; font-size:12px;">Note: Chunk size currently set by DSP section and used for import.</p>
 </div>
 
 <script>
@@ -459,6 +584,51 @@
       algorithmSelect.addEventListener('change', onAlgorithmChange);
       // Send default on load
       sendAlgorithm(parseInt(algorithmSelect.value, 10) || 0);
+    }
+
+    // Brain drop handling
+    const brainDrop = document.getElementById('brain-dropzone');
+    const brainOverlay = document.getElementById('brain-overlay');
+    const brainChunkSizeEl = document.getElementById('brain-chunk-size');
+    function showBrainOverlay(){ if (brainOverlay) brainOverlay.style.display='flex'; }
+    function hideBrainOverlay(){ if (brainOverlay) brainOverlay.style.display='none'; }
+    if (brainDrop) {
+      function uint8ToBase64(uint8) {
+        let binary = '';
+        const chunkSize = 0x8000; // 32KB chunks
+        for (let i = 0; i < uint8.length; i += chunkSize) {
+          const chunk = uint8.subarray(i, i + chunkSize);
+          binary += String.fromCharCode.apply(null, chunk);
+        }
+        return window.btoa(binary);
+      }
+      ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
+        brainDrop.addEventListener(evt, (e) => { e.preventDefault(); e.stopPropagation(); }, false);
+      });
+      ['dragenter', 'dragover'].forEach(evt => brainDrop.addEventListener(evt, () => brainDrop.classList.add('dragover')));
+      ;['dragleave', 'drop'].forEach(evt => brainDrop.addEventListener(evt, () => brainDrop.classList.remove('dragover')));
+      brainDrop.addEventListener('drop', async (e) => {
+        const files = e.dataTransfer.files;
+        if (!files || files.length === 0) return;
+        showBrainOverlay();
+        for (let i = 0; i < files.length; ++i) {
+          const f = files[i];
+          if (!/^audio\//.test(f.type) && !/\.(wav|wave|flac|mp3)$/i.test(f.name)) continue;
+          const arrayBuf = await f.arrayBuffer();
+          // Build header: uint16 LE nameLen + name bytes + file data
+          const enc = new TextEncoder();
+          const nameBytes = enc.encode(f.name);
+          const header = new Uint8Array(2 + nameBytes.length + arrayBuf.byteLength);
+          header[0] = nameBytes.length & 0xFF;
+          header[1] = (nameBytes.length >> 8) & 0xFF;
+          header.set(nameBytes, 2);
+          header.set(new Uint8Array(arrayBuf), 2 + nameBytes.length);
+          const b64 = uint8ToBase64(header);
+          if (typeof window['SAMFUI'] === 'function') {
+            window['SAMFUI'](100, -1, b64);
+          }
+        }
+      });
     }
 </script>
 </body>

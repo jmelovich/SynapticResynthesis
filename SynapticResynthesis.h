@@ -5,6 +5,7 @@
 #include "Smoothers.h"
 #include "plugin_src/AudioStreamChunker.h"
 #include "plugin_src/ChunkBufferTransformer.h"
+#include "plugin_src/samplebrain/Brain.h"
 
 using namespace iplug;
 
@@ -24,7 +25,11 @@ enum EMsgTags
   kMsgTagBinaryTest = 3,
   kMsgTagSetChunkSize = 4,
   kMsgTagSetBufferWindowSize = 5,
-  kMsgTagSetAlgorithm = 6
+  kMsgTagSetAlgorithm = 6,
+  // Brain UI -> C++ messages
+  kMsgTagBrainAddFile = 100,
+  kMsgTagBrainRemoveFile = 101,
+  // C++ -> UI JSON updates use msgTag = -1, with id fields "brainSummary"
 };
 
 class SynapticResynthesis final : public Plugin
@@ -52,4 +57,8 @@ private:
   synaptic::AudioStreamChunker mChunker {2};
   std::unique_ptr<synaptic::IChunkBufferTransformer> mTransformer;
   int ComputeLatencySamples() const { return mChunkSize + (mTransformer ? mTransformer->GetAdditionalLatencySamples(mChunkSize, mBufferWindowSize) : 0); }
+
+  // Samplebrain in-memory state
+  synaptic::Brain mBrain;
+  void SendBrainSummaryToUI();
 };

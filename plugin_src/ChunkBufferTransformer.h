@@ -1,6 +1,8 @@
 #pragma once
 
 #include "AudioStreamChunker.h"
+#include "samplebrain/Brain.h"
+#include <cmath>
 
 namespace synaptic
 {
@@ -171,6 +173,205 @@ namespace synaptic
 
   private:
     double mSampleRate = 48000.0;
+  };
+
+  // Simple Samplebrain transformer: match input chunk to closest Brain chunk by freq & amplitude.
+  class SimpleSampleBrainTransformer final : public IChunkBufferTransformer
+  {
+  public:
+    void OnReset(double sampleRate, int /*chunkSize*/, int /*bufferWindowSize*/, int /*numChannels*/) override
+    {
+      mSampleRate = (sampleRate > 0.0) ? sampleRate : 48000.0;
+    }
+
+    void SetBrain(const Brain* brain) { mBrain = brain; }
+
+    void Process(AudioStreamChunker& chunker) override
+    {
+      if (!mBrain)
+      {
+        // fallback passthrough
+        int idx;
+        while (chunker.PopPendingInputChunkIndex(idx))
+          chunker.EnqueueOutputChunkIndex(idx);
+        return;
+      }
+
+      const int numChannels = chunker.GetNumChannels();
+
+      int inIdx;
+      while (chunker.PopPendingInputChunkIndex(inIdx))
+      {
+        const AudioChunk* in = chunker.GetChunkConstByIndex(inIdx);
+        if (!in || in->numFrames <= 0)
+        {
+          chunker.EnqueueOutputChunkIndex(inIdx);
+          continue;
+        }
+
+        const int N = in->numFrames;
+        const double nyquist = 0.5 * mSampleRate;
+
+        // Analyze all channels
+        std::vector<double> inRms(numChannels, 0.0);
+        std::vector<double> inFreq(numChannels, 440.0);
+        for (int ch = 0; ch < numChannels; ++ch)
+        {
+          if (ch >= (int) in->channelSamples.size() || in->channelSamples[ch].empty())
+            continue;
+          const auto& buf = in->channelSamples[ch];
+          double rmsAcc = 0.0;
+          int zc = 0;
+          double prev = buf[0];
+          rmsAcc += prev * prev;
+          for (int i = 1; i < N; ++i)
+          {
+            double x = buf[i];
+            rmsAcc += x * x;
+            if ((prev <= 0.0 && x > 0.0) || (prev >= 0.0 && x < 0.0))
+              ++zc;
+            prev = x;
+          }
+          inRms[ch] = std::sqrt(rmsAcc / std::max(1, N));
+          double f = (double) zc * mSampleRate / (2.0 * (double) N);
+          if (!(f > 0.0)) f = 440.0;
+          if (f < 20.0) f = 20.0;
+          if (f > nyquist - 20.0) f = nyquist - 20.0;
+          inFreq[ch] = f;
+        }
+
+        // Channel-independent matching or average-based matching
+        int outIdx;
+        if (!chunker.AllocateWritableChunkIndex(outIdx))
+        {
+          chunker.EnqueueOutputChunkIndex(inIdx);
+          continue;
+        }
+        AudioChunk* out = chunker.GetWritableChunkByIndex(outIdx);
+        if (!out)
+        {
+          chunker.EnqueueOutputChunkIndex(inIdx);
+          continue;
+        }
+
+        const int chunkSize = chunker.GetChunkSize();
+        if ((int) out->channelSamples.size() != numChannels)
+          out->channelSamples.assign(numChannels, std::vector<sample>(chunkSize, 0.0));
+        for (int ch = 0; ch < numChannels; ++ch)
+          if ((int) out->channelSamples[ch].size() < chunkSize)
+            out->channelSamples[ch].assign(chunkSize, 0.0);
+
+        if (mChannelIndependent)
+        {
+          // For each output channel, independently pick best brain chunk+channel
+          const int total = mBrain->GetTotalChunks();
+          for (int ch = 0; ch < numChannels; ++ch)
+          {
+            int bestChunk = -1;
+            int bestSrcCh = 0;
+            double bestScore = 1e9;
+            for (int bi = 0; bi < total; ++bi)
+            {
+              const BrainChunk* bc = mBrain->GetChunkByGlobalIndex(bi);
+              if (!bc) continue;
+              const int bChans = (int) bc->audio.channelSamples.size();
+              for (int bch = 0; bch < bChans; ++bch)
+              {
+                const double bf = (bch < (int) bc->freqHzPerChannel.size() && bc->freqHzPerChannel[bch] > 0.0) ? bc->freqHzPerChannel[bch] : (bc->avgFreqHz > 0.0 ? bc->avgFreqHz : 440.0);
+                const double br = (bch < (int) bc->rmsPerChannel.size()) ? (double) bc->rmsPerChannel[bch] : (double) bc->avgRms;
+                double df = std::abs(inFreq[ch] - bf) / nyquist;
+                double da = std::abs(inRms[ch] - br);
+                if (da > 1.0) da = 1.0;
+                double score = mWeightFreq * df + mWeightAmp * da;
+                if (score < bestScore)
+                {
+                  bestScore = score;
+                  bestChunk = bi;
+                  bestSrcCh = bch;
+                }
+              }
+            }
+
+            if (bestChunk >= 0)
+            {
+              const BrainChunk* match = mBrain->GetChunkByGlobalIndex(bestChunk);
+              const int framesToWrite = std::min(chunkSize, match ? match->audio.numFrames : chunkSize);
+              const int srcChans = match ? (int) match->audio.channelSamples.size() : 0;
+              const int sch = (bestSrcCh < srcChans) ? bestSrcCh : 0;
+              for (int i = 0; i < framesToWrite; ++i)
+                out->channelSamples[ch][i] = match->audio.channelSamples[sch][i];
+              for (int i = framesToWrite; i < chunkSize; ++i)
+                out->channelSamples[ch][i] = 0.0;
+            }
+          }
+          chunker.CommitWritableChunkIndex(outIdx, chunkSize);
+        }
+        else
+        {
+          // Average-based: pick one brain chunk, copy its channels
+          int bestIdx = -1;
+          double bestScore = 1e9;
+          const int total = mBrain->GetTotalChunks();
+          const double inFreqAvg = (numChannels > 0) ? std::accumulate(inFreq.begin(), inFreq.end(), 0.0) / (double) numChannels : 440.0;
+          const double inRmsAvg = (numChannels > 0) ? std::accumulate(inRms.begin(), inRms.end(), 0.0) / (double) numChannels : 0.0;
+          for (int bi = 0; bi < total; ++bi)
+          {
+            const BrainChunk* bc = mBrain->GetChunkByGlobalIndex(bi);
+            if (!bc) continue;
+            const double bf = (bc->avgFreqHz > 0.0) ? bc->avgFreqHz : 440.0;
+            const double br = (double) bc->avgRms;
+            double df = std::abs(inFreqAvg - bf) / nyquist;
+            double da = std::abs(inRmsAvg - br);
+            if (da > 1.0) da = 1.0;
+            double score = mWeightFreq * df + mWeightAmp * da;
+            if (score < bestScore)
+            {
+              bestScore = score;
+              bestIdx = bi;
+            }
+          }
+
+          if (bestIdx < 0)
+          {
+            chunker.EnqueueOutputChunkIndex(inIdx);
+            continue;
+          }
+
+          const BrainChunk* match = mBrain->GetChunkByGlobalIndex(bestIdx);
+          if (!match)
+          {
+            chunker.EnqueueOutputChunkIndex(inIdx);
+            continue;
+          }
+
+          const int framesToWrite = std::min(chunkSize, match->audio.numFrames);
+          const int srcChans = (int) match->audio.channelSamples.size();
+          for (int ch = 0; ch < numChannels; ++ch)
+          {
+            const int sch = (ch < srcChans) ? ch : 0;
+            for (int i = 0; i < framesToWrite; ++i)
+              out->channelSamples[ch][i] = match->audio.channelSamples[sch][i];
+            for (int i = framesToWrite; i < chunkSize; ++i)
+              out->channelSamples[ch][i] = 0.0;
+          }
+
+          chunker.CommitWritableChunkIndex(outIdx, framesToWrite);
+        }
+      }
+    }
+
+    int GetAdditionalLatencySamples(int /*chunkSize*/, int /*bufferWindowSize*/) const override { return 0; }
+    int GetRequiredLookaheadChunks() const override { return 0; }
+
+    void SetWeights(double wFreq, double wAmp) { mWeightFreq = wFreq; mWeightAmp = wAmp; }
+    void SetChannelIndependent(bool enabled) { mChannelIndependent = enabled; }
+
+  private:
+    const Brain* mBrain = nullptr;
+    double mSampleRate = 48000.0;
+    double mWeightFreq = 1.0;
+    double mWeightAmp = 1.0;
+    bool mChannelIndependent = false;
   };
 }
 

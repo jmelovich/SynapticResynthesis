@@ -1,6 +1,8 @@
 #include "SynapticResynthesis.h"
 #include "IPlug_include_in_plug_src.h"
 #include "IPlugPaths.h"
+#include "json.hpp"
+#include "Extras/WebView/IPlugWebViewEditorDelegate.h"
 
 SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
 : Plugin(info, MakeConfig(kNumParams, kNumPresets))
@@ -81,6 +83,9 @@ void SynapticResynthesis::OnReset()
 
   if (mTransformer)
     mTransformer->OnReset(sr, mChunkSize, mBufferWindowSize, NInChansConnected());
+
+  // When audio engine resets, leave brain state intact; just resend summary to UI
+  SendBrainSummaryToUI();
 }
 
 bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData)
@@ -103,6 +108,13 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
     mChunkSize = std::max(1, ctrlTag);
     DBGMSG("Set Chunk Size: %i\n", mChunkSize);
     mChunker.SetChunkSize(mChunkSize);
+    // Notify UI brain chunk size and trigger rechunk placeholder
+    nlohmann::json j; j["id"] = "brainChunkSize"; j["size"] = mChunkSize;
+    const std::string payload = j.dump();
+    SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+    // Rechunk brain (clears for now)
+    mBrain.RechunkAllFiles(mChunkSize, (int) GetSampleRate());
+    SendBrainSummaryToUI();
     SetLatency(ComputeLatencySamples());
     return true;
   }
@@ -121,6 +133,12 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
       mTransformer = std::make_unique<synaptic::PassthroughTransformer>();
     else if (ctrlTag == 1)
       mTransformer = std::make_unique<synaptic::SineMatchTransformer>();
+    else if (ctrlTag == 2)
+    {
+      auto t = std::make_unique<synaptic::SimpleSampleBrainTransformer>();
+      t->SetBrain(&mBrain);
+      mTransformer = std::move(t);
+    }
 
     if (mTransformer)
       mTransformer->OnReset(GetSampleRate(), mChunkSize, mBufferWindowSize, NInChansConnected());
@@ -128,8 +146,54 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
     SetLatency(ComputeLatencySamples());
     return true;
   }
+  else if (msgTag == kMsgTagBrainAddFile)
+  {
+    // pData holds raw bytes of a small header + file data. Header format:
+    // [uint16_t nameLenLE][name bytes UTF-8][file bytes]
+    if (!pData || dataSize <= 2)
+      return false;
+    const uint8_t* bytes = reinterpret_cast<const uint8_t*>(pData);
+    uint16_t nameLen = (uint16_t) (bytes[0] | (bytes[1] << 8));
+    if (2 + nameLen > dataSize)
+      return false;
+    std::string name(reinterpret_cast<const char*>(bytes + 2), reinterpret_cast<const char*>(bytes + 2 + nameLen));
+    const void* fileData = bytes + 2 + nameLen;
+    size_t fileSize = static_cast<size_t>(dataSize - (2 + nameLen));
+
+    DBGMSG("BrainAddFile: name=%s size=%zu SR=%d CH=%d chunk=%d\n", name.c_str(), fileSize, (int) GetSampleRate(), NInChansConnected(), mChunkSize);
+    int newId = mBrain.AddAudioFileFromMemory(fileData, fileSize, name, (int) GetSampleRate(), NInChansConnected(), mChunkSize);
+    if (newId >= 0)
+      SendBrainSummaryToUI(); // UI will hide overlay when it receives brainSummary
+    return newId >= 0;
+  }
+  else if (msgTag == kMsgTagBrainRemoveFile)
+  {
+    // ctrlTag carries fileId
+    DBGMSG("BrainRemoveFile: id=%d\n", ctrlTag);
+    mBrain.RemoveFile(ctrlTag);
+    SendBrainSummaryToUI();
+    return true;
+  }
 
   return false;
+}
+
+void SynapticResynthesis::SendBrainSummaryToUI()
+{
+  nlohmann::json j;
+  j["id"] = "brainSummary";
+  nlohmann::json arr = nlohmann::json::array();
+  for (const auto& s : mBrain.GetSummary())
+  {
+    nlohmann::json o;
+    o["id"] = s.id;
+    o["name"] = s.name;
+    o["chunks"] = s.chunkCount;
+    arr.push_back(o);
+  }
+  j["files"] = arr;
+  const std::string payload = j.dump();
+  SendArbitraryMsgFromDelegate(-1, static_cast<int>(payload.size()), payload.c_str());
 }
 
 void SynapticResynthesis::OnParamChange(int paramIdx)
