@@ -110,13 +110,34 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
     mChunkSize = std::max(1, ctrlTag);
     DBGMSG("Set Chunk Size: %i\n", mChunkSize);
     mChunker.SetChunkSize(mChunkSize);
-    // Notify UI brain chunk size and trigger rechunk placeholder
-    nlohmann::json j; j["id"] = "brainChunkSize"; j["size"] = mChunkSize;
-    const std::string payload = j.dump();
-    SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
-    // Rechunk brain (clears for now)
-    mBrain.RechunkAllFiles(mChunkSize, (int) GetSampleRate());
+    // Notify UI brain chunk size
+    {
+      nlohmann::json j; j["id"] = "brainChunkSize"; j["size"] = mChunkSize;
+      const std::string payload = j.dump();
+      SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+    }
+    // Show spinner while rechunking
+    {
+      nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Rechunking...");
+      const std::string payload = j.dump();
+      SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+    }
+    // Rechunk brain with progress text and log stats
+    {
+      auto stats = mBrain.RechunkAllFiles(mChunkSize, (int) GetSampleRate(), [&](const std::string& name){
+        nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Rechunking ") + name;
+        const std::string payload = j.dump();
+        SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+      });
+      DBGMSG("Brain Rechunk: processed=%d, rechunked=%d, totalChunks=%d\n", stats.filesProcessed, stats.filesRechunked, stats.newTotalChunks);
+    }
     SendBrainSummaryToUI();
+    // Explicitly hide overlay after UI refresh
+    {
+      nlohmann::json j; j["id"] = "overlay"; j["visible"] = false;
+      const std::string payload = j.dump();
+      SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+    }
     SetLatency(ComputeLatencySamples());
     return true;
   }
@@ -212,9 +233,21 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
     size_t fileSize = static_cast<size_t>(dataSize - (2 + nameLen));
 
     DBGMSG("BrainAddFile: name=%s size=%zu SR=%d CH=%d chunk=%d\n", name.c_str(), fileSize, (int) GetSampleRate(), NInChansConnected(), mChunkSize);
+    // Show overlay text during import
+    {
+      nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Importing ") + name;
+      const std::string payload = j.dump();
+      SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+    }
     int newId = mBrain.AddAudioFileFromMemory(fileData, fileSize, name, (int) GetSampleRate(), NInChansConnected(), mChunkSize);
     if (newId >= 0)
-      SendBrainSummaryToUI(); // UI will hide overlay when it receives brainSummary
+      SendBrainSummaryToUI(); // UI will refresh list
+    // Hide overlay explicitly after attempt
+    {
+      nlohmann::json j; j["id"] = "overlay"; j["visible"] = false;
+      const std::string payload = j.dump();
+      SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+    }
     return newId >= 0;
   }
   else if (msgTag == kMsgTagBrainRemoveFile)

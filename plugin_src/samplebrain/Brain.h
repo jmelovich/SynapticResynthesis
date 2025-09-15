@@ -4,6 +4,7 @@
 #include <string>
 #include <unordered_map>
 #include <mutex>
+#include <functional>
 
 #include "plugin_src/AudioStreamChunker.h"
 
@@ -31,6 +32,7 @@ namespace synaptic
     std::string displayName; // filename (no path)
     int chunkCount = 0;
     std::vector<int> chunkIndices; // indices into mChunks
+    int tailPaddingFrames = 0; // number of padded frames in the final chunk
   };
 
   class Brain
@@ -66,7 +68,9 @@ namespace synaptic
     const BrainChunk* GetChunkByGlobalIndex(int idx) const;
 
     // Re-chunk all files to a new chunk size
-    void RechunkAllFiles(int newChunkSizeSamples, int targetSampleRate);
+    struct RechunkStats { int filesProcessed = 0; int filesRechunked = 0; int newTotalChunks = 0; };
+    using RechunkProgressFn = std::function<void(const std::string& /*displayName*/)>;
+    RechunkStats RechunkAllFiles(int newChunkSizeSamples, int targetSampleRate, RechunkProgressFn onProgress = nullptr);
     int GetChunkSize() const { return mChunkSize; }
 
   private:

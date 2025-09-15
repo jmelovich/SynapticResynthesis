@@ -156,6 +156,16 @@ namespace synaptic
     }
 
     fileRec.chunkCount = (int) fileRec.chunkIndices.size();
+    // Compute tail padding for last chunk
+    const int totalFramesMod = (int) framesRead % chunkSizeSamples;
+    if (fileRec.chunkCount > 0)
+    {
+      fileRec.tailPaddingFrames = (totalFramesMod == 0) ? 0 : (chunkSizeSamples - totalFramesMod);
+    }
+    else
+    {
+      fileRec.tailPaddingFrames = 0;
+    }
 
     idToFileIndex_[fileId] = (int) files_.size();
     files_.push_back(std::move(fileRec));
@@ -224,21 +234,140 @@ namespace synaptic
     return v;
   }
 
-  void Brain::RechunkAllFiles(int newChunkSizeSamples, int targetSampleRate)
+  Brain::RechunkStats Brain::RechunkAllFiles(int newChunkSizeSamples, int targetSampleRate, RechunkProgressFn onProgress)
   {
-    if (newChunkSizeSamples <= 0 || targetSampleRate <= 0) return;
+    RechunkStats stats;
+    if (newChunkSizeSamples <= 0 || targetSampleRate <= 0) return stats;
     std::lock_guard<std::mutex> lock(mutex_);
-    // We cannot re-decode from original sources (we didn't store raw data), so for now
-    // re-chunk from existing concatenated audio per file order.
-    // Simpler approach: clear and mark chunk size; callers should re-import for full fidelity.
-    // To satisfy UI expectation, just clear existing chunks and set size.
-    chunks_.clear();
+    // Rebuild each file by concatenating its chunks' valid frames, then rechunk
+    std::vector<BrainChunk> newChunks;
+    newChunks.reserve(chunks_.size());
+
     for (auto& f : files_)
     {
-      f.chunkCount = 0;
+      ++stats.filesProcessed;
+      if (onProgress) onProgress(f.displayName);
+      // Concatenate valid frames across this file's chunks
+      int totalValidFrames = 0;
+      int numChannels = 0;
+      // Determine channels from first valid chunk
+      for (int gi : f.chunkIndices)
+      {
+        if (gi < 0 || gi >= (int)chunks_.size()) continue;
+        const BrainChunk& bc = chunks_[gi];
+        if ((int)bc.audio.channelSamples.size() > 0)
+        {
+          numChannels = (int)bc.audio.channelSamples.size();
+          break;
+        }
+      }
+      if (numChannels <= 0)
+      {
+        f.chunkCount = 0;
+        f.chunkIndices.clear();
+        continue;
+      }
+
+      // Gather into planar buffer
+      std::vector<std::vector<sample>> planar(numChannels);
+      for (int ch = 0; ch < numChannels; ++ch) planar[ch].clear();
+
+      // Determine original (old) chunk size from first chunk
+      int oldChunkSize = mChunkSize > 0 ? mChunkSize : newChunkSizeSamples;
+
+      for (int gi : f.chunkIndices)
+      {
+        if (gi < 0 || gi >= (int)chunks_.size()) continue;
+        const BrainChunk& bc = chunks_[gi];
+        // valid frames for non-last chunks = full chunk size; last chunk subtract tail padding
+        int frames = std::max(0, oldChunkSize);
+        const bool isLast = (bc.chunkIndexInFile == (f.chunkCount - 1));
+        if (isLast)
+        {
+          frames = std::max(0, oldChunkSize - f.tailPaddingFrames);
+        }
+        const int srcChans = (int) bc.audio.channelSamples.size();
+        for (int ch = 0; ch < numChannels; ++ch)
+        {
+          if (ch < srcChans)
+          {
+            const auto& src = bc.audio.channelSamples[ch];
+            const int copyN = std::min(frames, (int)src.size());
+            planar[ch].insert(planar[ch].end(), src.begin(), src.begin() + copyN);
+          }
+          else
+          {
+            // missing channel: append zeros
+            planar[ch].insert(planar[ch].end(), frames, 0.0);
+          }
+        }
+        totalValidFrames += frames;
+      }
+
+      // Rechunk the reconstructed buffer
       f.chunkIndices.clear();
+      const int totalFrames = totalValidFrames;
+      const int numChunks = (totalFrames + newChunkSizeSamples - 1) / newChunkSizeSamples;
+      for (int c = 0; c < numChunks; ++c)
+      {
+        const int start = c * newChunkSizeSamples;
+        const int framesInChunk = std::min(newChunkSizeSamples, totalFrames - start);
+        if (framesInChunk <= 0) break;
+
+        BrainChunk out;
+        out.fileId = f.id;
+        out.chunkIndexInFile = c;
+        out.audio.numFrames = newChunkSizeSamples;
+        out.audio.channelSamples.assign(numChannels, std::vector<sample>(newChunkSizeSamples, 0.0));
+
+        // Copy audio and compute analysis
+        out.rmsPerChannel.assign(numChannels, 0.0f);
+        out.freqHzPerChannel.assign(numChannels, 0.0);
+        double rmsSum = 0.0;
+        double freqSum = 0.0;
+        for (int ch = 0; ch < numChannels; ++ch)
+        {
+          auto& dst = out.audio.channelSamples[ch];
+          const auto& src = planar[ch];
+          const int copyN = framesInChunk;
+          if (start < (int)src.size())
+          {
+            const int clampedCopy = std::min(copyN, (int)src.size() - start);
+            std::memcpy(dst.data(), src.data() + start, sizeof(sample) * clampedCopy);
+          }
+
+          float crms = ComputeRMS(dst, 0, framesInChunk);
+          double cf = ComputeZeroCrossingFreq(dst, 0, framesInChunk, (double) targetSampleRate);
+          out.rmsPerChannel[ch] = crms;
+          out.freqHzPerChannel[ch] = cf;
+          rmsSum += crms;
+          freqSum += cf;
+        }
+        out.avgRms = (numChannels > 0) ? (float)(rmsSum / (double)numChannels) : 0.0f;
+        out.avgFreqHz = (numChannels > 0) ? (freqSum / (double)numChannels) : 0.0;
+
+        const int globalIdx = (int) newChunks.size();
+        newChunks.push_back(std::move(out));
+        f.chunkIndices.push_back(globalIdx);
+      }
+      f.chunkCount = (int) f.chunkIndices.size();
+      // Recompute tail padding for new chunk size
+      if (f.chunkCount > 0)
+      {
+        const int totalFramesMod = totalValidFrames % newChunkSizeSamples;
+        f.tailPaddingFrames = (totalFramesMod == 0) ? 0 : (newChunkSizeSamples - totalFramesMod);
+      }
+      else
+      {
+        f.tailPaddingFrames = 0;
+      }
+      if (f.chunkCount > 0) ++stats.filesRechunked;
+      stats.newTotalChunks += f.chunkCount;
     }
+
+    chunks_.swap(newChunks);
     mChunkSize = newChunkSizeSamples;
+    return stats;
   }
 
   int Brain::GetTotalChunks() const

@@ -271,6 +271,7 @@
       justify-content: center;
       z-index: 10;
     }
+    .overlay.global { position: fixed; }
     .spinner {
       width: 24px;
       height: 24px;
@@ -279,6 +280,7 @@
       border-radius: 50%;
       animation: spin 1s linear infinite;
     }
+    .overlay-text { margin-top: 8px; color: #374151; font-size: 13px; }
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
@@ -357,8 +359,21 @@
           break;
         case "brainSummary":
           updateBrainList(json["files"] || []);
-          hideBrainOverlay();
+          hideGlobalOverlay();
           break;
+        case "brainChunkSize":
+          const el = document.getElementById('brain-chunk-size');
+          if (el) el.textContent = String(json["size"] ?? '-');
+          break;
+        case "brainRechunking":
+          showGlobalOverlay();
+          break;
+        case "overlay": {
+          const visible = !!json["visible"];
+          const text = json["text"] ?? '';
+          if (visible) showGlobalOverlay(text); else hideGlobalOverlay();
+          break;
+        }
         case "transformerParams":
           renderTransformerParams(json["params"] || []);
           break;
@@ -690,10 +705,25 @@
 
     // Brain drop handling
     const brainDrop = document.getElementById('brain-dropzone');
-    const brainOverlay = document.getElementById('brain-overlay');
     const brainChunkSizeEl = document.getElementById('brain-chunk-size');
-    function showBrainOverlay(){ if (brainOverlay) brainOverlay.style.display='flex'; }
-    function hideBrainOverlay(){ if (brainOverlay) brainOverlay.style.display='none'; }
+    const globalOverlay = document.createElement('div');
+    globalOverlay.className = 'overlay global';
+    globalOverlay.style.display = 'none';
+    const spinnerWrap = document.createElement('div');
+    spinnerWrap.style.display = 'flex';
+    spinnerWrap.style.flexDirection = 'column';
+    spinnerWrap.style.alignItems = 'center';
+    const spinnerEl = document.createElement('div');
+    spinnerEl.className = 'spinner';
+    const textEl = document.createElement('div');
+    textEl.className = 'overlay-text';
+    textEl.textContent = '';
+    spinnerWrap.appendChild(spinnerEl);
+    spinnerWrap.appendChild(textEl);
+    globalOverlay.appendChild(spinnerWrap);
+    document.body.appendChild(globalOverlay);
+    function showGlobalOverlay(text){ if (globalOverlay) { globalOverlay.style.display='flex'; if (text !== undefined) textEl.textContent = String(text); } }
+    function hideGlobalOverlay(){ if (globalOverlay) globalOverlay.style.display='none'; }
     if (brainDrop) {
       function uint8ToBase64(uint8) {
         let binary = '';
@@ -712,7 +742,7 @@
       brainDrop.addEventListener('drop', async (e) => {
         const files = e.dataTransfer.files;
         if (!files || files.length === 0) return;
-        showBrainOverlay();
+        showGlobalOverlay();
         for (let i = 0; i < files.length; ++i) {
           const f = files[i];
           if (!/^audio\//.test(f.type) && !/\.(wav|wave|flac|mp3)$/i.test(f.name)) continue;
