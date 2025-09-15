@@ -3,6 +3,7 @@
 #include "IPlugPaths.h"
 #include "json.hpp"
 #include "Extras/WebView/IPlugWebViewEditorDelegate.h"
+#include "plugin_src/TransformerFactory.h"
 
 namespace {
   // Build a union of transformer parameter descs across all known transformers (by id)
@@ -18,13 +19,9 @@ namespace {
         if (it == out.end()) out.push_back(d);
       }
     };
-    consider(std::make_unique<synaptic::PassthroughTransformer>());
-    consider(std::make_unique<synaptic::SineMatchTransformer>());
-    {
-      auto t = std::make_unique<synaptic::SimpleSampleBrainTransformer>();
-      // Brain pointer is not needed just to query descs
-      consider(std::move(t));
-    }
+    // Iterate all known transformers from the factory
+    for (const auto& info : synaptic::TransformerFactory::GetAll())
+      consider(info.create());
   }
 
   static int ComputeTotalParams()
@@ -55,15 +52,25 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
   MakePreset("Two", -30.);
   MakePreset("Three", 0.);
 
-  // Default transformer = passthrough
-  mTransformer = std::make_unique<synaptic::PassthroughTransformer>();
+  // Default transformer = first UI-visible entry
   mAlgorithmId = 0;
+  mTransformer = synaptic::TransformerFactory::CreateByUiIndex(mAlgorithmId);
+  if (auto sb = dynamic_cast<synaptic::SimpleSampleBrainTransformer*>(mTransformer.get()))
+    sb->SetBrain(&mBrain);
   // Note: OnReset will be called later with proper channel counts
 
   // Create core DSP params into the pre-allocated slots
   mParamIdxChunkSize = kNumParams + 0; GetParam(mParamIdxChunkSize)->InitInt("Chunk Size", mChunkSize, 1, 262144, "samples", IParam::kFlagCannotAutomate);
   mParamIdxBufferWindow = kNumParams + 1; GetParam(mParamIdxBufferWindow)->InitInt("Buffer Window", mBufferWindowSize, 1, 1024, "chunks", IParam::kFlagCannotAutomate);
-  mParamIdxAlgorithm = kNumParams + 2; GetParam(mParamIdxAlgorithm)->InitEnum("Algorithm", mAlgorithmId, {"Passthrough", "SineMatch", "SampleBrain"});
+  // Build algorithm enum from factory UI list (deterministic)
+  mParamIdxAlgorithm = kNumParams + 2;
+  {
+    const int count = synaptic::TransformerFactory::GetUiCount();
+    GetParam(mParamIdxAlgorithm)->InitEnum("Algorithm", mAlgorithmId, count, "");
+    const auto labels = synaptic::TransformerFactory::GetUiLabels();
+    for (int i = 0; i < (int) labels.size(); ++i)
+      GetParam(mParamIdxAlgorithm)->SetDisplayText(i, labels[i].c_str());
+  }
 
   // Build union descs and initialize the remaining pre-allocated params
   std::vector<synaptic::IChunkBufferTransformer::ExposedParamDesc> unionDescs;
@@ -277,7 +284,7 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
   }
   else if (msgTag == kMsgTagSetAlgorithm)
   {
-    // ctrlTag selects algorithm ID; 0 = passthrough, 1 = sine match
+    // ctrlTag selects algorithm by UI index
     mAlgorithmId = ctrlTag;
     if (mParamIdxAlgorithm >= 0)
     {
@@ -286,16 +293,15 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
       SendParameterValueFromUI(mParamIdxAlgorithm, norm);
       EndInformHostOfParamChangeFromUI(mParamIdxAlgorithm);
     }
-    if (mAlgorithmId == 0)
-      mTransformer = std::make_unique<synaptic::PassthroughTransformer>();
-    else if (mAlgorithmId == 1)
-      mTransformer = std::make_unique<synaptic::SineMatchTransformer>();
-    else if (mAlgorithmId == 2)
+    mTransformer = synaptic::TransformerFactory::CreateByUiIndex(mAlgorithmId);
+    if (!mTransformer)
     {
-      auto t = std::make_unique<synaptic::SimpleSampleBrainTransformer>();
-      t->SetBrain(&mBrain);
-      mTransformer = std::move(t);
+      // Fallback to first available
+      mAlgorithmId = 0;
+      mTransformer = synaptic::TransformerFactory::CreateByUiIndex(mAlgorithmId);
     }
+    if (auto sb = dynamic_cast<synaptic::SimpleSampleBrainTransformer*>(mTransformer.get()))
+      sb->SetBrain(&mBrain);
 
     if (mTransformer)
       mTransformer->OnReset(GetSampleRate(), mChunkSize, mBufferWindowSize, NInChansConnected());
@@ -617,16 +623,14 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
   if (paramIdx == mParamIdxAlgorithm && mParamIdxAlgorithm >= 0)
   {
     mAlgorithmId = GetParam(mParamIdxAlgorithm)->Int();
-    if (mAlgorithmId == 0)
-      mTransformer = std::make_unique<synaptic::PassthroughTransformer>();
-    else if (mAlgorithmId == 1)
-      mTransformer = std::make_unique<synaptic::SineMatchTransformer>();
-    else if (mAlgorithmId == 2)
+    mTransformer = synaptic::TransformerFactory::CreateByUiIndex(mAlgorithmId);
+    if (!mTransformer)
     {
-      auto t = std::make_unique<synaptic::SimpleSampleBrainTransformer>();
-      t->SetBrain(&mBrain);
-      mTransformer = std::move(t);
+      mAlgorithmId = 0;
+      mTransformer = synaptic::TransformerFactory::CreateByUiIndex(mAlgorithmId);
     }
+    if (auto sb = dynamic_cast<synaptic::SimpleSampleBrainTransformer*>(mTransformer.get()))
+      sb->SetBrain(&mBrain);
     if (mTransformer)
       mTransformer->OnReset(GetSampleRate(), mChunkSize, mBufferWindowSize, NInChansConnected());
     SetLatency(ComputeLatencySamples());
@@ -713,6 +717,22 @@ void SynapticResynthesis::SendDSPConfigToUI()
   j["chunkSize"] = mChunkSize;
   j["bufferWindowSize"] = mBufferWindowSize;
   j["algorithmId"] = mAlgorithmId;
+  // Also send transformer options derived from factory for dynamic UI population
+  {
+    nlohmann::json opts = nlohmann::json::array();
+    const auto ids = synaptic::TransformerFactory::GetUiIds();
+    const auto labels = synaptic::TransformerFactory::GetUiLabels();
+    const int n = (int) std::min(ids.size(), labels.size());
+    for (int i = 0; i < n; ++i)
+    {
+      nlohmann::json o;
+      o["id"] = ids[i];
+      o["label"] = labels[i];
+      o["index"] = i;
+      opts.push_back(o);
+    }
+    j["algorithms"] = opts;
+  }
   const std::string payload = j.dump();
   SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
 }

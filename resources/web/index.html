@@ -365,6 +365,15 @@
           const cs = document.getElementById('chunkSize');
           const bw = document.getElementById('bufferWindowSize');
           const alg = document.getElementById('algorithm');
+          if (alg && Array.isArray(json["algorithms"])) {
+            alg.innerHTML = '';
+            json["algorithms"].forEach(item => {
+              const o = document.createElement('option');
+              o.value = String(item.index);
+              o.textContent = item.label || item.id || String(item.index);
+              alg.appendChild(o);
+            });
+          }
           if (cs && typeof json["chunkSize"] === 'number') cs.value = json["chunkSize"];
           if (bw && typeof json["bufferWindowSize"] === 'number') bw.value = json["bufferWindowSize"];
           if (alg && json["algorithmId"] !== undefined) alg.value = String(json["algorithmId"]);
