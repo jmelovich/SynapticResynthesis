@@ -4,10 +4,42 @@
 #include "json.hpp"
 #include "Extras/WebView/IPlugWebViewEditorDelegate.h"
 
+namespace {
+  // Build a union of transformer parameter descs across all known transformers (by id)
+  static void BuildTransformerUnion(std::vector<synaptic::IChunkBufferTransformer::ExposedParamDesc>& out)
+  {
+    out.clear();
+    std::vector<synaptic::IChunkBufferTransformer::ExposedParamDesc> tmp;
+    auto consider = [&](std::unique_ptr<synaptic::IChunkBufferTransformer> t){
+      tmp.clear(); t->GetParamDescs(tmp);
+      for (const auto& d : tmp)
+      {
+        auto it = std::find_if(out.begin(), out.end(), [&](const auto& e){ return e.id == d.id; });
+        if (it == out.end()) out.push_back(d);
+      }
+    };
+    consider(std::make_unique<synaptic::PassthroughTransformer>());
+    consider(std::make_unique<synaptic::SineMatchTransformer>());
+    {
+      auto t = std::make_unique<synaptic::SimpleSampleBrainTransformer>();
+      // Brain pointer is not needed just to query descs
+      consider(std::move(t));
+    }
+  }
+
+  static int ComputeTotalParams()
+  {
+    // base params (kNumParams) + ChunkSize + BufferWindow + Algorithm + union of transformer params
+    std::vector<synaptic::IChunkBufferTransformer::ExposedParamDesc> unionDescs;
+    BuildTransformerUnion(unionDescs);
+    return kNumParams + 3 + (int) unionDescs.size();
+  }
+}
+
 SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
-: Plugin(info, MakeConfig(kNumParams, kNumPresets))
+: Plugin(info, MakeConfig(ComputeTotalParams(), kNumPresets))
 {
-  GetParam(kGain)->InitGain("Gain", -70., -70, 0.);
+  GetParam(kGain)->InitGain("Gain", 0.0, -70, 0.);
 
 #ifdef DEBUG
   SetEnableDevTools(true);
@@ -25,7 +57,52 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
 
   // Default transformer = passthrough
   mTransformer = std::make_unique<synaptic::PassthroughTransformer>();
+  mAlgorithmId = 0;
   // Note: OnReset will be called later with proper channel counts
+
+  // Create core DSP params into the pre-allocated slots
+  mParamIdxChunkSize = kNumParams + 0; GetParam(mParamIdxChunkSize)->InitInt("Chunk Size", mChunkSize, 1, 262144, "samples", IParam::kFlagCannotAutomate);
+  mParamIdxBufferWindow = kNumParams + 1; GetParam(mParamIdxBufferWindow)->InitInt("Buffer Window", mBufferWindowSize, 1, 1024, "chunks", IParam::kFlagCannotAutomate);
+  mParamIdxAlgorithm = kNumParams + 2; GetParam(mParamIdxAlgorithm)->InitEnum("Algorithm", mAlgorithmId, {"Passthrough", "SineMatch", "SampleBrain"});
+
+  // Build union descs and initialize the remaining pre-allocated params
+  std::vector<synaptic::IChunkBufferTransformer::ExposedParamDesc> unionDescs;
+  BuildTransformerUnion(unionDescs);
+  int base = kNumParams + 3;
+  mTransformerBindings.clear();
+  for (size_t i = 0; i < unionDescs.size(); ++i)
+  {
+    const auto& d = unionDescs[i];
+    const int idx = base + (int) i;
+    switch (d.type)
+    {
+      case synaptic::IChunkBufferTransformer::ParamType::Number:
+        GetParam(idx)->InitDouble(d.label.c_str(), d.defaultNumber, d.minValue, d.maxValue, d.step);
+        break;
+      case synaptic::IChunkBufferTransformer::ParamType::Boolean:
+        GetParam(idx)->InitBool(d.label.c_str(), d.defaultBool);
+        break;
+      case synaptic::IChunkBufferTransformer::ParamType::Enum:
+      {
+        const int n = (int) d.options.size();
+        GetParam(idx)->InitEnum(d.label.c_str(), 0, n, "");
+        // Apply display texts for enum items
+        for (int k = 0; k < n; ++k)
+        {
+          const char* lab = (k < n) ? d.options[k].label.c_str() : "";
+          GetParam(idx)->SetDisplayText(k, lab);
+        }
+        TransformerParamBinding binding{d.id, d.type, idx};
+        for (const auto& opt : d.options) binding.enumValues.push_back(opt.value);
+        mTransformerBindings.push_back(std::move(binding));
+        continue;
+      }
+      case synaptic::IChunkBufferTransformer::ParamType::Text:
+        GetParam(idx)->InitDouble(d.label.c_str(), 0.0, 0.0, 1.0, 0.01, "", IParam::kFlagCannotAutomate);
+        break;
+    }
+    mTransformerBindings.push_back({d.id, d.type, idx, {}});
+  }
 }
 
 void SynapticResynthesis::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
@@ -72,6 +149,11 @@ void SynapticResynthesis::OnReset()
   auto sr = GetSampleRate();
   mOscillator.SetSampleRate(sr);
   mGainSmoother.SetSmoothTime(20., sr);
+  // Pull current values from IParams
+  if (mParamIdxChunkSize >= 0) mChunkSize = std::max(1, GetParam(mParamIdxChunkSize)->Int());
+  if (mParamIdxBufferWindow >= 0) mBufferWindowSize = std::max(1, GetParam(mParamIdxBufferWindow)->Int());
+  if (mParamIdxAlgorithm >= 0) mAlgorithmId = GetParam(mParamIdxAlgorithm)->Int();
+
   mChunker.SetChunkSize(mChunkSize);
   mChunker.SetBufferWindowSize(mBufferWindowSize);
   // Ensure chunker channel count matches current connection
@@ -83,11 +165,42 @@ void SynapticResynthesis::OnReset()
 
   if (mTransformer)
     mTransformer->OnReset(sr, mChunkSize, mBufferWindowSize, NInChansConnected());
+  // After reset, apply IParam values to transformer implementation
+  {
+    // Reuse the binding list to push current values into transformer
+    for (const auto& b : mTransformerBindings)
+    {
+      if (b.paramIdx < 0) continue;
+      switch (b.type)
+      {
+        case synaptic::IChunkBufferTransformer::ParamType::Number:
+          if (GetParam(b.paramIdx)) mTransformer->SetParamFromNumber(b.id, GetParam(b.paramIdx)->Value());
+          break;
+        case synaptic::IChunkBufferTransformer::ParamType::Boolean:
+          if (GetParam(b.paramIdx)) mTransformer->SetParamFromBool(b.id, GetParam(b.paramIdx)->Bool());
+          break;
+        case synaptic::IChunkBufferTransformer::ParamType::Enum:
+        {
+          if (GetParam(b.paramIdx))
+          {
+            int idx = GetParam(b.paramIdx)->Int();
+            std::string val = (idx >= 0 && idx < (int) b.enumValues.size()) ? b.enumValues[idx] : std::to_string(idx);
+            mTransformer->SetParamFromString(b.id, val);
+          }
+          break;
+        }
+        case synaptic::IChunkBufferTransformer::ParamType::Text:
+          break;
+      }
+    }
+  }
 
   // When audio engine resets, leave brain state intact; just resend summary to UI
   SendBrainSummaryToUI();
   // Send current transformer parameters schema/values
   SendTransformerParamsToUI();
+  // Send DSP config (algorithm + sizes) to UI
+  SendDSPConfigToUI();
 }
 
 bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData)
@@ -107,22 +220,27 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
   else if (msgTag == kMsgTagSetChunkSize)
   {
     // ctrlTag carries the integer value from UI
-    mChunkSize = std::max(1, ctrlTag);
+    const int newSize = std::max(1, ctrlTag);
+    if (mParamIdxChunkSize >= 0)
+    {
+      const double norm = GetParam(mParamIdxChunkSize)->ToNormalized((double) newSize);
+      BeginInformHostOfParamChangeFromUI(mParamIdxChunkSize);
+      SendParameterValueFromUI(mParamIdxChunkSize, norm);
+      EndInformHostOfParamChangeFromUI(mParamIdxChunkSize);
+    }
+    mChunkSize = newSize;
     DBGMSG("Set Chunk Size: %i\n", mChunkSize);
     mChunker.SetChunkSize(mChunkSize);
-    // Notify UI brain chunk size
     {
       nlohmann::json j; j["id"] = "brainChunkSize"; j["size"] = mChunkSize;
       const std::string payload = j.dump();
       SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
     }
-    // Show spinner while rechunking
     {
       nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Rechunking...");
       const std::string payload = j.dump();
       SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
     }
-    // Rechunk brain with progress text and log stats
     {
       auto stats = mBrain.RechunkAllFiles(mChunkSize, (int) GetSampleRate(), [&](const std::string& name){
         nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Rechunking ") + name;
@@ -132,31 +250,47 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
       DBGMSG("Brain Rechunk: processed=%d, rechunked=%d, totalChunks=%d\n", stats.filesProcessed, stats.filesRechunked, stats.newTotalChunks);
     }
     SendBrainSummaryToUI();
-    // Explicitly hide overlay after UI refresh
     {
       nlohmann::json j; j["id"] = "overlay"; j["visible"] = false;
       const std::string payload = j.dump();
       SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
     }
     SetLatency(ComputeLatencySamples());
+    SendDSPConfigToUI();
     return true;
   }
   else if (msgTag == kMsgTagSetBufferWindowSize)
   {
     mBufferWindowSize = std::max(1, ctrlTag);
+    if (mParamIdxBufferWindow >= 0)
+    {
+      const double norm = GetParam(mParamIdxBufferWindow)->ToNormalized((double) mBufferWindowSize);
+      BeginInformHostOfParamChangeFromUI(mParamIdxBufferWindow);
+      SendParameterValueFromUI(mParamIdxBufferWindow, norm);
+      EndInformHostOfParamChangeFromUI(mParamIdxBufferWindow);
+    }
     DBGMSG("Set Buffer Window Size: %i\n", mBufferWindowSize);
     mChunker.SetBufferWindowSize(mBufferWindowSize);
     // For passthrough, latency does not depend on window size; no change here
+    SendDSPConfigToUI();
     return true;
   }
   else if (msgTag == kMsgTagSetAlgorithm)
   {
     // ctrlTag selects algorithm ID; 0 = passthrough, 1 = sine match
-    if (ctrlTag == 0)
+    mAlgorithmId = ctrlTag;
+    if (mParamIdxAlgorithm >= 0)
+    {
+      const double norm = GetParam(mParamIdxAlgorithm)->ToNormalized((double) mAlgorithmId);
+      BeginInformHostOfParamChangeFromUI(mParamIdxAlgorithm);
+      SendParameterValueFromUI(mParamIdxAlgorithm, norm);
+      EndInformHostOfParamChangeFromUI(mParamIdxAlgorithm);
+    }
+    if (mAlgorithmId == 0)
       mTransformer = std::make_unique<synaptic::PassthroughTransformer>();
-    else if (ctrlTag == 1)
+    else if (mAlgorithmId == 1)
       mTransformer = std::make_unique<synaptic::SineMatchTransformer>();
-    else if (ctrlTag == 2)
+    else if (mAlgorithmId == 2)
     {
       auto t = std::make_unique<synaptic::SimpleSampleBrainTransformer>();
       t->SetBrain(&mBrain);
@@ -166,9 +300,37 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
     if (mTransformer)
       mTransformer->OnReset(GetSampleRate(), mChunkSize, mBufferWindowSize, NInChansConnected());
 
+    // Reapply persisted IParam values to the new transformer instance
+    for (const auto& b : mTransformerBindings)
+    {
+      if (b.paramIdx < 0) continue;
+      switch (b.type)
+      {
+        case synaptic::IChunkBufferTransformer::ParamType::Number:
+          if (GetParam(b.paramIdx)) mTransformer->SetParamFromNumber(b.id, GetParam(b.paramIdx)->Value());
+          break;
+        case synaptic::IChunkBufferTransformer::ParamType::Boolean:
+          if (GetParam(b.paramIdx)) mTransformer->SetParamFromBool(b.id, GetParam(b.paramIdx)->Bool());
+          break;
+        case synaptic::IChunkBufferTransformer::ParamType::Enum:
+        {
+          if (GetParam(b.paramIdx))
+          {
+            int idx = GetParam(b.paramIdx)->Int();
+            std::string val = (idx >= 0 && idx < (int) b.enumValues.size()) ? b.enumValues[idx] : std::to_string(idx);
+            mTransformer->SetParamFromString(b.id, val);
+          }
+          break;
+        }
+        case synaptic::IChunkBufferTransformer::ParamType::Text:
+          break;
+      }
+    }
+
     SetLatency(ComputeLatencySamples());
     // Send params schema/values for selected transformer
     SendTransformerParamsToUI();
+    SendDSPConfigToUI();
     return true;
   }
   else if (msgTag == kMsgTagTransformerSetParam)
@@ -208,6 +370,34 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
 
       if (ok)
       {
+        // Mirror to corresponding IParam and inform host as a UI gesture (for last-touched)
+        auto it = std::find_if(mTransformerBindings.begin(), mTransformerBindings.end(), [&](const auto& b){ return b.id == id; });
+        if (it != mTransformerBindings.end() && it->paramIdx >= 0)
+        {
+          double normalized = 0.0;
+          if (type == "number")
+          {
+            const double v = j["value"].get<double>();
+            normalized = GetParam(it->paramIdx)->ToNormalized(v);
+          }
+          else if (type == "boolean")
+          {
+            normalized = j["value"].get<bool>() ? 1.0 : 0.0;
+          }
+          else if (type == "enum")
+          {
+            const std::string v = j.value("value", std::string());
+            int idx = 0;
+            for (int k = 0; k < (int) it->enumValues.size(); ++k)
+            {
+              if (it->enumValues[k] == v) { idx = k; break; }
+            }
+            normalized = GetParam(it->paramIdx)->ToNormalized((double) idx);
+          }
+          BeginInformHostOfParamChangeFromUI(it->paramIdx);
+          SendParameterValueFromUI(it->paramIdx, normalized);
+          EndInformHostOfParamChangeFromUI(it->paramIdx);
+        }
         // echo updated params back to UI
         SendTransformerParamsToUI();
       }
@@ -363,9 +553,117 @@ void SynapticResynthesis::SendTransformerParamsToUI()
   SendArbitraryMsgFromDelegate(-1, static_cast<int>(payload.size()), payload.c_str());
 }
 
+
+void SynapticResynthesis::OnUIOpen()
+{
+  // Ensure UI gets current values when window opens
+  Plugin::OnUIOpen();
+  SendTransformerParamsToUI();
+  SendDSPConfigToUI();
+  SendBrainSummaryToUI();
+}
+
+void SynapticResynthesis::OnRestoreState()
+{
+  Plugin::OnRestoreState();
+  SendTransformerParamsToUI();
+  SendDSPConfigToUI();
+  SendBrainSummaryToUI();
+}
+
 void SynapticResynthesis::OnParamChange(int paramIdx)
 {
-  DBGMSG("gain %f\n", GetParam(paramIdx)->Value());
+  if (paramIdx == kGain)
+  {
+    DBGMSG("gain %f\n", GetParam(paramIdx)->Value());
+    return;
+  }
+
+  if (paramIdx == mParamIdxChunkSize && mParamIdxChunkSize >= 0)
+  {
+    mChunkSize = std::max(1, GetParam(mParamIdxChunkSize)->Int());
+    mChunker.SetChunkSize(mChunkSize);
+    // Rechunk brain to new size
+    {
+      nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Rechunking...");
+      const std::string payload = j.dump();
+      SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+    }
+    auto stats = mBrain.RechunkAllFiles(mChunkSize, (int) GetSampleRate(), [&](const std::string& name){
+      nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Rechunking ") + name;
+      const std::string payload = j.dump();
+      SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+    });
+    DBGMSG("Brain Rechunk: processed=%d, rechunked=%d, totalChunks=%d\n", stats.filesProcessed, stats.filesRechunked, stats.newTotalChunks);
+    SendBrainSummaryToUI();
+    {
+      nlohmann::json j; j["id"] = "overlay"; j["visible"] = false;
+      const std::string payload = j.dump();
+      SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+    }
+    SetLatency(ComputeLatencySamples());
+    SendDSPConfigToUI();
+    return;
+  }
+
+  if (paramIdx == mParamIdxBufferWindow && mParamIdxBufferWindow >= 0)
+  {
+    mBufferWindowSize = std::max(1, GetParam(mParamIdxBufferWindow)->Int());
+    mChunker.SetBufferWindowSize(mBufferWindowSize);
+    SendDSPConfigToUI();
+    return;
+  }
+
+  if (paramIdx == mParamIdxAlgorithm && mParamIdxAlgorithm >= 0)
+  {
+    mAlgorithmId = GetParam(mParamIdxAlgorithm)->Int();
+    if (mAlgorithmId == 0)
+      mTransformer = std::make_unique<synaptic::PassthroughTransformer>();
+    else if (mAlgorithmId == 1)
+      mTransformer = std::make_unique<synaptic::SineMatchTransformer>();
+    else if (mAlgorithmId == 2)
+    {
+      auto t = std::make_unique<synaptic::SimpleSampleBrainTransformer>();
+      t->SetBrain(&mBrain);
+      mTransformer = std::move(t);
+    }
+    if (mTransformer)
+      mTransformer->OnReset(GetSampleRate(), mChunkSize, mBufferWindowSize, NInChansConnected());
+    SetLatency(ComputeLatencySamples());
+    SendTransformerParamsToUI();
+    SendDSPConfigToUI();
+    return;
+  }
+
+  // Check transformer dynamic param bindings
+  for (const auto& b : mTransformerBindings)
+  {
+    if (b.paramIdx == paramIdx && mTransformer)
+    {
+      switch (b.type)
+      {
+        case synaptic::IChunkBufferTransformer::ParamType::Number:
+          mTransformer->SetParamFromNumber(b.id, GetParam(paramIdx)->Value());
+          break;
+        case synaptic::IChunkBufferTransformer::ParamType::Boolean:
+          mTransformer->SetParamFromBool(b.id, GetParam(paramIdx)->Bool());
+          break;
+        case synaptic::IChunkBufferTransformer::ParamType::Enum:
+        {
+          int idx = GetParam(paramIdx)->Int();
+          std::string val = (idx >= 0 && idx < (int) b.enumValues.size()) ? b.enumValues[idx] : std::to_string(idx);
+          mTransformer->SetParamFromString(b.id, val);
+          break;
+        }
+        case synaptic::IChunkBufferTransformer::ParamType::Text:
+          // Not supported as text; ignore
+          break;
+      }
+      // Reflect param change back to UI params panel
+      SendTransformerParamsToUI();
+      break;
+    }
+  }
 }
 
 void SynapticResynthesis::ProcessMidiMsg(const IMidiMsg& msg)
@@ -406,4 +704,15 @@ void SynapticResynthesis::OnGetLocalDownloadPathForFile(const char* fileName, WD
 {
   DesktopPath(localPath);
   localPath.AppendFormatted(MAX_WIN32_PATH_LEN, "/%s", fileName);
+}
+
+void SynapticResynthesis::SendDSPConfigToUI()
+{
+  nlohmann::json j;
+  j["id"] = "dspConfig";
+  j["chunkSize"] = mChunkSize;
+  j["bufferWindowSize"] = mBufferWindowSize;
+  j["algorithmId"] = mAlgorithmId;
+  const std::string payload = j.dump();
+  SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
 }

@@ -354,8 +354,8 @@ namespace synaptic
 
   private:
     int mNumChannels = 2;
-    int mChunkSize = 4096;
-    int mBufferWindowSize = 4;
+    int mChunkSize = 3000;
+    int mBufferWindowSize = 1;
     int mExtraPool = 8; // additional capacity beyond window size
     int mPoolCapacity = 0;
 

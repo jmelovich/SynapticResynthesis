@@ -42,6 +42,8 @@ public:
   void ProcessBlock(sample** inputs, sample** outputs, int nFrames) override;
   void ProcessMidiMsg(const IMidiMsg& msg) override;
   void OnReset() override;
+  void OnUIOpen() override;
+  void OnRestoreState() override;
   bool OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData) override;
   void OnParamChange(int paramIdx) override;
   bool CanNavigateToURL(const char* url);
@@ -54,14 +56,29 @@ private:
   float mLastPeak = 0.;
   FastSinOscillator<sample> mOscillator {0., 440.};
   LogParamSmooth<sample, 1> mGainSmoother;
-  int mChunkSize = 4096;
-  int mBufferWindowSize = 4;
+  int mChunkSize = 3000;
+  int mBufferWindowSize = 1;
   synaptic::AudioStreamChunker mChunker {2};
   std::unique_ptr<synaptic::IChunkBufferTransformer> mTransformer;
+  int mAlgorithmId = 0; // 0=passthrough, 1=sine, 2=samplebrain
+  // Indices of core params created at runtime
+  int mParamIdxChunkSize = -1;
+  int mParamIdxBufferWindow = -1;
+  int mParamIdxAlgorithm = -1;
+  struct TransformerParamBinding {
+    std::string id;
+    synaptic::IChunkBufferTransformer::ParamType type;
+    int paramIdx = -1;
+    // For enums, map index<->string value
+    std::vector<std::string> enumValues; // order corresponds to indices 0..N-1
+  };
+  std::vector<TransformerParamBinding> mTransformerBindings; // union across all transformers
   int ComputeLatencySamples() const { return mChunkSize + (mTransformer ? mTransformer->GetAdditionalLatencySamples(mChunkSize, mBufferWindowSize) : 0); }
 
   // Samplebrain in-memory state
   synaptic::Brain mBrain;
   void SendBrainSummaryToUI();
   void SendTransformerParamsToUI();
+  void SendDSPConfigToUI();
+  void ApplyTransformerParamsFromIParams();
 };

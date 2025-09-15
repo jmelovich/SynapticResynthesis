@@ -361,6 +361,17 @@
           updateBrainList(json["files"] || []);
           hideGlobalOverlay();
           break;
+        case "dspConfig": {
+          const cs = document.getElementById('chunkSize');
+          const bw = document.getElementById('bufferWindowSize');
+          const alg = document.getElementById('algorithm');
+          if (cs && typeof json["chunkSize"] === 'number') cs.value = json["chunkSize"];
+          if (bw && typeof json["bufferWindowSize"] === 'number') bw.value = json["bufferWindowSize"];
+          if (alg && json["algorithmId"] !== undefined) alg.value = String(json["algorithmId"]);
+          const bcs = document.getElementById('brain-chunk-size');
+          if (bcs && typeof json["chunkSize"] === 'number') bcs.textContent = String(json["chunkSize"]);
+          break;
+        }
         case "brainChunkSize":
           const el = document.getElementById('brain-chunk-size');
           if (el) el.textContent = String(json["size"] ?? '-');
@@ -586,20 +597,14 @@
 
     if (chunkSizeInput) {
       chunkSizeInput.addEventListener('change', onChunkChange);
-      // Send default on load
-      sendChunkSize(sanitizeInt(chunkSizeInput.value, 4096, 1));
     }
 
     if (bufferWindowSizeInput) {
       bufferWindowSizeInput.addEventListener('change', onBufferWindowChange);
-      // Send default on load
-      sendBufferWindowSize(sanitizeInt(bufferWindowSizeInput.value, 4, 1));
     }
 
     if (algorithmSelect) {
       algorithmSelect.addEventListener('change', onAlgorithmChange);
-      // Send default on load
-      sendAlgorithm(parseInt(algorithmSelect.value, 10) || 0);
     }
 
     // Generic transformer params UI rendering and messaging
