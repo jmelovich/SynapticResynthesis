@@ -7,6 +7,7 @@
     * {
       -webkit-touch-callout: none;
       -webkit-user-select: none;
+      user-select: none;
     }
 
     p, h1 {
@@ -237,6 +238,12 @@
       flex-direction: column;
       gap: 6px;
       margin-top: 12px;
+      max-height: 300px;
+      overflow-y: auto;
+      padding: 6px;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      background-color: #fafafa;
     }
     .brain-list-item {
       display: flex;
@@ -388,60 +395,32 @@
   <button id="tab-dsp-btn" class="tab-button active" onclick="switchTab('dsp')">DSP</button>
   <button id="tab-brain-btn" class="tab-button" onclick="switchTab('brain')">Brain</button>
   </div>
-<h1>IPlugWebView - testing UI</h1>
+<h1>Synaptic Resynthesis</h1>
 <div id="dsp-section" class="controls-container">
   <div class="input-container">
     <div class="input-group">
-      <label for="chunkSize">Chunk size</label>
+      <label for="chunkSize">Chunk Size</label>
       <input type="number" id="chunkSize" min="1" step="1" value="4096" />
     </div>
     <div class="input-group">
-      <label for="bufferWindowSize">Buffer window size</label>
+      <label for="bufferWindowSize">Buffer Window Size</label>
       <input type="number" id="bufferWindowSize" min="1" step="1" value="4" />
     </div>
     <div class="input-group">
       <label for="algorithm">Transformer</label>
       <select id="algorithm">
         <option value="0" selected>Passthrough</option>
-        <option value="1">Sine match</option>
-        <option value="2">Simple Samplebrain</option>
+        <option value="1">Simple Sine Match</option>
+        <option value="2">Simple SampleBrain</option>
       </select>
     </div>
     <div id="transformer-params" class="param-list"></div>
   </div>
-  <div class="button-group">
-    <button-control onclick="SendTestBinaryData()">Binary Test</button-control>
-    <button-control onclick="SendTestMIDIData()">MIDI Test</button-control>
-  </div>
 
-  <div class="button-group">
-    <button-control onclick="SAMFUI(0)">Small GUI</button-control>
-    <button-control onclick="SAMFUI(1)">Medium GUI</button-control>
-    <button-control onclick="SAMFUI(2)">Large GUI</button-control>
-  </div>
-
-  <div class="links-group">
-    <a href="https://iplug2.github.io" target="_blank" class="link-button">
-      <button-control>Open iPlug2 Website</button-control>
-    </a>
-    <button-control onclick="window.location.href='https://github.com/iPlug2/iPlug2/raw/refs/heads/master/Examples/IPlugWebUI/README.md'">
-      Download A File
-    </button-control>
-  </div>
-
-  <div class="file-input-group">
-    <input type="file" id="textfile" name="textfile" accept="text/*" />
-  </div>
 
   <div id="dropzone" class="dropzone">
-      <div id="initial-content">
-        <p class="instructions">Drag and drop a WAV file here</p>
-    </div>
     <div id="file-content" class="file-content" style="display: none;" draggable="true">
-        <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path>
-        </svg>
-        <p class="drag-instructions">Drag this anywhere to save the file</p>
+
     </div>
   </div>
   <div class="knob-container">
