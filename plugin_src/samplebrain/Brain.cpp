@@ -58,6 +58,36 @@ namespace synaptic
     return freq;
   }
 
+  void Brain::AnalyzeChunk(BrainChunk& chunk, int validFrames, double sampleRate)
+  {
+    const int chCount = (int) chunk.audio.channelSamples.size();
+    if (validFrames <= 0 || chCount <= 0)
+    {
+      chunk.rmsPerChannel.assign(chCount, 0.0f);
+      chunk.freqHzPerChannel.assign(chCount, 0.0);
+      chunk.avgRms = 0.0f;
+      chunk.avgFreqHz = 0.0;
+      return;
+    }
+
+    chunk.rmsPerChannel.assign(chCount, 0.0f);
+    chunk.freqHzPerChannel.assign(chCount, 0.0);
+    double rmsSum = 0.0;
+    double freqSum = 0.0;
+    for (int ch = 0; ch < chCount; ++ch)
+    {
+      const auto& buf = chunk.audio.channelSamples[ch];
+      float crms = ComputeRMS(buf, 0, validFrames);
+      double cf = ComputeZeroCrossingFreq(buf, 0, validFrames, sampleRate);
+      chunk.rmsPerChannel[ch] = crms;
+      chunk.freqHzPerChannel[ch] = cf;
+      rmsSum += crms;
+      freqSum += cf;
+    }
+    chunk.avgRms = (chCount > 0) ? (float) (rmsSum / (double) chCount) : 0.0f;
+    chunk.avgFreqHz = (chCount > 0) ? (freqSum / (double) chCount) : 0.0;
+  }
+
   int Brain::AddAudioFileFromMemory(const void* data,
                                     size_t dataSize,
 
@@ -131,24 +161,8 @@ namespace synaptic
           chunk.audio.channelSamples[ch][i] = 0.0f;
       }
 
-      // Compute per-channel RMS and frequency; also compute averages
-      const int chCount = (int) chunk.audio.channelSamples.size();
-      chunk.rmsPerChannel.assign(chCount, 0.0f);
-      chunk.freqHzPerChannel.assign(chCount, 0.0);
-      double rmsSum = 0.0;
-      double freqSum = 0.0;
-      for (int ch = 0; ch < chCount; ++ch)
-      {
-        const auto& buf = chunk.audio.channelSamples[ch];
-        float crms = ComputeRMS(buf, 0, framesInChunk);
-        double cf = ComputeZeroCrossingFreq(buf, 0, framesInChunk, (double) targetSampleRate);
-        chunk.rmsPerChannel[ch] = crms;
-        chunk.freqHzPerChannel[ch] = cf;
-        rmsSum += crms;
-        freqSum += cf;
-      }
-      chunk.avgRms = (chCount > 0) ? (float) (rmsSum / (double) chCount) : 0.0f;
-      chunk.avgFreqHz = (chCount > 0) ? (freqSum / (double) chCount) : 0.0;
+      // Analyze metrics for this chunk over valid frames
+      AnalyzeChunk(chunk, framesInChunk, (double) targetSampleRate);
 
       const int chunkGlobalIndex = (int) chunks_.size();
       chunks_.push_back(std::move(chunk));
@@ -320,11 +334,7 @@ namespace synaptic
         out.audio.numFrames = newChunkSizeSamples;
         out.audio.channelSamples.assign(numChannels, std::vector<sample>(newChunkSizeSamples, 0.0));
 
-        // Copy audio and compute analysis
-        out.rmsPerChannel.assign(numChannels, 0.0f);
-        out.freqHzPerChannel.assign(numChannels, 0.0);
-        double rmsSum = 0.0;
-        double freqSum = 0.0;
+        // Copy audio
         for (int ch = 0; ch < numChannels; ++ch)
         {
           auto& dst = out.audio.channelSamples[ch];
@@ -335,16 +345,9 @@ namespace synaptic
             const int clampedCopy = std::min(copyN, (int)src.size() - start);
             std::memcpy(dst.data(), src.data() + start, sizeof(sample) * clampedCopy);
           }
-
-          float crms = ComputeRMS(dst, 0, framesInChunk);
-          double cf = ComputeZeroCrossingFreq(dst, 0, framesInChunk, (double) targetSampleRate);
-          out.rmsPerChannel[ch] = crms;
-          out.freqHzPerChannel[ch] = cf;
-          rmsSum += crms;
-          freqSum += cf;
         }
-        out.avgRms = (numChannels > 0) ? (float)(rmsSum / (double)numChannels) : 0.0f;
-        out.avgFreqHz = (numChannels > 0) ? (freqSum / (double)numChannels) : 0.0;
+        // Analyze metrics for this chunk over valid frames
+        AnalyzeChunk(out, framesInChunk, (double) targetSampleRate);
 
         const int globalIdx = (int) newChunks.size();
         newChunks.push_back(std::move(out));

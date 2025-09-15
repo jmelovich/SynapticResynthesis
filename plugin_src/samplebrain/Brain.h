@@ -76,6 +76,8 @@ namespace synaptic
   private:
     static float ComputeRMS(const std::vector<iplug::sample>& buffer, int offset, int count);
     static double ComputeZeroCrossingFreq(const std::vector<iplug::sample>& buffer, int offset, int count, double sampleRate);
+    // Analyze the provided chunk over validFrames (<= chunk.audio.numFrames) and fill per-channel and average metrics
+    static void AnalyzeChunk(BrainChunk& chunk, int validFrames, double sampleRate);
 
   private:
     mutable std::mutex mutex_;
