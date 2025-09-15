@@ -3,6 +3,9 @@
 #include "AudioStreamChunker.h"
 #include "samplebrain/Brain.h"
 #include <cmath>
+#include <string>
+#include <vector>
+#include <utility>
 
 namespace synaptic
 {
@@ -27,6 +30,47 @@ namespace synaptic
 
     // Required lookahead in chunks before processing (to gate scheduling).
     virtual int GetRequiredLookaheadChunks() const = 0;
+
+    // Generic parameter exposure API for UI
+    enum class ParamType { Number, Boolean, Enum, Text };
+    enum class ControlType { Slider, NumberBox, Select, Checkbox, TextBox };
+
+    struct ParamOption
+    {
+      std::string value;  // internal value
+      std::string label;  // human-readable label
+    };
+
+    struct ExposedParamDesc
+    {
+      std::string id;           // unique, stable identifier
+      std::string label;        // display name
+      ParamType type = ParamType::Number;
+      ControlType control = ControlType::NumberBox;
+      // Numeric constraints (for Number)
+      double minValue = 0.0;
+      double maxValue = 1.0;
+      double step = 0.01;
+      // Options (for Enum)
+      std::vector<ParamOption> options;
+      // Defaults
+      double defaultNumber = 0.0;
+      bool defaultBool = false;
+      std::string defaultString;
+    };
+
+    // Describe all exposed parameters (schema)
+    virtual void GetParamDescs(std::vector<ExposedParamDesc>& out) const { out.clear(); }
+
+    // Get current value by id
+    virtual bool GetParamAsNumber(const std::string& /*id*/, double& /*out*/) const { return false; }
+    virtual bool GetParamAsBool(const std::string& /*id*/, bool& /*out*/) const { return false; }
+    virtual bool GetParamAsString(const std::string& /*id*/, std::string& /*out*/) const { return false; }
+
+    // Set value by id
+    virtual bool SetParamFromNumber(const std::string& /*id*/, double /*v*/) { return false; }
+    virtual bool SetParamFromBool(const std::string& /*id*/, bool /*v*/) { return false; }
+    virtual bool SetParamFromString(const std::string& /*id*/, const std::string& /*v*/) { return false; }
   };
 
   // Simple passthrough transformer: no additional latency and no lookahead.
@@ -365,6 +409,77 @@ namespace synaptic
 
     void SetWeights(double wFreq, double wAmp) { mWeightFreq = wFreq; mWeightAmp = wAmp; }
     void SetChannelIndependent(bool enabled) { mChannelIndependent = enabled; }
+
+    // Exposed parameters implementation
+    void GetParamDescs(std::vector<ExposedParamDesc>& out) const override
+    {
+      out.clear();
+      ExposedParamDesc p1;
+      p1.id = "channelIndependent";
+      p1.label = "Channel Independent";
+      p1.type = ParamType::Boolean;
+      p1.control = ControlType::Checkbox;
+      p1.defaultBool = false;
+      out.push_back(p1);
+
+      ExposedParamDesc p2;
+      p2.id = "weightFreq";
+      p2.label = "Frequency Weight";
+      p2.type = ParamType::Number;
+      p2.control = ControlType::Slider;
+      p2.minValue = 0.0;
+      p2.maxValue = 2.0;
+      p2.step = 0.01;
+      p2.defaultNumber = 1.0;
+      out.push_back(p2);
+
+      ExposedParamDesc p3;
+      p3.id = "weightAmp";
+      p3.label = "Amplitude Weight";
+      p3.type = ParamType::Number;
+      p3.control = ControlType::Slider;
+      p3.minValue = 0.0;
+      p3.maxValue = 2.0;
+      p3.step = 0.01;
+      p3.defaultNumber = 1.0;
+      out.push_back(p3);
+    }
+
+    bool GetParamAsNumber(const std::string& id, double& out) const override
+    {
+      if (id == "weightFreq") { out = mWeightFreq; return true; }
+      if (id == "weightAmp") { out = mWeightAmp; return true; }
+      return false;
+    }
+
+    bool GetParamAsBool(const std::string& id, bool& out) const override
+    {
+      if (id == "channelIndependent") { out = mChannelIndependent; return true; }
+      return false;
+    }
+
+    bool GetParamAsString(const std::string& /*id*/, std::string& /*out*/) const override
+    {
+      return false;
+    }
+
+    bool SetParamFromNumber(const std::string& id, double v) override
+    {
+      if (id == "weightFreq") { mWeightFreq = v; return true; }
+      if (id == "weightAmp") { mWeightAmp = v; return true; }
+      return false;
+    }
+
+    bool SetParamFromBool(const std::string& id, bool v) override
+    {
+      if (id == "channelIndependent") { mChannelIndependent = v; return true; }
+      return false;
+    }
+
+    bool SetParamFromString(const std::string& /*id*/, const std::string& /*v*/) override
+    {
+      return false;
+    }
 
   private:
     const Brain* mBrain = nullptr;

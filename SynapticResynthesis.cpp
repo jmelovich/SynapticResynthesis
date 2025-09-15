@@ -86,6 +86,8 @@ void SynapticResynthesis::OnReset()
 
   // When audio engine resets, leave brain state intact; just resend summary to UI
   SendBrainSummaryToUI();
+  // Send current transformer parameters schema/values
+  SendTransformerParamsToUI();
 }
 
 bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData)
@@ -144,7 +146,56 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
       mTransformer->OnReset(GetSampleRate(), mChunkSize, mBufferWindowSize, NInChansConnected());
 
     SetLatency(ComputeLatencySamples());
+    // Send params schema/values for selected transformer
+    SendTransformerParamsToUI();
     return true;
+  }
+  else if (msgTag == kMsgTagTransformerSetParam)
+  {
+    // pData is expected to be raw JSON bytes: {"id":"...","type":"number|boolean|string","value":...}
+    if (!pData || dataSize <= 0 || !mTransformer)
+      return false;
+    const char* bytes = reinterpret_cast<const char*>(pData);
+    std::string s(bytes, bytes + dataSize);
+    try
+    {
+      auto j = nlohmann::json::parse(s);
+      std::string id = j.value("id", std::string());
+      std::string type = j.value("type", std::string());
+      bool ok = false;
+      if (type == "number" && j.contains("value"))
+      {
+        double v = j["value"].get<double>();
+        ok = mTransformer->SetParamFromNumber(id, v);
+      }
+      else if (type == "boolean" && j.contains("value"))
+      {
+        bool v = j["value"].get<bool>();
+        ok = mTransformer->SetParamFromBool(id, v);
+      }
+      else if (type == "text" || type == "string")
+      {
+        std::string v = j.value("value", std::string());
+        ok = mTransformer->SetParamFromString(id, v);
+      }
+      else if (type == "enum")
+      {
+        std::string v = j.value("value", std::string());
+        // forward as string; transformer can validate against options
+        ok = mTransformer->SetParamFromString(id, v);
+      }
+
+      if (ok)
+      {
+        // echo updated params back to UI
+        SendTransformerParamsToUI();
+      }
+      return ok;
+    }
+    catch (...)
+    {
+      return false;
+    }
   }
   else if (msgTag == kMsgTagBrainAddFile)
   {
@@ -192,6 +243,89 @@ void SynapticResynthesis::SendBrainSummaryToUI()
     arr.push_back(o);
   }
   j["files"] = arr;
+  const std::string payload = j.dump();
+  SendArbitraryMsgFromDelegate(-1, static_cast<int>(payload.size()), payload.c_str());
+}
+
+void SynapticResynthesis::SendTransformerParamsToUI()
+{
+  if (!mTransformer)
+  {
+    // Send empty list
+    nlohmann::json j;
+    j["id"] = "transformerParams";
+    j["params"] = nlohmann::json::array();
+    const std::string payload = j.dump();
+    SendArbitraryMsgFromDelegate(-1, static_cast<int>(payload.size()), payload.c_str());
+    return;
+  }
+
+  std::vector<synaptic::IChunkBufferTransformer::ExposedParamDesc> descs;
+  mTransformer->GetParamDescs(descs);
+
+  nlohmann::json j;
+  j["id"] = "transformerParams";
+  nlohmann::json arr = nlohmann::json::array();
+  for (const auto& d : descs)
+  {
+    nlohmann::json o;
+    o["id"] = d.id;
+    o["label"] = d.label;
+    // type
+    switch (d.type)
+    {
+      case synaptic::IChunkBufferTransformer::ParamType::Number: o["type"] = "number"; break;
+      case synaptic::IChunkBufferTransformer::ParamType::Boolean: o["type"] = "boolean"; break;
+      case synaptic::IChunkBufferTransformer::ParamType::Enum: o["type"] = "enum"; break;
+      case synaptic::IChunkBufferTransformer::ParamType::Text: o["type"] = "text"; break;
+    }
+    // control
+    switch (d.control)
+    {
+      case synaptic::IChunkBufferTransformer::ControlType::Slider: o["control"] = "slider"; break;
+      case synaptic::IChunkBufferTransformer::ControlType::NumberBox: o["control"] = "numberbox"; break;
+      case synaptic::IChunkBufferTransformer::ControlType::Select: o["control"] = "select"; break;
+      case synaptic::IChunkBufferTransformer::ControlType::Checkbox: o["control"] = "checkbox"; break;
+      case synaptic::IChunkBufferTransformer::ControlType::TextBox: o["control"] = "textbox"; break;
+    }
+    // numeric bounds
+    o["min"] = d.minValue;
+    o["max"] = d.maxValue;
+    o["step"] = d.step;
+    // options
+    if (!d.options.empty())
+    {
+      nlohmann::json opts = nlohmann::json::array();
+      for (const auto& opt : d.options)
+      {
+        nlohmann::json jo;
+        jo["value"] = opt.value;
+        jo["label"] = opt.label;
+        opts.push_back(jo);
+      }
+      o["options"] = opts;
+    }
+    // current value
+    double num;
+    bool b;
+    std::string str;
+    if (mTransformer->GetParamAsNumber(d.id, num))
+      o["value"] = num;
+    else if (mTransformer->GetParamAsBool(d.id, b))
+      o["value"] = b;
+    else if (mTransformer->GetParamAsString(d.id, str))
+      o["value"] = str;
+    else
+    {
+      // fall back to defaults
+      if (d.type == synaptic::IChunkBufferTransformer::ParamType::Number) o["value"] = d.defaultNumber;
+      else if (d.type == synaptic::IChunkBufferTransformer::ParamType::Boolean) o["value"] = d.defaultBool;
+      else o["value"] = d.defaultString;
+    }
+
+    arr.push_back(o);
+  }
+  j["params"] = arr;
   const std::string payload = j.dump();
   SendArbitraryMsgFromDelegate(-1, static_cast<int>(payload.size()), payload.c_str());
 }

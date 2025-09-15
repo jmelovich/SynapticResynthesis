@@ -215,3 +215,181 @@ void SineLike::Process(AudioStreamChunker& chunker)
 - Q: How do I produce modified audio?
   - A: Use the synthesized output API: allocate a writable chunk, write to it, then commit it.
 
+
+## Transformer Exposed Parameters (UI Integration)
+
+This project includes a generic, UI-agnostic system for exposing algorithm parameters from a transformer to the web UI without writing custom UI code per transformer.
+
+### Overview
+
+- Each transformer can surface a small schema describing parameters (ID, type, control, limits/options, defaults) and provide getters/setters for current values.
+- The plugin sends this schema plus current values to the UI whenever the transformer changes or resets.
+- The UI renders appropriate controls (slider, number box, select, checkbox, text box) and sends updates back to the plugin.
+- No per-transformer UI code is required.
+
+### Transformer API
+
+In `IChunkBufferTransformer`:
+
+- Types and controls
+  - `enum class ParamType { Number, Boolean, Enum, Text }`
+  - `enum class ControlType { Slider, NumberBox, Select, Checkbox, TextBox }`
+
+- Parameter descriptor
+```cpp
+struct ExposedParamDesc
+{
+  std::string id;            // unique, stable identifier
+  std::string label;         // human-readable name
+  ParamType type = ParamType::Number;
+  ControlType control = ControlType::NumberBox;
+  // Numeric only
+  double minValue = 0.0;
+  double maxValue = 1.0;
+  double step = 0.01;
+  // Enum only
+  std::vector<ParamOption> options; // { value, label }
+  // Defaults
+  double      defaultNumber = 0.0;
+  bool        defaultBool   = false;
+  std::string defaultString;
+};
+```
+
+- Schema and value accessors
+```cpp
+virtual void GetParamDescs(std::vector<ExposedParamDesc>& out) const;
+
+virtual bool GetParamAsNumber(const std::string& id, double& out)   const;
+virtual bool GetParamAsBool  (const std::string& id, bool& out)     const;
+virtual bool GetParamAsString(const std::string& id, std::string& out) const;
+
+virtual bool SetParamFromNumber(const std::string& id, double v);
+virtual bool SetParamFromBool  (const std::string& id, bool v);
+virtual bool SetParamFromString(const std::string& id, const std::string& v);
+```
+
+Notes:
+- Implement only the getters/setters relevant for your parameter types. Return `false` for unsupported types/IDs.
+- IDs must be unique and stable over time to allow the UI to map values consistently.
+
+### Plugin ↔ UI messaging
+
+- On transformer change/reset, the plugin sends a JSON payload with `id = "transformerParams"` containing an array of parameter objects:
+  - `id`, `label`, `type` ("number"|"boolean"|"enum"|"text"), `control` ("slider"|"numberbox"|"select"|"checkbox"|"textbox")
+  - Numeric: `min`, `max`, `step`, and `value`
+  - Enum: `options: [{value, label}]` and current `value` (string)
+  - Text/Boolean: current `value`
+
+- When the user changes a control, the UI sends `kMsgTagTransformerSetParam` with a base64-encoded JSON body:
+```json
+{"id":"weightFreq", "type":"number", "value":1.25}
+```
+
+- The plugin decodes the payload and calls the appropriate `SetParamFrom*` method on the active transformer. On success, it re-sends the updated `transformerParams` payload to the UI.
+
+### Adding parameters to your transformer
+
+1) Pick stable IDs and decide types/controls
+- Prefer concise, descriptive snake/camel case IDs like `decay`, `blend`, `mode`.
+- Choose an appropriate control:
+  - Number: `Slider` or `NumberBox` with `min/max/step`
+  - Boolean: `Checkbox`
+  - Enum: `Select` with `options`
+  - Text: `TextBox`
+
+2) Describe your parameters in `GetParamDescs`
+```cpp
+void MyTransformer::GetParamDescs(std::vector<ExposedParamDesc>& out) const
+{
+  out.clear();
+
+  ExposedParamDesc mix;
+  mix.id = "mix";
+  mix.label = "Mix";
+  mix.type = ParamType::Number;
+  mix.control = ControlType::Slider;
+  mix.minValue = 0.0; mix.maxValue = 1.0; mix.step = 0.01;
+  mix.defaultNumber = 1.0;
+  out.push_back(mix);
+
+  ExposedParamDesc mode;
+  mode.id = "mode";
+  mode.label = "Mode";
+  mode.type = ParamType::Enum;
+  mode.control = ControlType::Select;
+  mode.options = {{"fast","Fast"},{"precise","Precise"}};
+  mode.defaultString = "fast";
+  out.push_back(mode);
+}
+```
+
+3) Map getters/setters to your internal state
+```cpp
+bool MyTransformer::GetParamAsNumber(const std::string& id, double& out) const
+{
+  if (id == "mix") { out = mMix; return true; }
+  return false;
+}
+
+bool MyTransformer::GetParamAsString(const std::string& id, std::string& out) const
+{
+  if (id == "mode") { out = mMode; return true; }
+  return false;
+}
+
+bool MyTransformer::SetParamFromNumber(const std::string& id, double v)
+{
+  if (id == "mix") { mMix = std::clamp(v, 0.0, 1.0); return true; }
+  return false;
+}
+
+bool MyTransformer::SetParamFromString(const std::string& id, const std::string& v)
+{
+  if (id == "mode") { mMode = v; return true; }
+  return false;
+}
+```
+
+4) Use your parameters in `Process(...)` as usual. No UI code changes are needed.
+
+### Example: SimpleSampleBrainTransformer parameters
+
+This transformer exposes three parameters:
+- `channelIndependent` (Boolean, `Checkbox`)
+- `weightFreq` (Number, `Slider`, range 0..2)
+- `weightAmp` (Number, `Slider`, range 0..2)
+
+Snippet from its implementation:
+```cpp
+void SimpleSampleBrainTransformer::GetParamDescs(std::vector<ExposedParamDesc>& out) const
+{
+  out.clear();
+
+  ExposedParamDesc p1; p1.id = "channelIndependent"; p1.label = "Channel Independent";
+  p1.type = ParamType::Boolean; p1.control = ControlType::Checkbox; p1.defaultBool = false;
+  out.push_back(p1);
+
+  ExposedParamDesc p2; p2.id = "weightFreq"; p2.label = "Frequency Weight";
+  p2.type = ParamType::Number; p2.control = ControlType::Slider;
+  p2.minValue = 0.0; p2.maxValue = 2.0; p2.step = 0.01; p2.defaultNumber = 1.0;
+  out.push_back(p2);
+
+  ExposedParamDesc p3; p3.id = "weightAmp"; p3.label = "Amplitude Weight";
+  p3.type = ParamType::Number; p3.control = ControlType::Slider;
+  p3.minValue = 0.0; p3.maxValue = 2.0; p3.step = 0.01; p3.defaultNumber = 1.0;
+  out.push_back(p3);
+}
+```
+
+### Real-time considerations
+
+- Parameter updates arrive via the UI messaging pathway (not the audio callback). Setters should be simple assignments or atomics; avoid heavy work.
+- If your algorithm needs smoothing for audible changes, perform it in `Process(...)` (e.g., ramp over a chunk) rather than inside the setter.
+
+### Tips
+
+- Keep parameter ranges physically meaningful and clamp in setters.
+- Use small `step` values for sliders for fine control.
+- For enums, use stable string values (not display labels) so presets/automation remain resilient to label changes.
+

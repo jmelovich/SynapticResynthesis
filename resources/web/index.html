@@ -159,6 +159,24 @@
       flex-direction: column;
       gap: 20px;
     }
+    .param-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .param-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .param-row label {
+      width: 180px;
+      color: #374151;
+      font-size: 14px;
+    }
+    .param-row input[type="range"] { flex: 1; }
+    .param-row .value { width: 70px; text-align: right; color: #374151; font-size: 13px; }
 
     .button-group {
       display: flex;
@@ -334,6 +352,9 @@
           updateBrainList(json["files"] || []);
           hideBrainOverlay();
           break;
+        case "transformerParams":
+          renderTransformerParams(json["params"] || []);
+          break;
         }
       }
     }
@@ -386,6 +407,7 @@
         <option value="2">Simple Samplebrain</option>
       </select>
     </div>
+    <div id="transformer-params" class="param-list"></div>
   </div>
   <div class="button-group">
     <button-control onclick="SendTestBinaryData()">Binary Test</button-control>
@@ -584,6 +606,107 @@
       algorithmSelect.addEventListener('change', onAlgorithmChange);
       // Send default on load
       sendAlgorithm(parseInt(algorithmSelect.value, 10) || 0);
+    }
+
+    // Generic transformer params UI rendering and messaging
+    function uint8ToBase64(uint8) {
+      let binary = '';
+      const chunkSize = 0x8000; // 32KB chunks
+      for (let i = 0; i < uint8.length; i += chunkSize) {
+        const chunk = uint8.subarray(i, i + chunkSize);
+        binary += String.fromCharCode.apply(null, chunk);
+      }
+      return window.btoa(binary);
+    }
+
+    function sendTransformerParamUpdate(id, type, value) {
+      const obj = { id, type, value };
+      const enc = new TextEncoder();
+      const bytes = enc.encode(JSON.stringify(obj));
+      const b64 = uint8ToBase64(bytes);
+      if (typeof window['SAMFUI'] === 'function') {
+        window['SAMFUI'](102, -1, b64);
+      }
+    }
+
+    function renderTransformerParams(params) {
+      const container = document.getElementById('transformer-params');
+      if (!container) return;
+      container.innerHTML = '';
+      params.forEach(p => {
+        const row = document.createElement('div');
+        row.className = 'param-row';
+        const label = document.createElement('label');
+        label.textContent = p.label || p.id;
+        row.appendChild(label);
+
+        const type = p.type || 'number';
+        const control = p.control || 'numberbox';
+        const value = p.value;
+
+        if (control === 'slider') {
+          const input = document.createElement('input');
+          input.type = 'range';
+          input.min = (p.min ?? 0);
+          input.max = (p.max ?? 1);
+          input.step = (p.step ?? 0.01);
+          input.value = value;
+          const valEl = document.createElement('div');
+          valEl.className = 'value';
+          valEl.textContent = (Number(value)).toFixed(2);
+          input.addEventListener('input', () => {
+            valEl.textContent = (Number(input.value)).toFixed(2);
+          });
+          input.addEventListener('change', () => {
+            sendTransformerParamUpdate(p.id, 'number', Number(input.value));
+          });
+          row.appendChild(input);
+          row.appendChild(valEl);
+        } else if (control === 'numberbox') {
+          const input = document.createElement('input');
+          input.type = 'number';
+          if (p.min !== undefined) input.min = p.min;
+          if (p.max !== undefined) input.max = p.max;
+          if (p.step !== undefined) input.step = p.step;
+          input.value = value;
+          input.addEventListener('change', () => {
+            sendTransformerParamUpdate(p.id, 'number', Number(input.value));
+          });
+          row.appendChild(input);
+        } else if (control === 'checkbox') {
+          const input = document.createElement('input');
+          input.type = 'checkbox';
+          input.checked = !!value;
+          input.addEventListener('change', () => {
+            sendTransformerParamUpdate(p.id, 'boolean', !!input.checked);
+          });
+          row.appendChild(input);
+        } else if (control === 'select') {
+          const select = document.createElement('select');
+          const opts = Array.isArray(p.options) ? p.options : [];
+          opts.forEach(opt => {
+            const o = document.createElement('option');
+            o.value = String(opt.value);
+            o.textContent = opt.label || String(opt.value);
+            if (String(value) === String(opt.value)) o.selected = true;
+            select.appendChild(o);
+          });
+          select.addEventListener('change', () => {
+            sendTransformerParamUpdate(p.id, 'enum', select.value);
+          });
+          row.appendChild(select);
+        } else if (control === 'textbox') {
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.value = value ?? '';
+          input.addEventListener('change', () => {
+            sendTransformerParamUpdate(p.id, (type === 'text' ? 'text' : 'string'), String(input.value));
+          });
+          row.appendChild(input);
+        }
+
+        container.appendChild(row);
+      });
     }
 
     // Brain drop handling

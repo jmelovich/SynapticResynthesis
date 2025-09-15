@@ -29,6 +29,8 @@ enum EMsgTags
   // Brain UI -> C++ messages
   kMsgTagBrainAddFile = 100,
   kMsgTagBrainRemoveFile = 101,
+  // Transformer params UI -> C++
+  kMsgTagTransformerSetParam = 102,
   // C++ -> UI JSON updates use msgTag = -1, with id fields "brainSummary"
 };
 
@@ -61,4 +63,5 @@ private:
   // Samplebrain in-memory state
   synaptic::Brain mBrain;
   void SendBrainSummaryToUI();
+  void SendTransformerParamsToUI();
 };
