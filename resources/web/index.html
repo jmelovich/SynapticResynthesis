@@ -405,6 +405,8 @@
       const list = document.getElementById('brain-files');
       if (!list) return;
       list.innerHTML = '';
+      const countEl = document.getElementById('brain-file-count');
+      if (countEl) countEl.textContent = String((files && files.length) ? files.length : 0);
       files.forEach(f => {
         const row = document.createElement('div');
         row.className = 'brain-list-item';
@@ -470,6 +472,7 @@
   </div>
   <div style="margin-top:6px; color:#374151; font-size:13px;">
     Brain chunk size: <span id="brain-chunk-size">-</span>
+    &nbsp;•&nbsp; Files: <span id="brain-file-count">0</span>
   </div>
   <div id="brain-files" class="brain-list"></div>
   <p style="color:#6b7280; font-size:12px;">Note: Chunk size currently set by DSP section and used for import.</p>
