@@ -363,7 +363,7 @@
           break;
         case "dspConfig": {
           const cs = document.getElementById('chunkSize');
-          const bw = document.getElementById('bufferWindowSize');
+          const ow = document.getElementById('outputWindow');
           const alg = document.getElementById('algorithm');
           if (alg && Array.isArray(json["algorithms"])) {
             alg.innerHTML = '';
@@ -375,7 +375,7 @@
             });
           }
           if (cs && typeof json["chunkSize"] === 'number') cs.value = json["chunkSize"];
-          if (bw && typeof json["bufferWindowSize"] === 'number') bw.value = json["bufferWindowSize"];
+          if (ow && typeof json["outputWindowMode"] === 'number') ow.value = String(json["outputWindowMode"]);
           if (alg && json["algorithmId"] !== undefined) alg.value = String(json["algorithmId"]);
           const bcs = document.getElementById('brain-chunk-size');
           if (bcs && typeof json["chunkSize"] === 'number') bcs.textContent = String(json["chunkSize"]);
@@ -440,8 +440,13 @@
       <input type="number" id="chunkSize" min="1" step="1" value="4096" />
     </div>
     <div class="input-group">
-      <label for="bufferWindowSize">Buffer Window Size</label>
-      <input type="number" id="bufferWindowSize" min="1" step="1" value="4" />
+      <label for="outputWindow">Output Window Function</label>
+      <select id="outputWindow">
+        <option value="1" selected>Hann</option>
+        <option value="2">Hamming</option>
+        <option value="3">Blackman</option>
+        <option value="4">Rectangular</option>
+      </select>
     </div>
     <div class="input-group">
       <label for="algorithm">Transformer</label>
@@ -564,6 +569,7 @@
     // Integer inputs -> send to plugin via ctrlTag (no binary payload)
     const chunkSizeInput = document.getElementById('chunkSize');
     const bufferWindowSizeInput = document.getElementById('bufferWindowSize');
+    const outputWindowSelect = document.getElementById('outputWindow');
     const algorithmSelect = document.getElementById('algorithm');
 
     function sanitizeInt(value, fallback, minVal = 1) {
@@ -578,9 +584,9 @@
       }
     }
 
-    function sendBufferWindowSize(value) {
+    function sendOutputWindowMode(value) {
       if (typeof window['SAMFUI'] === 'function') {
-        window['SAMFUI'](5, value);
+        window['SAMFUI'](7, value);
       }
     }
 
@@ -596,10 +602,9 @@
       sendChunkSize(v);
     };
 
-    const onBufferWindowChange = (e) => {
-      const v = sanitizeInt(e.target.value, 4, 1);
-      e.target.value = v;
-      sendBufferWindowSize(v);
+    const onOutputWindowChange = (e) => {
+      const v = parseInt(e.target.value, 10) || 1;
+      sendOutputWindowMode(v);
     };
 
     const onAlgorithmChange = (e) => {
@@ -611,8 +616,8 @@
       chunkSizeInput.addEventListener('change', onChunkChange);
     }
 
-    if (bufferWindowSizeInput) {
-      bufferWindowSizeInput.addEventListener('change', onBufferWindowChange);
+    if (outputWindowSelect) {
+      outputWindowSelect.addEventListener('change', onOutputWindowChange);
     }
 
     if (algorithmSelect) {

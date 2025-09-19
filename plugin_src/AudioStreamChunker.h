@@ -321,8 +321,27 @@ namespace synaptic
       return mWindow.data[pos];
     }
 
+    // Output queue info (read-only indexing for transformers)
+    int GetOutputCount() const { return mOutput.count; }
+
+    // Get output pool index at ordinal from oldest (0 = oldest, count-1 = newest). Returns -1 if OOR.
+    int GetOutputIndexFromOldest(int ordinal) const
+    {
+      if (ordinal < 0 || ordinal >= mOutput.count) return -1;
+      const int cap = mOutput.Capacity();
+      const int pos = (mOutput.head + ordinal) % cap;
+      return mOutput.data[pos];
+    }
+
     // Map a pool index to a read-only chunk pointer (nullptr if invalid)
     const AudioChunk* GetChunkConstByIndex(int idx) const
+    {
+      if (idx < 0 || idx >= mPoolCapacity) return nullptr;
+      return &mPool[idx].chunk;
+    }
+
+    // Map a pool index to a writable chunk pointer (nullptr if invalid)
+    AudioChunk* GetMutableChunkByIndex(int idx)
     {
       if (idx < 0 || idx >= mPoolCapacity) return nullptr;
       return &mPool[idx].chunk;

@@ -2,11 +2,13 @@
 
 #include "AudioStreamChunker.h"
 #include "samplebrain/Brain.h"
+#include "Window.h"
 #include <cmath>
 #include <string>
 #include <vector>
 #include <utility>
 #include <numeric>
+#include <cstring>
 
 // FFT support for on-the-fly input analysis
 #include "../exdeps/pffft/pffft.h"
@@ -25,8 +27,24 @@ namespace synaptic
     virtual void OnReset(double sampleRate, int chunkSize, int bufferWindowSize, int numChannels) = 0;
 
     // Called from audio thread each block to consume pending input chunks
-    // and push transformed output chunks.
-    virtual void Process(AudioStreamChunker& chunker) = 0;
+    // and push transformed output chunks. This wrapper calls ProcessCore()
+    // and then applies output windowing to any newly enqueued output chunks.
+    void Process(AudioStreamChunker& chunker)
+    {
+      const int prevOutCount = chunker.GetOutputCount();
+      ProcessCore(chunker);
+      if (mEnableOutputWindowing)
+      {
+        const int newOutCount = chunker.GetOutputCount();
+        for (int i = prevOutCount; i < newOutCount; ++i)
+        {
+          const int idx = chunker.GetOutputIndexFromOldest(i);
+          AudioChunk* out = chunker.GetMutableChunkByIndex(idx);
+          if (out)
+            ApplyWindowToChunk(*out);
+        }
+      }
+    }
 
     // Additional algorithmic latency in samples (not including chunk accumulation).
     // Useful when algorithms require extra buffering/lookahead.
@@ -75,6 +93,64 @@ namespace synaptic
     virtual bool SetParamFromNumber(const std::string& /*id*/, double /*v*/) { return false; }
     virtual bool SetParamFromBool(const std::string& /*id*/, bool /*v*/) { return false; }
     virtual bool SetParamFromString(const std::string& /*id*/, const std::string& /*v*/) { return false; }
+
+    // Global output windowing mode (none or specific function) controlled by host/UI.
+    enum class OutputWindowMode { Hann = 1, Hamming = 2, Blackman = 3, Rectangular = 4 };
+    void SetOutputWindowMode(OutputWindowMode mode)
+    {
+      mOutputWindowMode = mode;
+      mEnableOutputWindowing = true;
+    }
+
+  protected:
+    // Core transform implementation to be provided by derived classes.
+    virtual void ProcessCore(AudioStreamChunker& chunker) = 0;
+
+    // Overridable hook to apply output windowing to a single chunk.
+    // Default: Hann window across valid frames on all channels.
+    virtual void ApplyWindowToChunk(AudioChunk& chunk)
+    {
+      const int N = std::max(0, chunk.numFrames);
+      if (N <= 0) return;
+        // Lazily (re)build window if needed
+      const Window::Type desiredType = ToWindowType(mOutputWindowMode);
+      if (mWindow.Size() != N || mWindow.GetType() != desiredType)
+      {
+        mWindow.Set(desiredType, N);
+      }
+      const auto& w = mWindow.Coeffs();
+      const int W = (int) w.size();
+      const int applyN = std::min(N, W);
+      const int chCount = (int) chunk.channelSamples.size();
+      for (int ch = 0; ch < chCount; ++ch)
+      {
+        auto& buf = chunk.channelSamples[ch];
+        const int M = std::min(applyN, (int) buf.size());
+        for (int i = 0; i < M; ++i)
+        {
+          buf[i] = (iplug::sample) (buf[i] * (iplug::sample) w[i]);
+        }
+      }
+    }
+
+    // Toggle for default windowing behavior.
+    bool mEnableOutputWindowing = true;
+
+  private:
+    Window mWindow;
+    OutputWindowMode mOutputWindowMode = OutputWindowMode::Hann;
+
+    static Window::Type ToWindowType(OutputWindowMode m)
+    {
+      switch (m)
+      {
+        case OutputWindowMode::Hann: return Window::Type::Hann;
+        case OutputWindowMode::Hamming: return Window::Type::Hamming;
+        case OutputWindowMode::Blackman: return Window::Type::Blackman;
+        case OutputWindowMode::Rectangular: return Window::Type::Rectangular;
+        default: return Window::Type::Hann;
+      }
+    }
   };
 
   // Simple passthrough transformer: no additional latency and no lookahead.
@@ -83,12 +159,42 @@ namespace synaptic
   public:
     void OnReset(double /*sampleRate*/, int /*chunkSize*/, int /*bufferWindowSize*/, int /*numChannels*/) override {}
 
-    void Process(AudioStreamChunker& chunker) override
+    void ProcessCore(AudioStreamChunker& chunker) override
     {
-      int idx;
-      while (chunker.PopPendingInputChunkIndex(idx))
+      int inIdx;
+      while (chunker.PopPendingInputChunkIndex(inIdx))
       {
-        chunker.EnqueueOutputChunkIndex(idx);
+        // Allocate a fresh output chunk to avoid mutating input/windows
+        int outIdx;
+        if (!chunker.AllocateWritableChunkIndex(outIdx))
+        {
+          // Fallback: if no space, enqueue original (will be windowed in-place which may affect lookahead)
+          chunker.EnqueueOutputChunkIndex(inIdx);
+          continue;
+        }
+        AudioChunk* out = chunker.GetWritableChunkByIndex(outIdx);
+        const AudioChunk* in = chunker.GetChunkConstByIndex(inIdx);
+        if (!out || !in)
+        {
+          chunker.EnqueueOutputChunkIndex(inIdx);
+          continue;
+        }
+        const int numChannels = (int) in->channelSamples.size();
+        const int outChunkSize = chunker.GetChunkSize();
+        const int framesToWrite = std::min(outChunkSize, std::max(0, in->numFrames));
+        if ((int) out->channelSamples.size() != numChannels)
+          out->channelSamples.assign(numChannels, std::vector<iplug::sample>(outChunkSize, 0.0));
+        for (int ch = 0; ch < numChannels; ++ch)
+        {
+          if ((int) out->channelSamples[ch].size() < outChunkSize)
+            out->channelSamples[ch].assign(outChunkSize, 0.0);
+          const int copyN = std::min(framesToWrite, (int) in->channelSamples[ch].size());
+          if (copyN > 0)
+            std::memcpy(out->channelSamples[ch].data(), in->channelSamples[ch].data(), sizeof(iplug::sample) * copyN);
+          // zero-fill remainder if any
+          for (int i = copyN; i < outChunkSize; ++i) out->channelSamples[ch][i] = 0.0;
+        }
+        chunker.CommitWritableChunkIndex(outIdx, framesToWrite);
       }
     }
 
@@ -113,7 +219,7 @@ namespace synaptic
       mSampleRate = (sampleRate > 0.0) ? sampleRate : 48000.0;
     }
 
-    void Process(AudioStreamChunker& chunker) override
+    void ProcessCore(AudioStreamChunker& chunker) override
     {
       const int chunkSize = chunker.GetChunkSize();
       const int numChannels = chunker.GetNumChannels();
@@ -230,18 +336,49 @@ namespace synaptic
     void OnReset(double sampleRate, int /*chunkSize*/, int /*bufferWindowSize*/, int /*numChannels*/) override
     {
       mSampleRate = (sampleRate > 0.0) ? sampleRate : 48000.0;
+      mLastChunkSize = 0; // force window rebuild on next use
     }
 
     void SetBrain(const Brain* brain) { mBrain = brain; }
 
-    void Process(AudioStreamChunker& chunker) override
+    void ProcessCore(AudioStreamChunker& chunker) override
     {
       if (!mBrain)
       {
         // fallback passthrough
         int idx;
         while (chunker.PopPendingInputChunkIndex(idx))
-          chunker.EnqueueOutputChunkIndex(idx);
+        {
+          // allocate and copy to keep output separate from input
+          int outIdx;
+          if (!chunker.AllocateWritableChunkIndex(outIdx))
+          {
+            chunker.EnqueueOutputChunkIndex(idx);
+            continue;
+          }
+          AudioChunk* out = chunker.GetWritableChunkByIndex(outIdx);
+          const AudioChunk* in = chunker.GetChunkConstByIndex(idx);
+          if (!out || !in)
+          {
+            chunker.EnqueueOutputChunkIndex(idx);
+            continue;
+          }
+          const int numChannels = (int) in->channelSamples.size();
+          const int outChunkSize = chunker.GetChunkSize();
+          const int framesToWrite = std::min(outChunkSize, std::max(0, in->numFrames));
+          if ((int) out->channelSamples.size() != numChannels)
+            out->channelSamples.assign(numChannels, std::vector<iplug::sample>(outChunkSize, 0.0));
+          for (int ch = 0; ch < numChannels; ++ch)
+          {
+            if ((int) out->channelSamples[ch].size() < outChunkSize)
+              out->channelSamples[ch].assign(outChunkSize, 0.0);
+            const int copyN = std::min(framesToWrite, (int) in->channelSamples[ch].size());
+            if (copyN > 0)
+              std::memcpy(out->channelSamples[ch].data(), in->channelSamples[ch].data(), sizeof(iplug::sample) * copyN);
+            for (int i = copyN; i < outChunkSize; ++i) out->channelSamples[ch][i] = 0.0;
+          }
+          chunker.CommitWritableChunkIndex(outIdx, framesToWrite);
+        }
         return;
       }
 
@@ -290,7 +427,19 @@ namespace synaptic
 
           if (mUseFftFreq)
           {
-            inFftFreq[ch] = ComputeDominantFftHz(buf, N, mSampleRate);
+            // Apply selected input window (Rectangular = no-op)
+            EnsureInputWindowBuilt(N);
+            const auto& w = mInputWindow.Coeffs();
+            const int W = (int) w.size();
+            const int M = std::min(N, W);
+            std::vector<sample> temp;
+            temp.resize(N);
+            for (int i = 0; i < N; ++i)
+            {
+              const float wi = (i < M) ? w[i] : 0.0f;
+              temp[i] = (sample) (buf[i] * wi);
+            }
+            inFftFreq[ch] = ComputeDominantFftHz(temp, N, mSampleRate);
           }
         }
 
@@ -436,6 +585,19 @@ namespace synaptic
     void GetParamDescs(std::vector<ExposedParamDesc>& out) const override
     {
       out.clear();
+      ExposedParamDesc p0;
+      p0.id = "inputWindow";
+      p0.label = "Input Chunk Windowing";
+      p0.type = ParamType::Enum;
+      p0.control = ControlType::Select;
+      p0.options = {
+        { "hann", "Hann" },
+        { "hamming", "Hamming" },
+        { "blackman", "Blackman" },
+        { "rectangular", "Rectangular" }
+      };
+      p0.defaultString = "hann";
+      out.push_back(p0);
       ExposedParamDesc p1;
       p1.id = "channelIndependent";
       p1.label = "Channel Independent";
@@ -489,8 +651,9 @@ namespace synaptic
       return false;
     }
 
-    bool GetParamAsString(const std::string& /*id*/, std::string& /*out*/) const override
+    bool GetParamAsString(const std::string& id, std::string& out) const override
     {
+      if (id == "inputWindow") { out = InputWindowModeToString(mInputWinMode); return true; }
       return false;
     }
 
@@ -508,8 +671,14 @@ namespace synaptic
       return false;
     }
 
-    bool SetParamFromString(const std::string& /*id*/, const std::string& /*v*/) override
+    bool SetParamFromString(const std::string& id, const std::string& v) override
     {
+      if (id == "inputWindow")
+      {
+        mInputWinMode = StringToInputWindowMode(v);
+        mLastChunkSize = 0; // rebuild at next use
+        return true;
+      }
       return false;
     }
 
@@ -520,6 +689,53 @@ namespace synaptic
     double mWeightAmp = 1.0;
     bool mChannelIndependent = false;
     bool mUseFftFreq = false;
+    enum class InputWindowMode { Hann, Hamming, Blackman, Rectangular };
+    InputWindowMode mInputWinMode = InputWindowMode::Hann;
+    Window mInputWindow;
+    int mLastChunkSize = 0;
+
+    static std::string InputWindowModeToString(InputWindowMode m)
+    {
+      switch (m)
+      {
+        case InputWindowMode::Hann: return "hann";
+        case InputWindowMode::Hamming: return "hamming";
+        case InputWindowMode::Blackman: return "blackman";
+        case InputWindowMode::Rectangular: return "rectangular";
+        default: return "hann";
+      }
+    }
+
+    static InputWindowMode StringToInputWindowMode(const std::string& s)
+    {
+      if (s == "hann") return InputWindowMode::Hann;
+      if (s == "hamming") return InputWindowMode::Hamming;
+      if (s == "blackman") return InputWindowMode::Blackman;
+      if (s == "rectangular") return InputWindowMode::Rectangular;
+      return InputWindowMode::Hann;
+    }
+
+    static Window::Type InputWindowModeToWindowType(InputWindowMode m)
+    {
+      switch (m)
+      {
+        case InputWindowMode::Hann: return Window::Type::Hann;
+        case InputWindowMode::Hamming: return Window::Type::Hamming;
+        case InputWindowMode::Blackman: return Window::Type::Blackman;
+        case InputWindowMode::Rectangular: return Window::Type::Rectangular;
+        default: return Window::Type::Hann;
+      }
+    }
+
+    void EnsureInputWindowBuilt(int size)
+    {
+      if (size <= 0) return;
+      if (mLastChunkSize != size)
+      {
+        mInputWindow.Set(InputWindowModeToWindowType(mInputWinMode), size);
+        mLastChunkSize = size;
+      }
+    }
 
     static bool IsGoodFftN(int n)
     {

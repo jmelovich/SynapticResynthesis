@@ -26,6 +26,7 @@ enum EMsgTags
   kMsgTagBinaryTest = 3,
   kMsgTagSetChunkSize = 4,
   kMsgTagSetBufferWindowSize = 5,
+  kMsgTagSetOutputWindowMode = 7,
   kMsgTagSetAlgorithm = 6,
   // Brain UI -> C++ messages
   kMsgTagBrainAddFile = 100,
@@ -60,6 +61,7 @@ private:
   LogParamSmooth<sample, 1> mGainSmoother;
   int mChunkSize = 3000;
   int mBufferWindowSize = 1;
+  int mOutputWindowMode = 1; // 1=Hann,2=Hamming,3=Blackman,4=Rectangular
   synaptic::AudioStreamChunker mChunker {2};
   std::unique_ptr<synaptic::IChunkBufferTransformer> mTransformer;
   int mAlgorithmId = 0; // 0=passthrough, 1=sine, 2=samplebrain

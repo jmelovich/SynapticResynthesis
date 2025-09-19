@@ -57,17 +57,25 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
   mTransformer = synaptic::TransformerFactory::CreateByUiIndex(mAlgorithmId);
   if (auto sb = dynamic_cast<synaptic::SimpleSampleBrainTransformer*>(mTransformer.get()))
     sb->SetBrain(&mBrain);
-  
+  if (mTransformer)
+  {
+    using OW = synaptic::IChunkBufferTransformer::OutputWindowMode;
+    OW mode = OW::Hann;
+    switch (mOutputWindowMode) { case 1: mode = OW::Hann; break; case 2: mode = OW::Hamming; break; case 3: mode = OW::Blackman; break; case 4: mode = OW::Rectangular; break; default: break; }
+    mTransformer->SetOutputWindowMode(mode);
+  }
+
   // Initialize window with default Hann window
   mWindow.Set(synaptic::Window::Type::Hann, mChunkSize); // Default size, will be updated as needed
-  
+
   // Set the window reference in the Brain
   mBrain.SetWindow(&mWindow);
-  
+
   // Note: OnReset will be called later with proper channel counts
 
   // Create core DSP params into the pre-allocated slots
   mParamIdxChunkSize = kNumParams + 0; GetParam(mParamIdxChunkSize)->InitInt("Chunk Size", mChunkSize, 1, 262144, "samples", IParam::kFlagCannotAutomate);
+  // Buffer window size is no longer user-exposed (internal). Reserve slot but don't publish.
   mParamIdxBufferWindow = kNumParams + 1; GetParam(mParamIdxBufferWindow)->InitInt("Buffer Window", mBufferWindowSize, 1, 1024, "chunks", IParam::kFlagCannotAutomate);
   // Build algorithm enum from factory UI list (deterministic)
   mParamIdxAlgorithm = kNumParams + 2;
@@ -170,12 +178,21 @@ void SynapticResynthesis::OnReset()
 
   mWindow.Set(synaptic::Window::Type::Hann, mChunkSize);
   mBrain.SetWindow(&mWindow);
-  
+
   mChunker.SetChunkSize(mChunkSize);
   mChunker.SetBufferWindowSize(mBufferWindowSize);
   // Ensure chunker channel count matches current connection
   mChunker.SetNumChannels(NInChansConnected());
   mChunker.Reset();
+
+  // Apply output window mode to transformer
+  if (mTransformer)
+  {
+    using OW = synaptic::IChunkBufferTransformer::OutputWindowMode;
+    OW mode = OW::Hann;
+    switch (mOutputWindowMode) { case 1: mode = OW::Hann; break; case 2: mode = OW::Hamming; break; case 3: mode = OW::Blackman; break; case 4: mode = OW::Rectangular; break; default: break; }
+    mTransformer->SetOutputWindowMode(mode);
+  }
 
   // Report algorithmic latency to the host (in samples)
   SetLatency(ComputeLatencySamples());
@@ -248,10 +265,10 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
     mChunkSize = newSize;
     DBGMSG("Set Chunk Size: %i\n", mChunkSize);
     mChunker.SetChunkSize(mChunkSize);
-    
+
     // Update window size to match new chunk size
     mWindow.Set(synaptic::Window::Type::Hann, mChunkSize);
-    
+
     {
       nlohmann::json j; j["id"] = "brainChunkSize"; j["size"] = mChunkSize;
       const std::string payload = j.dump();
@@ -282,17 +299,21 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
   }
   else if (msgTag == kMsgTagSetBufferWindowSize)
   {
-    mBufferWindowSize = std::max(1, ctrlTag);
-    if (mParamIdxBufferWindow >= 0)
+    // Deprecated from UI; ignore but keep for compatibility
+    return true;
+  }
+  else if (msgTag == kMsgTagSetOutputWindowMode)
+  {
+    // ctrlTag carries an integer enum: 1=Hann,2=Hamming,3=Blackman,4=Rectangular
+    auto toMode = [](int v){
+      using OW = synaptic::IChunkBufferTransformer::OutputWindowMode;
+      switch (v) { case 1: return OW::Hann; case 2: return OW::Hamming; case 3: return OW::Blackman; case 4: return OW::Rectangular; default: return OW::Hann; }
+    };
+    mOutputWindowMode = std::clamp(ctrlTag, 1, 4);
+    if (mTransformer)
     {
-      const double norm = GetParam(mParamIdxBufferWindow)->ToNormalized((double) mBufferWindowSize);
-      BeginInformHostOfParamChangeFromUI(mParamIdxBufferWindow);
-      SendParameterValueFromUI(mParamIdxBufferWindow, norm);
-      EndInformHostOfParamChangeFromUI(mParamIdxBufferWindow);
+      mTransformer->SetOutputWindowMode(toMode(mOutputWindowMode));
     }
-    DBGMSG("Set Buffer Window Size: %i\n", mBufferWindowSize);
-    mChunker.SetBufferWindowSize(mBufferWindowSize);
-    // For passthrough, latency does not depend on window size; no change here
     SendDSPConfigToUI();
     return true;
   }
@@ -319,6 +340,15 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
 
     if (mTransformer)
       mTransformer->OnReset(GetSampleRate(), mChunkSize, mBufferWindowSize, NInChansConnected());
+
+    // Apply global output window mode to the new transformer
+    if (mTransformer)
+    {
+      using OW = synaptic::IChunkBufferTransformer::OutputWindowMode;
+      OW mode = OW::Hann;
+      switch (mOutputWindowMode) { case 1: mode = OW::Hann; break; case 2: mode = OW::Hamming; break; case 3: mode = OW::Blackman; break; case 4: mode = OW::Rectangular; break; default: break; }
+      mTransformer->SetOutputWindowMode(mode);
+    }
 
     // Reapply persisted IParam values to the new transformer instance
     for (const auto& b : mTransformerBindings)
@@ -603,10 +633,10 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
   {
     mChunkSize = std::max(1, GetParam(mParamIdxChunkSize)->Int());
     mChunker.SetChunkSize(mChunkSize);
-    
+
     // Update window size to match new chunk size
     mWindow.Set(synaptic::Window::Type::Hann, mChunkSize);
-    
+
     // Rechunk brain to new size
     {
       nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Rechunking...");
@@ -734,6 +764,7 @@ void SynapticResynthesis::SendDSPConfigToUI()
   j["id"] = "dspConfig";
   j["chunkSize"] = mChunkSize;
   j["bufferWindowSize"] = mBufferWindowSize;
+  j["outputWindowMode"] = mOutputWindowMode; // 1=Hann,2=Hamming,3=Blackman,4=Rectangular
   j["algorithmId"] = mAlgorithmId;
   // Also send transformer options derived from factory for dynamic UI population
   {
