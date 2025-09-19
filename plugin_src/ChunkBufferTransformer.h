@@ -6,6 +6,10 @@
 #include <string>
 #include <vector>
 #include <utility>
+#include <numeric>
+
+// FFT support for on-the-fly input analysis
+#include "../exdeps/pffft/pffft.h"
 
 namespace synaptic
 {
@@ -259,6 +263,7 @@ namespace synaptic
         // Analyze all channels
         std::vector<double> inRms(numChannels, 0.0);
         std::vector<double> inFreq(numChannels, 440.0);
+        std::vector<double> inFftFreq(numChannels, 440.0);
         for (int ch = 0; ch < numChannels; ++ch)
         {
           if (ch >= (int) in->channelSamples.size() || in->channelSamples[ch].empty())
@@ -282,6 +287,11 @@ namespace synaptic
           if (f < 20.0) f = 20.0;
           if (f > nyquist - 20.0) f = nyquist - 20.0;
           inFreq[ch] = f;
+
+          if (mUseFftFreq)
+          {
+            inFftFreq[ch] = ComputeDominantFftHz(buf, N, mSampleRate);
+          }
         }
 
         // Channel-independent matching or average-based matching
@@ -321,9 +331,16 @@ namespace synaptic
               const int bChans = (int) bc->audio.channelSamples.size();
               for (int bch = 0; bch < bChans; ++bch)
               {
-                const double bf = (bch < (int) bc->freqHzPerChannel.size() && bc->freqHzPerChannel[bch] > 0.0) ? bc->freqHzPerChannel[bch] : (bc->avgFreqHz > 0.0 ? bc->avgFreqHz : 440.0);
+                const double bf = (!mUseFftFreq)
+                  ? ((bch < (int) bc->freqHzPerChannel.size() && bc->freqHzPerChannel[bch] > 0.0)
+                      ? bc->freqHzPerChannel[bch]
+                      : (bc->avgFreqHz > 0.0 ? bc->avgFreqHz : 440.0))
+                  : ((bch < (int) bc->fftDominantHzPerChannel.size() && bc->fftDominantHzPerChannel[bch] > 0.0)
+                      ? bc->fftDominantHzPerChannel[bch]
+                      : (bc->avgFftDominantHz > 0.0 ? bc->avgFftDominantHz : 440.0));
                 const double br = (bch < (int) bc->rmsPerChannel.size()) ? (double) bc->rmsPerChannel[bch] : (double) bc->avgRms;
-                double df = std::abs(inFreq[ch] - bf) / nyquist;
+                const double inFeatureF = mUseFftFreq ? inFftFreq[ch] : inFreq[ch];
+                double df = std::abs(inFeatureF - bf) / nyquist;
                 double da = std::abs(inRms[ch] - br);
                 if (da > 1.0) da = 1.0;
                 double score = mWeightFreq * df + mWeightAmp * da;
@@ -357,14 +374,18 @@ namespace synaptic
           double bestScore = 1e9;
           const int total = mBrain->GetTotalChunks();
           const double inFreqAvg = (numChannels > 0) ? std::accumulate(inFreq.begin(), inFreq.end(), 0.0) / (double) numChannels : 440.0;
+          const double inFftAvg = (numChannels > 0) ? std::accumulate(inFftFreq.begin(), inFftFreq.end(), 0.0) / (double) numChannels : 440.0;
           const double inRmsAvg = (numChannels > 0) ? std::accumulate(inRms.begin(), inRms.end(), 0.0) / (double) numChannels : 0.0;
           for (int bi = 0; bi < total; ++bi)
           {
             const BrainChunk* bc = mBrain->GetChunkByGlobalIndex(bi);
             if (!bc) continue;
-            const double bf = (bc->avgFreqHz > 0.0) ? bc->avgFreqHz : 440.0;
+            const double bf = (!mUseFftFreq)
+              ? ((bc->avgFreqHz > 0.0) ? bc->avgFreqHz : 440.0)
+              : ((bc->avgFftDominantHz > 0.0) ? bc->avgFftDominantHz : 440.0);
             const double br = (double) bc->avgRms;
-            double df = std::abs(inFreqAvg - bf) / nyquist;
+            const double inFeatureAvg = mUseFftFreq ? inFftAvg : inFreqAvg;
+            double df = std::abs(inFeatureAvg - bf) / nyquist;
             double da = std::abs(inRmsAvg - br);
             if (da > 1.0) da = 1.0;
             double score = mWeightFreq * df + mWeightAmp * da;
@@ -409,6 +430,7 @@ namespace synaptic
 
     void SetWeights(double wFreq, double wAmp) { mWeightFreq = wFreq; mWeightAmp = wAmp; }
     void SetChannelIndependent(bool enabled) { mChannelIndependent = enabled; }
+    void SetUseFftFreq(bool enabled) { mUseFftFreq = enabled; }
 
     // Exposed parameters implementation
     void GetParamDescs(std::vector<ExposedParamDesc>& out) const override
@@ -421,6 +443,14 @@ namespace synaptic
       p1.control = ControlType::Checkbox;
       p1.defaultBool = false;
       out.push_back(p1);
+
+      ExposedParamDesc p1b;
+      p1b.id = "useFftFreq";
+      p1b.label = "Use FFT Frequency";
+      p1b.type = ParamType::Boolean;
+      p1b.control = ControlType::Checkbox;
+      p1b.defaultBool = false;
+      out.push_back(p1b);
 
       ExposedParamDesc p2;
       p2.id = "weightFreq";
@@ -455,6 +485,7 @@ namespace synaptic
     bool GetParamAsBool(const std::string& id, bool& out) const override
     {
       if (id == "channelIndependent") { out = mChannelIndependent; return true; }
+      if (id == "useFftFreq") { out = mUseFftFreq; return true; }
       return false;
     }
 
@@ -473,6 +504,7 @@ namespace synaptic
     bool SetParamFromBool(const std::string& id, bool v) override
     {
       if (id == "channelIndependent") { mChannelIndependent = v; return true; }
+      if (id == "useFftFreq") { mUseFftFreq = v; return true; }
       return false;
     }
 
@@ -487,6 +519,69 @@ namespace synaptic
     double mWeightFreq = 1.0;
     double mWeightAmp = 1.0;
     bool mChannelIndependent = false;
+    bool mUseFftFreq = false;
+
+    static bool IsGoodFftN(int n)
+    {
+      if (n <= 0) return false;
+      if ((n % 32) != 0) return false;
+      int m = n;
+      for (int p : {2,3,5})
+      {
+        while ((m % p) == 0) m /= p;
+      }
+      return m == 1;
+    }
+
+    static int NextGoodFftN(int minN)
+    {
+      int n = (minN < 32) ? 32 : minN;
+      for (;; ++n) if (IsGoodFftN(n)) return n;
+    }
+
+    static double ComputeDominantFftHz(const std::vector<sample>& buf, int validFrames, double sampleRate)
+    {
+      if (validFrames <= 0 || sampleRate <= 0.0) return 0.0;
+      const int Nfft = NextGoodFftN(validFrames);
+      PFFFT_Setup* setup = pffft_new_setup(Nfft, PFFFT_REAL);
+      if (!setup) return 0.0;
+      float* inAligned = (float*) pffft_aligned_malloc(sizeof(float) * Nfft);
+      float* outAligned = (float*) pffft_aligned_malloc(sizeof(float) * Nfft);
+      if (!inAligned || !outAligned)
+      {
+        if (inAligned) pffft_aligned_free(inAligned);
+        if (outAligned) pffft_aligned_free(outAligned);
+        pffft_destroy_setup(setup);
+        return 0.0;
+      }
+      const int N = std::min((int) buf.size(), validFrames);
+      for (int i = 0; i < Nfft; ++i)
+        inAligned[i] = (i < N) ? (float) buf[i] : 0.0f;
+      pffft_transform_ordered(setup, inAligned, outAligned, nullptr, PFFFT_FORWARD);
+
+      int bestK = 0;
+      float bestMag = -1.0f;
+      // DC and Nyquist in out[0], out[1]
+      float mag0 = std::abs(outAligned[0]);
+      if (mag0 > bestMag) { bestMag = mag0; bestK = 0; }
+      float magNy = std::abs(outAligned[1]);
+      if (magNy > bestMag) { bestMag = magNy; bestK = Nfft/2; }
+      for (int k = 1; k < Nfft/2; ++k)
+      {
+        float re = outAligned[2*k + 0];
+        float im = outAligned[2*k + 1];
+        float mag = std::sqrt(re*re + im*im);
+        if (mag > bestMag) { bestMag = mag; bestK = k; }
+      }
+      double hz = (double) bestK * sampleRate / (double) Nfft;
+      const double ny = 0.5 * sampleRate;
+      if (hz < 20.0) hz = 20.0;
+      if (hz > ny - 20.0) hz = ny - 20.0;
+      pffft_aligned_free(inAligned);
+      pffft_aligned_free(outAligned);
+      pffft_destroy_setup(setup);
+      return hz;
+    }
   };
 }
 

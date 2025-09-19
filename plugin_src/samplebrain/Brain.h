@@ -21,9 +21,20 @@ namespace synaptic
     // Per-channel analysis
     std::vector<float> rmsPerChannel;     // RMS per channel
     std::vector<double> freqHzPerChannel; // ZCR-based frequency per channel
+    // FFT analysis (per channel)
+    // Magnitude spectrum per channel (length = fftSize/2 + 1), computed via PFFFT
+    std::vector<std::vector<float>> fftMagnitudePerChannel;
+    // Dominant frequency (Hz) derived from FFT magnitude peak per channel
+    std::vector<double> fftDominantHzPerChannel;
+    // FFT size actually used for analysis. PFFFT has strict size constraints:
+    // - N must be factorable by 2/3/5 only, and for real transforms on SSE it must be a multiple of 32.
+    // Therefore we may zero-pad each chunk up to the next valid N (>= audio.numFrames), so this can
+    // differ from the logical chunk size. We store it to make the analysis explicit and reproducible.
+    int fftSize = 0;
     // Aggregate (averages across channels)
     float avgRms = 0.0f;
     double avgFreqHz = 0.0;
+    double avgFftDominantHz = 0.0;
   };
 
   struct BrainFile

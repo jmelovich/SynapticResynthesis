@@ -3,9 +3,12 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
 
 #define MINIAUDIO_IMPLEMENTATION
 #include "../../exdeps/miniaudio/miniaudio.h"
+// Use PFFFT for FFT analysis
+#include "../../exdeps/pffft/pffft.h"
 
 namespace synaptic
 {
@@ -86,6 +89,101 @@ namespace synaptic
     }
     chunk.avgRms = (chCount > 0) ? (float) (rmsSum / (double) chCount) : 0.0f;
     chunk.avgFreqHz = (chCount > 0) ? (freqSum / (double) chCount) : 0.0;
+
+    // Compute FFT magnitudes per channel using PFFFT and dominant frequency per channel
+    auto isGoodN = [](int n) -> bool {
+      if (n <= 0) return false;
+      int m = n;
+      // Require multiple of 32 for SIMD-friendly real transform
+      if ((m % 32) != 0) return false;
+      // Factorize by 2, 3, 5 only
+      for (int p : {2,3,5})
+      {
+        while ((m % p) == 0) m /= p;
+      }
+      return m == 1;
+    };
+
+    auto nextGoodN = [&](int minN) -> int {
+      int n = std::max(32, minN);
+      // Round up to at least 32
+      if (n < 32) n = 32;
+      for (;; ++n)
+      {
+        if (isGoodN(n)) return n;
+      }
+    };
+
+    const int framesForFft = std::max(1, validFrames);
+    const int Nfft = nextGoodN(framesForFft);
+    chunk.fftSize = Nfft;
+    chunk.fftMagnitudePerChannel.assign(chCount, std::vector<float>(Nfft/2 + 1, 0.0f));
+    chunk.fftDominantHzPerChannel.assign(chCount, 0.0);
+
+    // Prepare PFFFT setup once per chunk
+    PFFFT_Setup* setup = pffft_new_setup(Nfft, PFFFT_REAL);
+    if (setup)
+    {
+      // Aligned buffers
+      float* inAligned = (float*) pffft_aligned_malloc(sizeof(float) * Nfft);
+      float* outAligned = (float*) pffft_aligned_malloc(sizeof(float) * Nfft);
+      if (inAligned && outAligned)
+      {
+        for (int ch = 0; ch < chCount; ++ch)
+        {
+          // Copy valid frames and zero-pad
+          for (int i = 0; i < Nfft; ++i)
+          {
+            float x = 0.0f;
+            if (i < framesForFft && i < (int) chunk.audio.channelSamples[ch].size())
+              x = (float) chunk.audio.channelSamples[ch][i];
+            inAligned[i] = x;
+          }
+
+          // Ordered forward transform to get canonical interleaved output
+          pffft_transform_ordered(setup, inAligned, outAligned, nullptr, PFFFT_FORWARD);
+
+          // Extract magnitudes for bins 0..N/2
+          auto& mags = chunk.fftMagnitudePerChannel[ch];
+          if ((int) mags.size() != (Nfft/2 + 1)) mags.assign(Nfft/2 + 1, 0.0f);
+          // DC and Nyquist packed in first complex slot: out[0]=F0(real), out[1]=F(N/2)(real)
+          mags[0] = std::abs(outAligned[0]);
+          mags[Nfft/2] = std::abs(outAligned[1]);
+          for (int k = 1; k < Nfft/2; ++k)
+          {
+            float re = outAligned[2 * k + 0];
+            float im = outAligned[2 * k + 1];
+            mags[k] = std::sqrt(re * re + im * im);
+          }
+
+          // Dominant bin (exclude DC if desired; keep it simple and include all)
+          int bestK = 0;
+          float bestMag = -std::numeric_limits<float>::infinity();
+          for (int k = 0; k <= Nfft/2; ++k)
+          {
+            if (mags[k] > bestMag)
+            {
+              bestMag = mags[k];
+              bestK = k;
+            }
+          }
+          double domHz = (double) bestK * sampleRate / (double) Nfft;
+          // Clamp to [20, nyquist-20]
+          const double ny = 0.5 * sampleRate;
+          if (domHz < 20.0) domHz = 20.0;
+          if (domHz > ny - 20.0) domHz = ny - 20.0;
+          chunk.fftDominantHzPerChannel[ch] = domHz;
+        }
+      }
+      if (inAligned) pffft_aligned_free(inAligned);
+      if (outAligned) pffft_aligned_free(outAligned);
+      pffft_destroy_setup(setup);
+    }
+
+    // Average FFT dominant Hz across channels
+    double fftSum = 0.0;
+    for (int ch = 0; ch < chCount; ++ch) fftSum += chunk.fftDominantHzPerChannel[ch];
+    chunk.avgFftDominantHz = (chCount > 0) ? (fftSum / (double) chCount) : 0.0;
   }
 
   int Brain::AddAudioFileFromMemory(const void* data,
