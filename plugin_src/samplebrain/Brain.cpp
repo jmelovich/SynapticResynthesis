@@ -9,7 +9,7 @@
 #include "../../exdeps/miniaudio/miniaudio.h"
 // Use PFFFT for FFT analysis
 #include "../../exdeps/pffft/pffft.h"
-#include "Window.h"
+#include "../Window.h"
 
 namespace synaptic
 {
@@ -118,7 +118,7 @@ namespace synaptic
           }
 
           // Apply windowing before FFT
-          (*mWindow)(inAligned);          
+          (*mWindow)(inAligned);
 
           // Ordered forward transform to get canonical interleaved output
           pffft_transform_ordered(setup, inAligned, outAligned, nullptr, PFFFT_FORWARD);
@@ -401,7 +401,7 @@ namespace synaptic
       // Rechunk the reconstructed buffer
       f.chunkIndices.clear();
       const int totalFrames = totalValidFrames;
-      
+
       int numChunks = 2*totalFrames / newChunkSizeSamples - 1;
       for (int c = 0; c < numChunks; ++c)
       {

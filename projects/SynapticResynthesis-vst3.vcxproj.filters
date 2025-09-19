@@ -267,7 +267,7 @@
       <Filter>IPlug\Extras\WebView</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\IPlug\ISender.h" />
-    <ClInclude Include="..\plugin_src\samplebrain\Window.h" />
+    <ClInclude Include="..\plugin_src\Window.h" />
     <ClInclude Include="..\plugin_src\samplebrain\Brain.h" />
   </ItemGroup>
   <ItemGroup>
