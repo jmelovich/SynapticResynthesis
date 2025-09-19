@@ -9,6 +9,7 @@
 #include "../../exdeps/miniaudio/miniaudio.h"
 // Use PFFFT for FFT analysis
 #include "../../exdeps/pffft/pffft.h"
+#include "Window.h"
 
 namespace synaptic
 {
@@ -140,6 +141,9 @@ namespace synaptic
             inAligned[i] = x;
           }
 
+          // Apply windowing before FFT
+          (*mWindow)(inAligned);          
+
           // Ordered forward transform to get canonical interleaved output
           pffft_transform_ordered(setup, inAligned, outAligned, nullptr, PFFFT_FORWARD);
 
@@ -237,7 +241,7 @@ namespace synaptic
     int numChunks = (totalFrames + chunkSizeSamples - 1) / chunkSizeSamples;
     fileRec.chunkIndices.reserve(numChunks);
 
-    for (int c = 0; c < numChunks; ++c)
+    for (int c = 0; c < numChunks - 1; ++c)
     {
       const int start = c * chunkSizeSamples;
       const int framesInChunk = std::min(chunkSizeSamples, totalFrames - start);
@@ -260,7 +264,9 @@ namespace synaptic
       }
 
       // Analyze metrics for this chunk over valid frames
-      AnalyzeChunk(chunk, framesInChunk, (double) targetSampleRate);
+      if (mWindow) {
+        AnalyzeChunk(chunk, framesInChunk, (double) targetSampleRate);
+      }
 
       const int chunkGlobalIndex = (int) chunks_.size();
       chunks_.push_back(std::move(chunk));
@@ -420,7 +426,7 @@ namespace synaptic
       f.chunkIndices.clear();
       const int totalFrames = totalValidFrames;
       const int numChunks = (totalFrames + newChunkSizeSamples - 1) / newChunkSizeSamples;
-      for (int c = 0; c < numChunks; ++c)
+      for (int c = 0; c < numChunks - 1; ++c)
       {
         const int start = c * newChunkSizeSamples;
         const int framesInChunk = std::min(newChunkSizeSamples, totalFrames - start);
@@ -445,7 +451,9 @@ namespace synaptic
           }
         }
         // Analyze metrics for this chunk over valid frames
-        AnalyzeChunk(out, framesInChunk, (double) targetSampleRate);
+        if (mWindow) {
+          AnalyzeChunk(out, framesInChunk, (double) targetSampleRate);
+        }
 
         const int globalIdx = (int) newChunks.size();
         newChunks.push_back(std::move(out));

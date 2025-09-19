@@ -116,6 +116,8 @@
     <ClCompile Include="..\..\..\IPlug\Extras\WebView\IPlugWebView.cpp">
       <Filter>IPlug\Extras\WebView</Filter>
     </ClCompile>
+    <ClCompile Include="..\plugin_src\samplebrain\Brain.cpp" />
+    <ClCompile Include="..\exdeps\pffft\pffft.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="../config.h" />
@@ -265,6 +267,8 @@
       <Filter>IPlug\Extras\WebView</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\IPlug\ISender.h" />
+    <ClInclude Include="..\plugin_src\samplebrain\Window.h" />
+    <ClInclude Include="..\plugin_src\samplebrain\Brain.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="resources">

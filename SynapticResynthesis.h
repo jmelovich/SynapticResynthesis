@@ -6,6 +6,7 @@
 #include "plugin_src/AudioStreamChunker.h"
 #include "plugin_src/ChunkBufferTransformer.h"
 #include "plugin_src/samplebrain/Brain.h"
+#include "plugin_src/samplebrain/Window.h"
 
 using namespace iplug;
 
@@ -32,6 +33,7 @@ enum EMsgTags
   // Transformer params UI -> C++
   kMsgTagTransformerSetParam = 102,
   // C++ -> UI JSON updates use msgTag = -1, with id fields "brainSummary"
+  
 };
 
 class SynapticResynthesis final : public Plugin
@@ -77,6 +79,7 @@ private:
 
   // Samplebrain in-memory state
   synaptic::Brain mBrain;
+  synaptic::Window mWindow;
   void SendBrainSummaryToUI();
   void SendTransformerParamsToUI();
   void SendDSPConfigToUI();

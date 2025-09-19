@@ -300,6 +300,8 @@
     <ClInclude Include="..\..\..\IPlug\VST3\IPlugVST3_Parameter.h" />
     <ClInclude Include="..\..\..\IPlug\VST3\IPlugVST3_ProcessorBase.h" />
     <ClInclude Include="..\..\..\IPlug\VST3\IPlugVST3_View.h" />
+    <ClInclude Include="..\plugin_src\samplebrain\Brain.h" />
+    <ClInclude Include="..\plugin_src\samplebrain\Window.h" />
     <ClInclude Include="..\SynapticResynthesis.h" />
     <ClInclude Include="..\resources\resource.h" />
   </ItemGroup>

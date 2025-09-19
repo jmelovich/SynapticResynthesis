@@ -57,6 +57,13 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
   mTransformer = synaptic::TransformerFactory::CreateByUiIndex(mAlgorithmId);
   if (auto sb = dynamic_cast<synaptic::SimpleSampleBrainTransformer*>(mTransformer.get()))
     sb->SetBrain(&mBrain);
+  
+  // Initialize window with default Hann window
+  mWindow.Set(synaptic::Window::Type::Hann, mChunkSize); // Default size, will be updated as needed
+  
+  // Set the window reference in the Brain
+  mBrain.SetWindow(&mWindow);
+  
   // Note: OnReset will be called later with proper channel counts
 
   // Create core DSP params into the pre-allocated slots
@@ -161,6 +168,9 @@ void SynapticResynthesis::OnReset()
   if (mParamIdxBufferWindow >= 0) mBufferWindowSize = std::max(1, GetParam(mParamIdxBufferWindow)->Int());
   if (mParamIdxAlgorithm >= 0) mAlgorithmId = GetParam(mParamIdxAlgorithm)->Int();
 
+  mWindow.Set(synaptic::Window::Type::Hann, mChunkSize);
+  mBrain.SetWindow(&mWindow);
+  
   mChunker.SetChunkSize(mChunkSize);
   mChunker.SetBufferWindowSize(mBufferWindowSize);
   // Ensure chunker channel count matches current connection
@@ -238,6 +248,10 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
     mChunkSize = newSize;
     DBGMSG("Set Chunk Size: %i\n", mChunkSize);
     mChunker.SetChunkSize(mChunkSize);
+    
+    // Update window size to match new chunk size
+    mWindow.Set(synaptic::Window::Type::Hann, mChunkSize);
+    
     {
       nlohmann::json j; j["id"] = "brainChunkSize"; j["size"] = mChunkSize;
       const std::string payload = j.dump();
@@ -589,6 +603,10 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
   {
     mChunkSize = std::max(1, GetParam(mParamIdxChunkSize)->Int());
     mChunker.SetChunkSize(mChunkSize);
+    
+    // Update window size to match new chunk size
+    mWindow.Set(synaptic::Window::Type::Hann, mChunkSize);
+    
     // Rechunk brain to new size
     {
       nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Rechunking...");

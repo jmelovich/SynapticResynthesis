@@ -4,6 +4,10 @@
 #include <cmath>
 #include <string>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 namespace synaptic
 {
   class Window
@@ -57,11 +61,10 @@ namespace synaptic
     Type GetType() const { return mType; }
     const std::vector<float>& Coeffs() const { return mCoeffs; }
 
-    void operator()(std::vector<float>& data) const
+    void operator()(float* data) const
     {
-      const int n = std::min(mSize, (int)data.size());
-      for (int i = 0; i < n; ++i)
-        data[i] *= mCoeffs[i];
+       for (int i = 0; i < mSize; ++i)
+         data[i] *= mCoeffs.at(i);
     }
 
     // Utility: find the next valid FFT size (same logic as Brain.cpp)

@@ -58,6 +58,9 @@ namespace synaptic
       chunks_.clear();
     }
 
+    // Set the window to use for FFT analysis
+    void SetWindow(const class Window* window) { mWindow = window; }
+
     // Decode an entire audio file from memory and split into chunks.
     // Returns the new fileId on success, or -1 on failure.
     int AddAudioFileFromMemory(const void* data,
@@ -88,7 +91,7 @@ namespace synaptic
     static float ComputeRMS(const std::vector<iplug::sample>& buffer, int offset, int count);
     static double ComputeZeroCrossingFreq(const std::vector<iplug::sample>& buffer, int offset, int count, double sampleRate);
     // Analyze the provided chunk over validFrames (<= chunk.audio.numFrames) and fill per-channel and average metrics
-    static void AnalyzeChunk(BrainChunk& chunk, int validFrames, double sampleRate);
+    void AnalyzeChunk(BrainChunk& chunk, int validFrames, double sampleRate);
 
   private:
     mutable std::mutex mutex_;
@@ -97,6 +100,7 @@ namespace synaptic
     std::unordered_map<int, int> idToFileIndex_;
     std::vector<BrainChunk> chunks_;
     int mChunkSize = 0;
+    const class Window* mWindow = nullptr;
   };
 }
 
