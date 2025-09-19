@@ -91,32 +91,8 @@ namespace synaptic
     chunk.avgRms = (chCount > 0) ? (float) (rmsSum / (double) chCount) : 0.0f;
     chunk.avgFreqHz = (chCount > 0) ? (freqSum / (double) chCount) : 0.0;
 
-    // Compute FFT magnitudes per channel using PFFFT and dominant frequency per channel
-    auto isGoodN = [](int n) -> bool {
-      if (n <= 0) return false;
-      int m = n;
-      // Require multiple of 32 for SIMD-friendly real transform
-      if ((m % 32) != 0) return false;
-      // Factorize by 2, 3, 5 only
-      for (int p : {2,3,5})
-      {
-        while ((m % p) == 0) m /= p;
-      }
-      return m == 1;
-    };
-
-    auto nextGoodN = [&](int minN) -> int {
-      int n = std::max(32, minN);
-      // Round up to at least 32
-      if (n < 32) n = 32;
-      for (;; ++n)
-      {
-        if (isGoodN(n)) return n;
-      }
-    };
-
     const int framesForFft = std::max(1, validFrames);
-    const int Nfft = nextGoodN(framesForFft);
+    const int Nfft = Window::NextValidFFTSize(framesForFft);
     chunk.fftSize = Nfft;
     chunk.fftMagnitudePerChannel.assign(chCount, std::vector<float>(Nfft/2 + 1, 0.0f));
     chunk.fftDominantHzPerChannel.assign(chCount, 0.0);
@@ -238,12 +214,12 @@ namespace synaptic
 
     // Chunking
     const int totalFrames = (int) framesRead;
-    int numChunks = (totalFrames + chunkSizeSamples - 1) / chunkSizeSamples;
+    int numChunks = 2*totalFrames / chunkSizeSamples - 1;
     fileRec.chunkIndices.reserve(numChunks);
 
-    for (int c = 0; c < numChunks - 1; ++c)
+    for (int c = 0; c < numChunks; ++c)
     {
-      const int start = c * chunkSizeSamples;
+      const int start = c * chunkSizeSamples/2;
       const int framesInChunk = std::min(chunkSizeSamples, totalFrames - start);
       if (framesInChunk <= 0)
         break;
@@ -425,10 +401,11 @@ namespace synaptic
       // Rechunk the reconstructed buffer
       f.chunkIndices.clear();
       const int totalFrames = totalValidFrames;
-      const int numChunks = (totalFrames + newChunkSizeSamples - 1) / newChunkSizeSamples;
-      for (int c = 0; c < numChunks - 1; ++c)
+      
+      int numChunks = 2*totalFrames / newChunkSizeSamples - 1;
+      for (int c = 0; c < numChunks; ++c)
       {
-        const int start = c * newChunkSizeSamples;
+        const int start = c * newChunkSizeSamples/2;
         const int framesInChunk = std::min(newChunkSizeSamples, totalFrames - start);
         if (framesInChunk <= 0) break;
 
