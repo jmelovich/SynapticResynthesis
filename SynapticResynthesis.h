@@ -80,6 +80,7 @@ private:
   int mParamIdxBufferWindow = -1;
   int mParamIdxOutputWindow = -1;
   int mParamIdxAlgorithm = -1;
+  int mParamIdxDirtyFlag = -1; // hidden internal param used to nudge host dirty state
   struct TransformerParamBinding {
     std::string id;
     synaptic::IChunkBufferTransformer::ParamType type;
@@ -101,4 +102,6 @@ private:
   void SendTransformerParamsToUI();
   void SendDSPConfigToUI();
   void ApplyTransformerParamsFromIParams();
+  // Notify host that state changed (e.g., brain edited) so host marks project as modified
+  void MarkHostStateDirty();
 };

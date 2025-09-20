@@ -6,6 +6,9 @@
 #include "plugin_src/TransformerFactory.h"
 #include "plugin_src/PlatformFileDialogs.h"
 #include <thread>
+#ifdef AAX_API
+#include "IPlugAAX.h"
+#endif
 
 namespace {
   // Build a union of transformer parameter descs across all known transformers (by id)
@@ -28,10 +31,10 @@ namespace {
 
   static int ComputeTotalParams()
   {
-    // base params (kNumParams) + ChunkSize + BufferWindow + Algorithm + OutputWindow + union of transformer params
+    // base params (kNumParams) + ChunkSize + BufferWindow + Algorithm + OutputWindow + union of transformer params + hidden dirty flag
     std::vector<synaptic::IChunkBufferTransformer::ExposedParamDesc> unionDescs;
     BuildTransformerUnion(unionDescs);
-    return kNumParams + 4 + (int) unionDescs.size();
+    return kNumParams + 5 + (int) unionDescs.size();
   }
 }
 
@@ -79,6 +82,9 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
   mParamIdxChunkSize = kNumParams + 0; GetParam(mParamIdxChunkSize)->InitInt("Chunk Size", mChunkSize, 1, 262144, "samples", IParam::kFlagCannotAutomate);
   // Buffer window size is no longer user-exposed (internal). Reserve slot but don't publish.
   mParamIdxBufferWindow = kNumParams + 1; GetParam(mParamIdxBufferWindow)->InitInt("Buffer Window", mBufferWindowSize, 1, 1024, "chunks", IParam::kFlagCannotAutomate);
+  // Hidden dirty flag param solely for host-dirty nudges (non-automatable)
+  mParamIdxDirtyFlag = kNumParams + 4; // allocate dedicated slot
+  GetParam(mParamIdxDirtyFlag)->InitBool("Dirty Flag", false, "", IParam::kFlagCannotAutomate);
   // Build algorithm enum from factory UI list (deterministic)
   mParamIdxAlgorithm = kNumParams + 2;
   {
@@ -299,6 +305,7 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
     }
     mBrainDirty = true;
     SendBrainSummaryToUI();
+    MarkHostStateDirty();
     {
       nlohmann::json j; j["id"] = "overlay"; j["visible"] = false;
       const std::string payload = j.dump();
@@ -503,6 +510,7 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
     {
       mBrainDirty = true;
       SendBrainSummaryToUI(); // UI will refresh list
+      MarkHostStateDirty();
     }
     // Hide overlay explicitly after attempt
     {
@@ -533,6 +541,8 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
       SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
       // Also refresh DSP config so storage indicator updates consistently
       SendDSPConfigToUI();
+      // Export implies state saved externally; still treat as modification so hosts with chunks notice external ref change
+      MarkHostStateDirty();
     }
     return true;
   }
@@ -580,6 +590,7 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
         nlohmann::json j; j["id"] = "overlay"; j["visible"] = false; const std::string payload = j.dump();
         SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
       }
+      MarkHostStateDirty();
     }).detach();
     return true;
   }
@@ -598,6 +609,7 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
       const std::string payload = j.dump();
       SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
     }
+    MarkHostStateDirty();
     return true;
   }
   else if (msgTag == kMsgTagBrainDetach)
@@ -611,6 +623,7 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
       const std::string payload = j.dump();
       SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
     }
+    MarkHostStateDirty();
     return true;
   }
   else if (msgTag == kMsgTagBrainRemoveFile)
@@ -620,6 +633,7 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
     mBrain.RemoveFile(ctrlTag);
     mBrainDirty = true;
     SendBrainSummaryToUI();
+    MarkHostStateDirty();
     return true;
   }
 
@@ -920,6 +934,29 @@ void SynapticResynthesis::SendDSPConfigToUI()
   }
   const std::string payload = j.dump();
   SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+}
+
+void SynapticResynthesis::MarkHostStateDirty()
+{
+  // Cross-API lightweight dirty notification.
+  // AAX: bump compare state so the compare light turns on.
+#ifdef AAX_API
+  if (auto* aax = dynamic_cast<IPlugAAX*>(this))
+  {
+    aax->DirtyPTCompareState();
+  }
+#endif
+  // For VST3/others, ping a single parameter (use hidden non-automatable dirty flag)
+  int idx = (mParamIdxDirtyFlag >= 0) ? mParamIdxDirtyFlag : ((mParamIdxBufferWindow >= 0) ? mParamIdxBufferWindow : 0);
+  if (idx >= 0 && GetParam(idx))
+  {
+    // Toggle value quickly to ensure a host-visible delta without semantic changes
+    const bool cur = GetParam(idx)->Bool();
+    const double norm = GetParam(idx)->ToNormalized(cur ? 0.0 : 1.0);
+    BeginInformHostOfParamChangeFromUI(idx);
+    SendParameterValueFromUI(idx, norm);
+    EndInformHostOfParamChangeFromUI(idx);
+  }
 }
 
 bool SynapticResynthesis::SerializeState(IByteChunk& chunk) const
