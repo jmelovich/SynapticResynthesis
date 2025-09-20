@@ -148,3 +148,19 @@ function SPVFUI(paramIdx, value) {
 
   IPlugSendMsg(message);
 }
+
+// UI Ready Handshake: notify C++ when the DOM is ready and transport is available
+(function installUiReadyHandshake(){
+  function trySend(attempts){
+    if (typeof window.SAMFUI === 'function' && typeof window.IPlugSendMsg === 'function') {
+      try { window.SAMFUI(103); } catch (_) {}
+      return;
+    }
+    if (attempts > 0) setTimeout(function(){ trySend(attempts - 1); }, 20);
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function(){ trySend(200); }, { once: true });
+  } else {
+    trySend(200);
+  }
+})();

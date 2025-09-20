@@ -33,6 +33,8 @@ enum EMsgTags
   kMsgTagBrainRemoveFile = 101,
   // Transformer params UI -> C++
   kMsgTagTransformerSetParam = 102,
+  // UI lifecycle
+  kMsgTagUiReady = 103,
   // C++ -> UI JSON updates use msgTag = -1, with id fields "brainSummary"
 
 };

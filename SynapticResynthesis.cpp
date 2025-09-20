@@ -499,6 +499,15 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
     return true;
   }
 
+  else if (msgTag == kMsgTagUiReady)
+  {
+    // UI is ready to receive state; resend current values to repopulate panels
+    SendTransformerParamsToUI();
+    SendDSPConfigToUI();
+    SendBrainSummaryToUI();
+    return true;
+  }
+
   return false;
 }
 
