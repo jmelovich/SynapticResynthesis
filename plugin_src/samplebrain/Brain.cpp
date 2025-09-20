@@ -13,6 +13,29 @@
 
 namespace synaptic
 {
+  static constexpr uint32_t kSnapshotMagic = 0x53424252; // 'SBBR' Synaptic Brain BRain
+  static constexpr uint16_t kSnapshotVersion = 1;
+
+  static void PutString(iplug::IByteChunk& chunk, const std::string& s)
+  {
+    int32_t len = (int32_t) s.size();
+    chunk.Put(&len);
+    if (len > 0) chunk.PutBytes(s.data(), len);
+  }
+
+  static bool GetString(const iplug::IByteChunk& chunk, int& pos, std::string& out)
+  {
+    int32_t len = 0;
+    pos = chunk.Get(&len, pos);
+    if (pos < 0 || len < 0) return false;
+    out.resize((size_t) len);
+    if (len > 0)
+    {
+      pos = chunk.GetBytes(out.data(), len, pos);
+      if (pos < 0) return false;
+    }
+    return true;
+  }
   static void InterleaveToPlanar(const float* interleaved,
                                  int frames,
                                  int channels,
@@ -467,6 +490,149 @@ namespace synaptic
     std::lock_guard<std::mutex> lock(mutex_);
     if (idx < 0 || idx >= (int) chunks_.size()) return nullptr;
     return &chunks_[idx];
+  }
+
+  bool Brain::SerializeSnapshotToChunk(iplug::IByteChunk& out) const
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    out.Put(&kSnapshotMagic);
+    out.Put(&kSnapshotVersion);
+    int32_t chunkSize = mChunkSize;
+    out.Put(&chunkSize);
+    // Window type for analysis (store as string for readability)
+    std::string win = "hann"; // current analysis uses Window in AnalyzeChunk with SetWindow provided externally
+    PutString(out, win);
+
+    int32_t nFiles = (int32_t) files_.size();
+    out.Put(&nFiles);
+    // We store per-file name and number of chunks referencing it to rebuild mapping
+    for (const auto& f : files_)
+    {
+      int32_t fid = f.id;
+      out.Put(&fid);
+      PutString(out, f.displayName);
+      int32_t tailPad = f.tailPaddingFrames;
+      out.Put(&tailPad);
+      int32_t nIdx = (int32_t) f.chunkIndices.size();
+      out.Put(&nIdx);
+      for (int32_t gi : f.chunkIndices)
+        out.Put(&gi);
+    }
+
+    // Store all chunks with audio and analysis
+    int32_t nChunks = (int32_t) chunks_.size();
+    out.Put(&nChunks);
+    for (const auto& c : chunks_)
+    {
+      out.Put(&c.fileId);
+      out.Put(&c.chunkIndexInFile);
+      // Audio
+      int32_t chans = (int32_t) c.audio.channelSamples.size();
+      out.Put(&chans);
+      out.Put(&c.audio.numFrames);
+      for (int ch = 0; ch < chans; ++ch)
+      {
+        int32_t frames = (int32_t) c.audio.channelSamples[ch].size();
+        out.Put(&frames);
+        if (frames > 0)
+          out.PutBytes(c.audio.channelSamples[ch].data(), (int) (sizeof(iplug::sample) * frames));
+      }
+      // Analysis
+      int32_t rmsc = (int32_t) c.rmsPerChannel.size(); out.Put(&rmsc);
+      for (int i = 0; i < rmsc; ++i) out.Put(&c.rmsPerChannel[i]);
+      int32_t fzc = (int32_t) c.freqHzPerChannel.size(); out.Put(&fzc);
+      for (int i = 0; i < fzc; ++i) out.Put(&c.freqHzPerChannel[i]);
+      int32_t fftSize = c.fftSize; out.Put(&fftSize);
+      int32_t fftc = (int32_t) c.fftMagnitudePerChannel.size(); out.Put(&fftc);
+      for (int ch = 0; ch < fftc; ++ch)
+      {
+        int32_t bins = (int32_t) c.fftMagnitudePerChannel[ch].size();
+        out.Put(&bins);
+        if (bins > 0)
+          out.PutBytes(c.fftMagnitudePerChannel[ch].data(), (int) (sizeof(float) * bins));
+      }
+      int32_t domc = (int32_t) c.fftDominantHzPerChannel.size(); out.Put(&domc);
+      for (int i = 0; i < domc; ++i) out.Put(&c.fftDominantHzPerChannel[i]);
+      out.Put(&c.avgRms);
+      out.Put(&c.avgFreqHz);
+      out.Put(&c.avgFftDominantHz);
+    }
+
+    return true;
+  }
+
+  int Brain::DeserializeSnapshotFromChunk(const iplug::IByteChunk& in, int startPos)
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    int pos = startPos;
+    uint32_t magic = 0; pos = in.Get(&magic, pos); if (pos < 0 || magic != kSnapshotMagic) return -1;
+    uint16_t ver = 0; pos = in.Get(&ver, pos); if (pos < 0 || ver > kSnapshotVersion) return -1;
+    int32_t chunkSize = 0; pos = in.Get(&chunkSize, pos); if (pos < 0) return -1; mChunkSize = chunkSize;
+    std::string win; if (!GetString(in, pos, win)) return -1;
+
+    files_.clear(); idToFileIndex_.clear(); chunks_.clear();
+
+    int32_t nFiles = 0; pos = in.Get(&nFiles, pos); if (pos < 0 || nFiles < 0) return -1;
+    files_.reserve(nFiles);
+    for (int i = 0; i < nFiles; ++i)
+    {
+      BrainFile f;
+      pos = in.Get(&f.id, pos); if (pos < 0) return -1;
+      std::string name; if (!GetString(in, pos, name)) return -1; f.displayName = name;
+      pos = in.Get(&f.tailPaddingFrames, pos); if (pos < 0) return -1;
+      int32_t nIdx = 0; pos = in.Get(&nIdx, pos); if (pos < 0 || nIdx < 0) return -1;
+      f.chunkIndices.resize(nIdx, -1);
+      for (int k = 0; k < nIdx; ++k) pos = in.Get(&f.chunkIndices[k], pos);
+      f.chunkCount = nIdx;
+      idToFileIndex_[f.id] = (int) files_.size();
+      files_.push_back(std::move(f));
+    }
+
+    int32_t nChunks = 0; pos = in.Get(&nChunks, pos); if (pos < 0 || nChunks < 0) return -1;
+    chunks_.resize(nChunks);
+    for (int i = 0; i < nChunks; ++i)
+    {
+      auto& c = chunks_[i];
+      pos = in.Get(&c.fileId, pos); if (pos < 0) return -1;
+      pos = in.Get(&c.chunkIndexInFile, pos); if (pos < 0) return -1;
+      int32_t chans = 0; pos = in.Get(&chans, pos); if (pos < 0 || chans < 0) return -1;
+      pos = in.Get(&c.audio.numFrames, pos); if (pos < 0) return -1;
+      c.audio.channelSamples.assign(chans, std::vector<iplug::sample>());
+      for (int ch = 0; ch < chans; ++ch)
+      {
+        int32_t frames = 0; pos = in.Get(&frames, pos); if (pos < 0 || frames < 0) return -1;
+        c.audio.channelSamples[ch].resize(frames);
+        if (frames > 0)
+        {
+          pos = in.GetBytes(c.audio.channelSamples[ch].data(), (int) (sizeof(iplug::sample) * frames), pos);
+          if (pos < 0) return -1;
+        }
+      }
+      int32_t rmsc = 0; pos = in.Get(&rmsc, pos); if (pos < 0 || rmsc < 0) return -1;
+      c.rmsPerChannel.resize(rmsc); for (int k = 0; k < rmsc; ++k) pos = in.Get(&c.rmsPerChannel[k], pos);
+      int32_t fzc = 0; pos = in.Get(&fzc, pos); if (pos < 0 || fzc < 0) return -1;
+      c.freqHzPerChannel.resize(fzc); for (int k = 0; k < fzc; ++k) pos = in.Get(&c.freqHzPerChannel[k], pos);
+      int32_t fftSize = 0; pos = in.Get(&fftSize, pos); c.fftSize = fftSize; if (pos < 0) return -1;
+      int32_t fftc = 0; pos = in.Get(&fftc, pos); if (pos < 0 || fftc < 0) return -1;
+      c.fftMagnitudePerChannel.resize(fftc);
+      for (int ch = 0; ch < fftc; ++ch)
+      {
+        int32_t bins = 0; pos = in.Get(&bins, pos); if (pos < 0 || bins < 0) return -1;
+        c.fftMagnitudePerChannel[ch].resize(bins);
+        if (bins > 0)
+        {
+          pos = in.GetBytes(c.fftMagnitudePerChannel[ch].data(), (int) (sizeof(float) * bins), pos);
+          if (pos < 0) return -1;
+        }
+      }
+      int32_t domc = 0; pos = in.Get(&domc, pos); if (pos < 0 || domc < 0) return -1;
+      c.fftDominantHzPerChannel.resize(domc); for (int k = 0; k < domc; ++k) pos = in.Get(&c.fftDominantHzPerChannel[k], pos);
+      pos = in.Get(&c.avgRms, pos); if (pos < 0) return -1;
+      pos = in.Get(&c.avgFreqHz, pos); if (pos < 0) return -1;
+      pos = in.Get(&c.avgFftDominantHz, pos); if (pos < 0) return -1;
+    }
+
+    return pos;
   }
 }
 

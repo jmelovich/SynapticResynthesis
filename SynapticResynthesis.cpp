@@ -4,6 +4,8 @@
 #include "json.hpp"
 #include "Extras/WebView/IPlugWebViewEditorDelegate.h"
 #include "plugin_src/TransformerFactory.h"
+#include "plugin_src/PlatformFileDialogs.h"
+#include <thread>
 
 namespace {
   // Build a union of transformer parameter descs across all known transformers (by id)
@@ -26,10 +28,10 @@ namespace {
 
   static int ComputeTotalParams()
   {
-    // base params (kNumParams) + ChunkSize + BufferWindow + Algorithm + union of transformer params
+    // base params (kNumParams) + ChunkSize + BufferWindow + Algorithm + OutputWindow + union of transformer params
     std::vector<synaptic::IChunkBufferTransformer::ExposedParamDesc> unionDescs;
     BuildTransformerUnion(unionDescs);
-    return kNumParams + 3 + (int) unionDescs.size();
+    return kNumParams + 4 + (int) unionDescs.size();
   }
 }
 
@@ -86,11 +88,18 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
     for (int i = 0; i < (int) labels.size(); ++i)
       GetParam(mParamIdxAlgorithm)->SetDisplayText(i, labels[i].c_str());
   }
+  // Output window function (global)
+  mParamIdxOutputWindow = kNumParams + 3;
+  GetParam(mParamIdxOutputWindow)->InitEnum("Output Window", mOutputWindowMode - 1, 4, "");
+  GetParam(mParamIdxOutputWindow)->SetDisplayText(0, "Hann");
+  GetParam(mParamIdxOutputWindow)->SetDisplayText(1, "Hamming");
+  GetParam(mParamIdxOutputWindow)->SetDisplayText(2, "Blackman");
+  GetParam(mParamIdxOutputWindow)->SetDisplayText(3, "Rectangular");
 
   // Build union descs and initialize the remaining pre-allocated params
   std::vector<synaptic::IChunkBufferTransformer::ExposedParamDesc> unionDescs;
   BuildTransformerUnion(unionDescs);
-  int base = kNumParams + 3;
+  int base = kNumParams + 4;
   mTransformerBindings.clear();
   for (size_t i = 0; i < unionDescs.size(); ++i)
   {
@@ -175,6 +184,7 @@ void SynapticResynthesis::OnReset()
   if (mParamIdxChunkSize >= 0) mChunkSize = std::max(1, GetParam(mParamIdxChunkSize)->Int());
   if (mParamIdxBufferWindow >= 0) mBufferWindowSize = std::max(1, GetParam(mParamIdxBufferWindow)->Int());
   if (mParamIdxAlgorithm >= 0) mAlgorithmId = GetParam(mParamIdxAlgorithm)->Int();
+  if (mParamIdxOutputWindow >= 0) mOutputWindowMode = 1 + std::clamp(GetParam(mParamIdxOutputWindow)->Int(), 0, 3);
 
   mWindow.Set(synaptic::Window::Type::Hann, mChunkSize);
   mBrain.SetWindow(&mWindow);
@@ -287,6 +297,7 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
       });
       DBGMSG("Brain Rechunk: processed=%d, rechunked=%d, totalChunks=%d\n", stats.filesProcessed, stats.filesRechunked, stats.newTotalChunks);
     }
+    mBrainDirty = true;
     SendBrainSummaryToUI();
     {
       nlohmann::json j; j["id"] = "overlay"; j["visible"] = false;
@@ -310,6 +321,14 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
       switch (v) { case 1: return OW::Hann; case 2: return OW::Hamming; case 3: return OW::Blackman; case 4: return OW::Rectangular; default: return OW::Hann; }
     };
     mOutputWindowMode = std::clamp(ctrlTag, 1, 4);
+    if (mParamIdxOutputWindow >= 0)
+    {
+      const int idx = mOutputWindowMode - 1;
+      const double norm = GetParam(mParamIdxOutputWindow)->ToNormalized((double) idx);
+      BeginInformHostOfParamChangeFromUI(mParamIdxOutputWindow);
+      SendParameterValueFromUI(mParamIdxOutputWindow, norm);
+      EndInformHostOfParamChangeFromUI(mParamIdxOutputWindow);
+    }
     if (mTransformer)
     {
       mTransformer->SetOutputWindowMode(toMode(mOutputWindowMode));
@@ -481,7 +500,10 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
     }
     int newId = mBrain.AddAudioFileFromMemory(fileData, fileSize, name, (int) GetSampleRate(), NInChansConnected(), mChunkSize);
     if (newId >= 0)
+    {
+      mBrainDirty = true;
       SendBrainSummaryToUI(); // UI will refresh list
+    }
     // Hide overlay explicitly after attempt
     {
       nlohmann::json j; j["id"] = "overlay"; j["visible"] = false;
@@ -490,11 +512,113 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
     }
     return newId >= 0;
   }
+  else if (msgTag == kMsgTagBrainExport)
+  {
+    // Run synchronously on the UI thread to ensure immediate UI update
+    std::string savePath;
+    if (!platform::GetSaveFilePath(savePath, L"Synaptic Brain (*.sbrain)\0*.sbrain\0All Files (*.*)\0*.*\0\0", L"SynapticResynthesis-Brain.sbrain"))
+      return true; // user cancelled
+    iplug::IByteChunk blob; mBrain.SerializeSnapshotToChunk(blob);
+    FILE* fp = fopen(savePath.c_str(), "wb");
+    if (fp)
+    {
+      fwrite(blob.GetData(), 1, (size_t) blob.Size(), fp);
+      fclose(fp);
+      mExternalBrainPath = savePath;
+      mUseExternalBrain = true;
+      mBrainDirty = false;
+      // Notify UI about new external ref immediately
+      nlohmann::json j; j["id"] = "brainExternalRef"; j["info"] = { {"path", mExternalBrainPath} };
+      const std::string payload = j.dump();
+      SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+      // Also refresh DSP config so storage indicator updates consistently
+      SendDSPConfigToUI();
+    }
+    return true;
+  }
+  else if (msgTag == kMsgTagBrainImport)
+  {
+    // Native Open dialog; C++ reads file directly
+    std::thread([this]() {
+      // Show overlay
+      {
+        nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Importing Brain...");
+        const std::string payload = j.dump();
+        SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+      }
+      std::string openPath;
+      if (!platform::GetOpenFilePath(openPath, L"Synaptic Brain (*.sbrain)\0*.sbrain\0All Files (*.*)\0*.*\0\0"))
+      {
+        nlohmann::json j; j["id"] = "overlay"; j["visible"] = false; const std::string payload = j.dump();
+        SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+        return;
+      }
+      // Read file
+      FILE* fp = fopen(openPath.c_str(), "rb");
+      if (!fp)
+      {
+        nlohmann::json j; j["id"] = "overlay"; j["visible"] = false; const std::string payload = j.dump();
+        SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+        return;
+      }
+      fseek(fp, 0, SEEK_END); long sz = ftell(fp); fseek(fp, 0, SEEK_SET);
+      std::vector<char> data; data.resize((size_t) sz);
+      fread(data.data(), 1, (size_t) sz, fp); fclose(fp);
+      // Deserialize
+      iplug::IByteChunk in; in.PutBytes(data.data(), (int) data.size());
+      mBrain.DeserializeSnapshotFromChunk(in, 0);
+      mBrain.SetWindow(&mWindow);
+      mExternalBrainPath = openPath; mUseExternalBrain = true; mBrainDirty = false;
+      // UI updates
+      SendBrainSummaryToUI();
+      {
+        nlohmann::json j; j["id"] = "brainExternalRef"; j["info"] = { {"path", mExternalBrainPath} };
+        const std::string payload = j.dump();
+        SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+      }
+      {
+        nlohmann::json j; j["id"] = "overlay"; j["visible"] = false; const std::string payload = j.dump();
+        SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+      }
+    }).detach();
+    return true;
+  }
+  else if (msgTag == kMsgTagBrainReset)
+  {
+    // Clear brain and detach external reference
+    mBrain.Reset();
+    mBrain.SetWindow(&mWindow);
+    mUseExternalBrain = false;
+    mExternalBrainPath.clear();
+    mBrainDirty = false;
+    SendBrainSummaryToUI();
+    // Update storage indicator in UI
+    {
+      nlohmann::json j; j["id"] = "brainExternalRef"; j["info"] = { {"path", std::string()} };
+      const std::string payload = j.dump();
+      SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+    }
+    return true;
+  }
+  else if (msgTag == kMsgTagBrainDetach)
+  {
+    // Stop referencing the external file; keep current in-memory brain and save inline next
+    mUseExternalBrain = false;
+    mExternalBrainPath.clear();
+    mBrainDirty = true;
+    {
+      nlohmann::json j; j["id"] = "brainExternalRef"; j["info"] = { {"path", std::string()} };
+      const std::string payload = j.dump();
+      SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+    }
+    return true;
+  }
   else if (msgTag == kMsgTagBrainRemoveFile)
   {
     // ctrlTag carries fileId
     DBGMSG("BrainRemoveFile: id=%d\n", ctrlTag);
     mBrain.RemoveFile(ctrlTag);
+    mBrainDirty = true;
     SendBrainSummaryToUI();
     return true;
   }
@@ -505,6 +629,12 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
     SendTransformerParamsToUI();
     SendDSPConfigToUI();
     SendBrainSummaryToUI();
+    // Also let UI know storage mode/path
+    {
+      nlohmann::json j; j["id"] = "brainExternalRef"; j["info"] = { {"path", mUseExternalBrain ? mExternalBrainPath : std::string()} };
+      const std::string payload = j.dump();
+      SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+    }
     return true;
   }
 
@@ -647,25 +777,11 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
     mWindow.Set(synaptic::Window::Type::Hann, mChunkSize);
 
     // Rechunk brain to new size
-    {
-      nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Rechunking...");
-      const std::string payload = j.dump();
-      SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
-    }
     auto stats = mBrain.RechunkAllFiles(mChunkSize, (int) GetSampleRate(), [&](const std::string& name){
-      nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Rechunking ") + name;
-      const std::string payload = j.dump();
-      SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+      // Avoid UI messaging from audio thread
     });
     DBGMSG("Brain Rechunk: processed=%d, rechunked=%d, totalChunks=%d\n", stats.filesProcessed, stats.filesRechunked, stats.newTotalChunks);
-    SendBrainSummaryToUI();
-    {
-      nlohmann::json j; j["id"] = "overlay"; j["visible"] = false;
-      const std::string payload = j.dump();
-      SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
-    }
     SetLatency(ComputeLatencySamples());
-    SendDSPConfigToUI();
     return;
   }
 
@@ -673,7 +789,6 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
   {
     mBufferWindowSize = std::max(1, GetParam(mParamIdxBufferWindow)->Int());
     mChunker.SetBufferWindowSize(mBufferWindowSize);
-    SendDSPConfigToUI();
     return;
   }
 
@@ -691,8 +806,19 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
     if (mTransformer)
       mTransformer->OnReset(GetSampleRate(), mChunkSize, mBufferWindowSize, NInChansConnected());
     SetLatency(ComputeLatencySamples());
-    SendTransformerParamsToUI();
-    SendDSPConfigToUI();
+    return;
+  }
+
+  if (paramIdx == mParamIdxOutputWindow && mParamIdxOutputWindow >= 0)
+  {
+    mOutputWindowMode = 1 + std::clamp(GetParam(mParamIdxOutputWindow)->Int(), 0, 3);
+    if (mTransformer)
+    {
+      using OW = synaptic::IChunkBufferTransformer::OutputWindowMode;
+      OW mode = OW::Hann;
+      switch (mOutputWindowMode) { case 1: mode = OW::Hann; break; case 2: mode = OW::Hamming; break; case 3: mode = OW::Blackman; break; case 4: mode = OW::Rectangular; break; default: break; }
+      mTransformer->SetOutputWindowMode(mode);
+    }
     return;
   }
 
@@ -720,8 +846,6 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
           // Not supported as text; ignore
           break;
       }
-      // Reflect param change back to UI params panel
-      SendTransformerParamsToUI();
       break;
     }
   }
@@ -775,6 +899,9 @@ void SynapticResynthesis::SendDSPConfigToUI()
   j["bufferWindowSize"] = mBufferWindowSize;
   j["outputWindowMode"] = mOutputWindowMode; // 1=Hann,2=Hamming,3=Blackman,4=Rectangular
   j["algorithmId"] = mAlgorithmId;
+  // storage info
+  j["useExternalBrain"] = mUseExternalBrain;
+  j["externalPath"] = mUseExternalBrain ? mExternalBrainPath : std::string();
   // Also send transformer options derived from factory for dynamic UI population
   {
     nlohmann::json opts = nlohmann::json::array();
@@ -793,4 +920,104 @@ void SynapticResynthesis::SendDSPConfigToUI()
   }
   const std::string payload = j.dump();
   SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+}
+
+bool SynapticResynthesis::SerializeState(IByteChunk& chunk) const
+{
+  if (!Plugin::SerializeState(chunk)) return false;
+  // Append small manifest: external flag + path or inline snapshot
+  const uint32_t tag = 0x42524E53; // 'BRNS'
+  chunk.Put(&tag);
+  int32_t sectionSize = 0; int sizePos = chunk.Size(); chunk.Put(&sectionSize);
+  int start = chunk.Size();
+  uint8_t mode = mUseExternalBrain ? 1 : 0; chunk.Put(&mode);
+  if (mUseExternalBrain && !mExternalBrainPath.empty())
+  {
+    // Store external path
+    chunk.PutStr(mExternalBrainPath.c_str());
+    // If brain has changed, sync it to file now to persist on project save
+    if (mBrainDirty)
+    {
+      iplug::IByteChunk blob; mBrain.SerializeSnapshotToChunk(blob);
+      FILE* fp = fopen(mExternalBrainPath.c_str(), "wb");
+      if (fp)
+      {
+        fwrite(blob.GetData(), 1, (size_t) blob.Size(), fp);
+        fclose(fp);
+        mBrainDirty = false;
+      }
+    }
+  }
+  else
+  {
+    // Inline snapshot for small brains
+    iplug::IByteChunk brainChunk; mBrain.SerializeSnapshotToChunk(brainChunk);
+    int32_t sz = brainChunk.Size();
+    chunk.Put(&sz);
+    if (sz > 0) chunk.PutBytes(brainChunk.GetData(), sz);
+  }
+  int end = chunk.Size();
+  sectionSize = end - start;
+  memcpy(chunk.GetData() + sizePos, &sectionSize, sizeof(sectionSize));
+  return true;
+}
+
+int SynapticResynthesis::UnserializeState(const IByteChunk& chunk, int startPos)
+{
+  int pos = Plugin::UnserializeState(chunk, startPos);
+  if (pos < 0) return pos;
+
+  // Look for our optional section
+  uint32_t tag = 0; int next = chunk.Get(&tag, pos);
+  if (next < 0) return pos; // no extra data
+  if (tag != 0x42524E53)
+  {
+    // Not our tag; leave pos unchanged (backwards compatibility)
+    return pos;
+  }
+  pos = next;
+  int32_t sectionSize = 0; pos = chunk.Get(&sectionSize, pos);
+  if (pos < 0 || sectionSize < 0) return pos;
+  int start = pos;
+  uint8_t mode = 0; pos = chunk.Get(&mode, pos); if (pos < 0) return start + sectionSize;
+  if (mode == 1)
+  {
+    // external
+    WDL_String p; pos = chunk.GetStr(p, pos); if (pos < 0) return start + sectionSize;
+    mExternalBrainPath = p.Get();
+    mUseExternalBrain = !mExternalBrainPath.empty();
+    // Try to load from path if readable
+    if (mUseExternalBrain)
+    {
+      FILE* fp = fopen(mExternalBrainPath.c_str(), "rb");
+      if (fp)
+      {
+        fseek(fp, 0, SEEK_END); long sz = ftell(fp); fseek(fp, 0, SEEK_SET);
+        std::string data; data.resize((size_t) sz);
+        fread(data.data(), 1, (size_t) sz, fp); fclose(fp);
+        iplug::IByteChunk in; in.PutBytes(data.data(), (int) data.size());
+        mBrain.DeserializeSnapshotFromChunk(in, 0);
+      }
+    }
+  }
+  else
+  {
+    // inline
+    int32_t sz = 0; pos = chunk.Get(&sz, pos); if (pos < 0 || sz < 0) return start + sectionSize;
+    int consumed = mBrain.DeserializeSnapshotFromChunk(chunk, pos);
+    if (consumed >= 0) pos = consumed; else pos = start + sectionSize;
+  }
+
+  // Re-link window pointer and notify UI
+  mBrain.SetWindow(&mWindow);
+  SendBrainSummaryToUI();
+  SendDSPConfigToUI();
+  SendTransformerParamsToUI();
+  // Send storage mode/path so UI shows external correctly after project load
+  {
+    nlohmann::json j; j["id"] = "brainExternalRef"; j["info"] = { {"path", mUseExternalBrain ? mExternalBrainPath : std::string()} };
+    const std::string payload = j.dump();
+    SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+  }
+  return pos;
 }

@@ -35,6 +35,11 @@ enum EMsgTags
   kMsgTagTransformerSetParam = 102,
   // UI lifecycle
   kMsgTagUiReady = 103,
+  // Brain snapshot external IO
+  kMsgTagBrainExport = 104,
+  kMsgTagBrainImport = 105,
+  kMsgTagBrainReset = 106,
+  kMsgTagBrainDetach = 107,
   // C++ -> UI JSON updates use msgTag = -1, with id fields "brainSummary"
 
 };
@@ -51,6 +56,9 @@ public:
   void OnRestoreState() override;
   bool OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData) override;
   void OnParamChange(int paramIdx) override;
+  // state serialization
+  bool SerializeState(IByteChunk& chunk) const override;
+  int UnserializeState(const IByteChunk& chunk, int startPos) override;
   bool CanNavigateToURL(const char* url);
   bool OnCanDownloadMIMEType(const char* mimeType) override;
   void OnFailedToDownloadFile(const char* path) override;
@@ -70,6 +78,7 @@ private:
   // Indices of core params created at runtime
   int mParamIdxChunkSize = -1;
   int mParamIdxBufferWindow = -1;
+  int mParamIdxOutputWindow = -1;
   int mParamIdxAlgorithm = -1;
   struct TransformerParamBinding {
     std::string id;
@@ -84,6 +93,10 @@ private:
   // Samplebrain in-memory state
   synaptic::Brain mBrain;
   synaptic::Window mWindow;
+  // External snapshot reference (Proposal 2 step)
+  std::string mExternalBrainPath;
+  bool mUseExternalBrain = false;
+  mutable bool mBrainDirty = false;
   void SendBrainSummaryToUI();
   void SendTransformerParamsToUI();
   void SendDSPConfigToUI();

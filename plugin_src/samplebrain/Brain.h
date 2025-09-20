@@ -7,6 +7,7 @@
 #include <functional>
 
 #include "plugin_src/AudioStreamChunker.h"
+#include "IPlugStructs.h"
 
 // Forward declare miniaudio types to avoid including the large header here.
 // We will include it in the .cpp only.
@@ -86,6 +87,10 @@ namespace synaptic
     using RechunkProgressFn = std::function<void(const std::string& /*displayName*/)>;
     RechunkStats RechunkAllFiles(int newChunkSizeSamples, int targetSampleRate, RechunkProgressFn onProgress = nullptr);
     int GetChunkSize() const { return mChunkSize; }
+
+    // Snapshot serialization (unified for project state and .sbrain files)
+    bool SerializeSnapshotToChunk(iplug::IByteChunk& out) const;
+    int DeserializeSnapshotFromChunk(const iplug::IByteChunk& in, int startPos);
 
   private:
     static float ComputeRMS(const std::vector<iplug::sample>& buffer, int offset, int count);

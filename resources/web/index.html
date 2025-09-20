@@ -379,6 +379,11 @@
           if (alg && json["algorithmId"] !== undefined) alg.value = String(json["algorithmId"]);
           const bcs = document.getElementById('brain-chunk-size');
           if (bcs && typeof json["chunkSize"] === 'number') bcs.textContent = String(json["chunkSize"]);
+          const storageEl = document.getElementById('brain-external-ref');
+          if (storageEl) {
+            const isExt = !!json["useExternalBrain"]; const p = json["externalPath"] || '';
+            storageEl.textContent = isExt && p ? String(p) : '(inline)';
+          }
           break;
         }
         case "brainChunkSize":
@@ -397,6 +402,12 @@
         case "transformerParams":
           renderTransformerParams(json["params"] || []);
           break;
+        case "brainExternalRef": {
+          const info = json["info"] || {};
+          const el = document.getElementById('brain-external-ref');
+          if (el) el.textContent = info.path ? (String(info.path)) : '(inline)';
+          break;
+        }
         }
       }
     }
@@ -478,9 +489,16 @@
   <div style="margin-top:6px; color:#374151; font-size:13px;">
     Brain chunk size: <span id="brain-chunk-size">-</span>
     &nbsp;•&nbsp; Files: <span id="brain-file-count">0</span>
+    &nbsp;•&nbsp; Storage: <span id="brain-external-ref">(inline)</span>
   </div>
   <div id="brain-files" class="brain-list"></div>
   <p style="color:#6b7280; font-size:12px;">Note: Chunk size currently set by DSP section and used for import.</p>
+  <div class="button-group" style="margin-top:6px;">
+    <button id="export-brain-btn">Export Brain (.sbrain)</button>
+    <button id="import-brain-btn">Import Brain (.sbrain)</button>
+    <button id="reset-brain-btn">Reset Brain</button>
+    <button id="detach-brain-btn">Detach File Ref</button>
+  </div>
 </div>
 
 <script>
@@ -784,6 +802,29 @@
         }
       });
     }
+
+    // Export/Import buttons
+    const exportBtn = document.getElementById('export-brain-btn');
+    const importBtn = document.getElementById('import-brain-btn');
+    if (exportBtn) {
+      exportBtn.addEventListener('click', () => {
+        if (typeof window['SAMFUI'] === 'function') window['SAMFUI'](104, -1);
+      });
+    }
+    if (importBtn) {
+      importBtn.addEventListener('click', async () => {
+        if (typeof window['SAMFUI'] === 'function') {
+          // C++ side will show overlay and native Open File dialog, then load
+          window['SAMFUI'](105, -1);
+        }
+      });
+    }
+
+    // Reset and Detach
+    const resetBtn = document.getElementById('reset-brain-btn');
+    if (resetBtn) resetBtn.addEventListener('click', () => { if (typeof window['SAMFUI'] === 'function') window['SAMFUI'](106, -1); });
+    const detachBtn = document.getElementById('detach-brain-btn');
+    if (detachBtn) detachBtn.addEventListener('click', () => { if (typeof window['SAMFUI'] === 'function') window['SAMFUI'](107, -1); });
 </script>
 </body>
 </html>
