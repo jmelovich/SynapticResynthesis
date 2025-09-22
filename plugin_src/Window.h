@@ -37,20 +37,28 @@ namespace synaptic
       switch (type)
       {
         case Type::Hann:
+          mOverlap = 0.5;
+          mOverlapRescale = 1.0;
           for (int n = 0; n < size; ++n)
             mCoeffs[n] = 0.5f * (1.0f - std::cos(2.0f * float(M_PI) * n / (size - 1)));
           break;
         case Type::Hamming:
+          mOverlap = 0.5;
+          mOverlapRescale = 1.0 / 1.08;
           for (int n = 0; n < size; ++n)
             mCoeffs[n] = 0.54f - 0.46f * std::cos(2.0f * float(M_PI) * n / (size - 1));
           break;
         case Type::Blackman:
+          mOverlap = 0.75;
+          mOverlapRescale = 1.0 / 1.68;
           for (int n = 0; n < size; ++n)
             mCoeffs[n] = 0.42f - 0.5f * std::cos(2.0f * float(M_PI) * n / (size - 1))
                                + 0.08f * std::cos(4.0f * float(M_PI) * n / (size - 1));
           break;
         case Type::Rectangular:
         default:
+          mOverlap = 0.0;
+          mOverlapRescale = 1.0;
           for (int n = 0; n < size; ++n)
             mCoeffs[n] = 1.0f;
           break;
@@ -59,6 +67,8 @@ namespace synaptic
 
     int Size() const { return mSize; }
     Type GetType() const { return mType; }
+    float GetOverlap() const { return mOverlap; }
+    float GetOverlapRescale() const { return mOverlapRescale; }
     const std::vector<float>& Coeffs() const { return mCoeffs; }
 
     void operator()(float* data) const
@@ -108,6 +118,8 @@ namespace synaptic
   private:
     Type mType = Type::Hann;
     int mSize = 0;
+    float mOverlap = 0.0f;
+    float mOverlapRescale = 1.0f;
     std::vector<float> mCoeffs;
   };
 }
