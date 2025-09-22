@@ -856,6 +856,40 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
       sb->SetBrain(&mBrain);
     if (mTransformer)
       mTransformer->OnReset(GetSampleRate(), mChunkSize, mBufferWindowSize, NInChansConnected());
+    // Apply currently selected global output window mode to the new transformer
+    if (mTransformer)
+    {
+      using OW = synaptic::IChunkBufferTransformer::OutputWindowMode;
+      OW mode = OW::Hann;
+      switch (mOutputWindowMode) { case 1: mode = OW::Hann; break; case 2: mode = OW::Hamming; break; case 3: mode = OW::Blackman; break; case 4: mode = OW::Rectangular; break; default: break; }
+      mTransformer->SetOutputWindowMode(mode);
+    }
+    // Re-apply persisted transformer IParam values (if any) to the new instance
+    for (const auto& b : mTransformerBindings)
+    {
+      if (b.paramIdx < 0 || !mTransformer) continue;
+      switch (b.type)
+      {
+        case synaptic::IChunkBufferTransformer::ParamType::Number:
+          if (GetParam(b.paramIdx)) mTransformer->SetParamFromNumber(b.id, GetParam(b.paramIdx)->Value());
+          break;
+        case synaptic::IChunkBufferTransformer::ParamType::Boolean:
+          if (GetParam(b.paramIdx)) mTransformer->SetParamFromBool(b.id, GetParam(b.paramIdx)->Bool());
+          break;
+        case synaptic::IChunkBufferTransformer::ParamType::Enum:
+        {
+          if (GetParam(b.paramIdx))
+          {
+            int idx = GetParam(b.paramIdx)->Int();
+            std::string val = (idx >= 0 && idx < (int) b.enumValues.size()) ? b.enumValues[idx] : std::to_string(idx);
+            mTransformer->SetParamFromString(b.id, val);
+          }
+          break;
+        }
+        case synaptic::IChunkBufferTransformer::ParamType::Text:
+          break;
+      }
+    }
     SetLatency(ComputeLatencySamples());
     return;
   }
