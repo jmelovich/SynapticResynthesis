@@ -295,24 +295,41 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
       const std::string payload = j.dump();
       SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
     }
+    if (!mRechunking.exchange(true))
     {
-      auto stats = mBrain.RechunkAllFiles(mChunkSize, (int) GetSampleRate(), [&](const std::string& name){
-        nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Rechunking ") + name;
+      // Show overlay once before starting background job
+      {
+        nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Rechunking...");
         const std::string payload = j.dump();
         SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
-      });
-      DBGMSG("Brain Rechunk: processed=%d, rechunked=%d, totalChunks=%d\n", stats.filesProcessed, stats.filesRechunked, stats.newTotalChunks);
+      }
+
+      // Update latency and DSP config immediately on UI thread; brain summary will be updated after background completes
+      SetLatency(ComputeLatencySamples());
+      SendDSPConfigToUI();
+      MarkHostStateDirty();
+
+      std::thread([this]()
+      {
+        auto stats = mBrain.RechunkAllFiles(mChunkSize, (int) GetSampleRate());
+        DBGMSG("Brain Rechunk: processed=%d, rechunked=%d, totalChunks=%d\n", stats.filesProcessed, stats.filesRechunked, stats.newTotalChunks);
+        mBrainDirty = true;
+        // Update UI state (brain list) and hide overlay
+        SendBrainSummaryToUI();
+        // Hide overlay
+        {
+          nlohmann::json j; j["id"] = "overlay"; j["visible"] = false;
+          const std::string payload = j.dump();
+          SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+        }
+        mRechunking = false;
+      }).detach();
     }
-    mBrainDirty = true;
-    SendBrainSummaryToUI();
-    MarkHostStateDirty();
+    else
     {
-      nlohmann::json j; j["id"] = "overlay"; j["visible"] = false;
-      const std::string payload = j.dump();
-      SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+      DBGMSG("Rechunk request ignored: already running.\n");
     }
-    SetLatency(ComputeLatencySamples());
-    SendDSPConfigToUI();
+    // Early return; background task will finalize UI updates
     return true;
   }
   else if (msgTag == kMsgTagSetBufferWindowSize)
@@ -814,11 +831,7 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
     // Update window size to match new chunk size
     mWindow.Set(synaptic::Window::Type::Hann, mChunkSize);
 
-    // Rechunk brain to new size
-    auto stats = mBrain.RechunkAllFiles(mChunkSize, (int) GetSampleRate(), [&](const std::string& name){
-      // Avoid UI messaging from audio thread
-    });
-    DBGMSG("Brain Rechunk: processed=%d, rechunked=%d, totalChunks=%d\n", stats.filesProcessed, stats.filesRechunked, stats.newTotalChunks);
+    // Do NOT rechunk synchronously on the audio thread. The UI button handler launches a background rechunk when needed.
     SetLatency(ComputeLatencySamples());
     return;
   }

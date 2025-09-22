@@ -355,23 +355,38 @@ namespace synaptic
   {
     RechunkStats stats;
     if (newChunkSizeSamples <= 0 || targetSampleRate <= 0) return stats;
-    std::lock_guard<std::mutex> lock(mutex_);
-    // Rebuild each file by concatenating its chunks' valid frames, then rechunk
-    std::vector<BrainChunk> newChunks;
-    newChunks.reserve(chunks_.size());
 
-    for (auto& f : files_)
+    // Snapshot current state under lock, then perform heavy work without holding the mutex.
+    std::vector<BrainFile> filesSnapshot;
+    std::vector<BrainChunk> chunksSnapshot;
+    int oldChunkSize = 0;
+    const Window* analysisWindow = nullptr;
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      filesSnapshot = files_;
+      chunksSnapshot = chunks_;
+      oldChunkSize = (mChunkSize > 0) ? mChunkSize : newChunkSizeSamples;
+      analysisWindow = mWindow;
+    }
+
+    // Rebuild each file by concatenating its chunks' valid frames, then rechunk
+    std::vector<BrainFile> newFiles = filesSnapshot; // will mutate per-file indices/counts/padding
+    std::vector<BrainChunk> newChunks;
+    newChunks.reserve(chunksSnapshot.size());
+
+    for (auto& f : newFiles)
     {
       ++stats.filesProcessed;
       if (onProgress) onProgress(f.displayName);
+
       // Concatenate valid frames across this file's chunks
       int totalValidFrames = 0;
       int numChannels = 0;
       // Determine channels from first valid chunk
       for (int gi : f.chunkIndices)
       {
-        if (gi < 0 || gi >= (int)chunks_.size()) continue;
-        const BrainChunk& bc = chunks_[gi];
+        if (gi < 0 || gi >= (int)chunksSnapshot.size()) continue;
+        const BrainChunk& bc = chunksSnapshot[gi];
         if ((int)bc.audio.channelSamples.size() > 0)
         {
           numChannels = (int)bc.audio.channelSamples.size();
@@ -385,50 +400,44 @@ namespace synaptic
         continue;
       }
 
-      // Gather into planar buffer
-      std::vector<std::vector<sample>> planar(numChannels);
-      for (int ch = 0; ch < numChannels; ++ch) planar[ch].clear();
+      // Reconstruct a contiguous buffer via overlap-add using original hopSize = oldChunkSize/2
+      const int hop = std::max(1, oldChunkSize / 2);
+      const int lastValidFrames = std::max(0, oldChunkSize - f.tailPaddingFrames);
+      const int totalLen = (int) f.chunkIndices.size() > 0
+        ? (int) ((int) f.chunkIndices.size() - 1) * hop + lastValidFrames
+        : 0;
+      std::vector<std::vector<sample>> planar(numChannels, std::vector<sample>(std::max(0, totalLen), 0.0));
 
-      // Determine original (old) chunk size from first chunk
-      int oldChunkSize = mChunkSize > 0 ? mChunkSize : newChunkSizeSamples;
-
-      for (int gi : f.chunkIndices)
+      for (int ord = 0; ord < (int) f.chunkIndices.size(); ++ord)
       {
-        if (gi < 0 || gi >= (int)chunks_.size()) continue;
-        const BrainChunk& bc = chunks_[gi];
-        // valid frames for non-last chunks = full chunk size; last chunk subtract tail padding
-        int frames = std::max(0, oldChunkSize);
+        const int gi = f.chunkIndices[ord];
+        if (gi < 0 || gi >= (int)chunksSnapshot.size()) continue;
+        const BrainChunk& bc = chunksSnapshot[gi];
         const bool isLast = (bc.chunkIndexInFile == (f.chunkCount - 1));
-        if (isLast)
-        {
-          frames = std::max(0, oldChunkSize - f.tailPaddingFrames);
-        }
+        const int valid = isLast ? lastValidFrames : oldChunkSize;
+        const int start = ord * hop;
         const int srcChans = (int) bc.audio.channelSamples.size();
         for (int ch = 0; ch < numChannels; ++ch)
         {
-          if (ch < srcChans)
+          const auto& src = (ch < srcChans) ? bc.audio.channelSamples[ch] : std::vector<sample>();
+          auto& dst = planar[ch];
+          const int copyN = std::min(valid, (int) src.size());
+          const int maxWrite = std::min(copyN, (int) dst.size() - start);
+          if (maxWrite > 0)
           {
-            const auto& src = bc.audio.channelSamples[ch];
-            const int copyN = std::min(frames, (int)src.size());
-            planar[ch].insert(planar[ch].end(), src.begin(), src.begin() + copyN);
-          }
-          else
-          {
-            // missing channel: append zeros
-            planar[ch].insert(planar[ch].end(), frames, 0.0);
+            std::memcpy(dst.data() + start, src.data(), sizeof(sample) * maxWrite);
           }
         }
-        totalValidFrames += frames;
       }
+      totalValidFrames = totalLen;
 
       // Rechunk the reconstructed buffer
       f.chunkIndices.clear();
       const int totalFrames = totalValidFrames;
-
-      int numChunks = 2*totalFrames / newChunkSizeSamples - 1;
+      const int numChunks = 2 * totalFrames / newChunkSizeSamples - 1;
       for (int c = 0; c < numChunks; ++c)
       {
-        const int start = c * newChunkSizeSamples/2;
+        const int start = c * newChunkSizeSamples / 2;
         const int framesInChunk = std::min(newChunkSizeSamples, totalFrames - start);
         if (framesInChunk <= 0) break;
 
@@ -450,8 +459,12 @@ namespace synaptic
             std::memcpy(dst.data(), src.data() + start, sizeof(sample) * clampedCopy);
           }
         }
-        // Analyze metrics for this chunk over valid frames
-        if (mWindow) {
+
+        // Analyze metrics for this chunk over valid frames (use captured window pointer)
+        if (analysisWindow)
+        {
+          // Temporarily set the analysis window pointer (thread-local) by calling member that reads mWindow.
+          // Since AnalyzeChunk only reads mWindow, this is safe as we captured the pointer value.
           AnalyzeChunk(out, framesInChunk, (double) targetSampleRate);
         }
 
@@ -459,23 +472,34 @@ namespace synaptic
         newChunks.push_back(std::move(out));
         f.chunkIndices.push_back(globalIdx);
       }
+
       f.chunkCount = (int) f.chunkIndices.size();
       // Recompute tail padding for new chunk size
       if (f.chunkCount > 0)
       {
-        const int totalFramesMod = totalValidFrames % newChunkSizeSamples;
+        const int totalFramesMod = totalFrames % newChunkSizeSamples;
         f.tailPaddingFrames = (totalFramesMod == 0) ? 0 : (newChunkSizeSamples - totalFramesMod);
       }
       else
       {
         f.tailPaddingFrames = 0;
       }
+
       if (f.chunkCount > 0) ++stats.filesRechunked;
       stats.newTotalChunks += f.chunkCount;
     }
 
-    chunks_.swap(newChunks);
-    mChunkSize = newChunkSizeSamples;
+    // Commit new state under lock in one short critical section
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      chunks_.swap(newChunks);
+      files_.swap(newFiles);
+      idToFileIndex_.clear();
+      for (int i = 0; i < (int) files_.size(); ++i)
+        idToFileIndex_[files_[i].id] = i;
+      mChunkSize = newChunkSizeSamples;
+    }
+
     return stats;
   }
 

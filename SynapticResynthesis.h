@@ -7,6 +7,7 @@
 #include "plugin_src/ChunkBufferTransformer.h"
 #include "plugin_src/samplebrain/Brain.h"
 #include "plugin_src/Window.h"
+#include <atomic>
 
 using namespace iplug;
 
@@ -98,6 +99,7 @@ private:
   std::string mExternalBrainPath;
   bool mUseExternalBrain = false;
   mutable bool mBrainDirty = false;
+  std::atomic<bool> mRechunking { false };
   void SendBrainSummaryToUI();
   void SendTransformerParamsToUI();
   void SendDSPConfigToUI();
