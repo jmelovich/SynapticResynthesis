@@ -6,6 +6,7 @@
 #include "plugin_src/TransformerFactory.h"
 #include "plugin_src/PlatformFileDialogs.h"
 #include <thread>
+#include <mutex>
 #ifdef AAX_API
 #include "IPlugAAX.h"
 #endif
@@ -141,6 +142,35 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
     mTransformerBindings.push_back({d.id, d.type, idx, {}});
   }
 }
+void SynapticResynthesis::EnqueueUiPayload(const std::string& payload)
+{
+  std::lock_guard<std::mutex> lock(mUiQueueMutex);
+  mUiQueue.push_back(payload);
+}
+
+void SynapticResynthesis::DrainUiQueueOnMainThread()
+{
+  // Coalesce structured resend flags first
+  if (mPendingSendBrainSummary.exchange(false))
+    SendBrainSummaryToUI();
+  if (mPendingSendDSPConfig.exchange(false))
+    SendDSPConfigToUI();
+  if (mPendingMarkDirty.exchange(false))
+    MarkHostStateDirty();
+
+  // Drain queued JSON payloads
+  std::vector<std::string> local;
+  {
+    std::lock_guard<std::mutex> lock(mUiQueueMutex);
+    if (!mUiQueue.empty())
+    {
+      local.swap(mUiQueue);
+    }
+  }
+  for (const auto& s : local)
+    SendArbitraryMsgFromDelegate(-1, (int) s.size(), s.c_str());
+}
+
 
 void SynapticResynthesis::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
 {
@@ -290,19 +320,11 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
       const std::string payload = j.dump();
       SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
     }
-    {
-      nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Rechunking...");
-      const std::string payload = j.dump();
-      SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
-    }
+    { nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Rechunking..."); const std::string payload = j.dump(); SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str()); }
     if (!mRechunking.exchange(true))
     {
       // Show overlay once before starting background job
-      {
-        nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Rechunking...");
-        const std::string payload = j.dump();
-        SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
-      }
+      { nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Rechunking..."); const std::string payload = j.dump(); SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str()); }
 
       // Update latency and DSP config immediately on UI thread; brain summary will be updated after background completes
       SetLatency(ComputeLatencySamples());
@@ -314,14 +336,9 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
         auto stats = mBrain.RechunkAllFiles(mChunkSize, (int) GetSampleRate());
         DBGMSG("Brain Rechunk: processed=%d, rechunked=%d, totalChunks=%d\n", stats.filesProcessed, stats.filesRechunked, stats.newTotalChunks);
         mBrainDirty = true;
-        // Update UI state (brain list) and hide overlay
-        SendBrainSummaryToUI();
-        // Hide overlay
-        {
-          nlohmann::json j; j["id"] = "overlay"; j["visible"] = false;
-          const std::string payload = j.dump();
-          SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
-        }
+        // Defer UI updates to main thread: summary + overlay hide
+        mPendingSendBrainSummary = true;
+        { nlohmann::json j; j["id"] = "overlay"; j["visible"] = false; EnqueueUiPayload(j.dump()); }
         mRechunking = false;
       }).detach();
     }
@@ -517,11 +534,7 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
 
     DBGMSG("BrainAddFile: name=%s size=%zu SR=%d CH=%d chunk=%d\n", name.c_str(), fileSize, (int) GetSampleRate(), NInChansConnected(), mChunkSize);
     // Show overlay text during import
-    {
-      nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Importing ") + name;
-      const std::string payload = j.dump();
-      SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
-    }
+    { nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Importing ") + name; const std::string payload = j.dump(); SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str()); }
     int newId = mBrain.AddAudioFileFromMemory(fileData, fileSize, name, (int) GetSampleRate(), NInChansConnected(), mChunkSize);
     if (newId >= 0)
     {
@@ -529,12 +542,7 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
       SendBrainSummaryToUI(); // UI will refresh list
       MarkHostStateDirty();
     }
-    // Hide overlay explicitly after attempt
-    {
-      nlohmann::json j; j["id"] = "overlay"; j["visible"] = false;
-      const std::string payload = j.dump();
-      SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
-    }
+    { nlohmann::json j; j["id"] = "overlay"; j["visible"] = false; const std::string payload = j.dump(); SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str()); }
     return newId >= 0;
   }
   else if (msgTag == kMsgTagBrainExport)
@@ -542,19 +550,14 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
     // Move to background thread to avoid WebView2 re-entrancy when showing native dialogs
     std::thread([this]() {
       // Show overlay while we open dialog and write file
-      {
-        nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Exporting Brain...");
-        const std::string payload = j.dump();
-        SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
-      }
+      { nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Exporting Brain..."); EnqueueUiPayload(j.dump()); }
 
       std::string savePath;
       const bool chose = platform::GetSaveFilePath(savePath, L"Synaptic Brain (*.sbrain)\0*.sbrain\0All Files (*.*)\0*.*\0\0", L"SynapticResynthesis-Brain.sbrain");
       if (!chose)
       {
         // Hide overlay and bail on cancel
-        nlohmann::json j; j["id"] = "overlay"; j["visible"] = false; const std::string payload = j.dump();
-        SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+        { nlohmann::json j; j["id"] = "overlay"; j["visible"] = false; EnqueueUiPayload(j.dump()); }
         return;
       }
 
@@ -568,22 +571,15 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
         mUseExternalBrain = true;
         mBrainDirty = false;
         // Notify UI about new external ref immediately
-        {
-          nlohmann::json j; j["id"] = "brainExternalRef"; j["info"] = { {"path", mExternalBrainPath} };
-          const std::string payload = j.dump();
-          SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
-        }
+        { nlohmann::json j; j["id"] = "brainExternalRef"; j["info"] = { {"path", mExternalBrainPath} }; EnqueueUiPayload(j.dump()); }
         // Also refresh DSP config so storage indicator updates consistently
-        SendDSPConfigToUI();
+        mPendingSendDSPConfig = true;
         // Export implies state saved externally; still treat as modification so hosts with chunks notice external ref change
-        MarkHostStateDirty();
+        mPendingMarkDirty = true;
       }
 
       // Hide overlay at end
-      {
-        nlohmann::json j; j["id"] = "overlay"; j["visible"] = false; const std::string payload = j.dump();
-        SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
-      }
+      { nlohmann::json j; j["id"] = "overlay"; j["visible"] = false; EnqueueUiPayload(j.dump()); }
     }).detach();
     return true;
   }
@@ -592,16 +588,11 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
     // Native Open dialog; C++ reads file directly
     std::thread([this]() {
       // Show overlay
-      {
-        nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Importing Brain...");
-        const std::string payload = j.dump();
-        SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
-      }
+      { nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Importing Brain..."); EnqueueUiPayload(j.dump()); }
       std::string openPath;
       if (!platform::GetOpenFilePath(openPath, L"Synaptic Brain (*.sbrain)\0*.sbrain\0All Files (*.*)\0*.*\0\0"))
       {
-        nlohmann::json j; j["id"] = "overlay"; j["visible"] = false; const std::string payload = j.dump();
-        SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+        { nlohmann::json j; j["id"] = "overlay"; j["visible"] = false; EnqueueUiPayload(j.dump()); }
         return;
       }
       // Read file
@@ -620,18 +611,11 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
       mBrain.DeserializeSnapshotFromChunk(in, 0);
       mBrain.SetWindow(&mWindow);
       mExternalBrainPath = openPath; mUseExternalBrain = true; mBrainDirty = false;
-      // UI updates
-      SendBrainSummaryToUI();
-      {
-        nlohmann::json j; j["id"] = "brainExternalRef"; j["info"] = { {"path", mExternalBrainPath} };
-        const std::string payload = j.dump();
-        SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
-      }
-      {
-        nlohmann::json j; j["id"] = "overlay"; j["visible"] = false; const std::string payload = j.dump();
-        SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
-      }
-      MarkHostStateDirty();
+      // Defer UI updates
+      mPendingSendBrainSummary = true;
+      { nlohmann::json j; j["id"] = "brainExternalRef"; j["info"] = { {"path", mExternalBrainPath} }; EnqueueUiPayload(j.dump()); }
+      { nlohmann::json j; j["id"] = "overlay"; j["visible"] = false; EnqueueUiPayload(j.dump()); }
+      mPendingMarkDirty = true;
     }).detach();
     return true;
   }
@@ -645,11 +629,7 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
     mBrainDirty = false;
     SendBrainSummaryToUI();
     // Update storage indicator in UI
-    {
-      nlohmann::json j; j["id"] = "brainExternalRef"; j["info"] = { {"path", std::string()} };
-      const std::string payload = j.dump();
-      SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
-    }
+    { nlohmann::json j; j["id"] = "brainExternalRef"; j["info"] = { {"path", std::string()} }; SendArbitraryMsgFromDelegate(-1, (int) j.dump().size(), j.dump().c_str()); }
     MarkHostStateDirty();
     return true;
   }
@@ -659,11 +639,7 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
     mUseExternalBrain = false;
     mExternalBrainPath.clear();
     mBrainDirty = true;
-    {
-      nlohmann::json j; j["id"] = "brainExternalRef"; j["info"] = { {"path", std::string()} };
-      const std::string payload = j.dump();
-      SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
-    }
+    { nlohmann::json j; j["id"] = "brainExternalRef"; j["info"] = { {"path", std::string()} }; SendArbitraryMsgFromDelegate(-1, (int) j.dump().size(), j.dump().c_str()); }
     MarkHostStateDirty();
     return true;
   }
@@ -805,6 +781,12 @@ void SynapticResynthesis::OnUIOpen()
   SendTransformerParamsToUI();
   SendDSPConfigToUI();
   SendBrainSummaryToUI();
+}
+
+void SynapticResynthesis::OnIdle()
+{
+  // Drain any UI messages queued by background threads
+  DrainUiQueueOnMainThread();
 }
 
 void SynapticResynthesis::OnRestoreState()

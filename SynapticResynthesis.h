@@ -54,6 +54,7 @@ public:
   void ProcessMidiMsg(const IMidiMsg& msg) override;
   void OnReset() override;
   void OnUIOpen() override;
+  void OnIdle() override;
   void OnRestoreState() override;
   bool OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData) override;
   void OnParamChange(int paramIdx) override;
@@ -106,4 +107,13 @@ private:
   void ApplyTransformerParamsFromIParams();
   // Notify host that state changed (e.g., brain edited) so host marks project as modified
   void MarkHostStateDirty();
+
+  // UI thread dispatch helpers
+  void EnqueueUiPayload(const std::string& payload);
+  void DrainUiQueueOnMainThread();
+  std::mutex mUiQueueMutex;
+  std::vector<std::string> mUiQueue; // raw JSON payloads to send via SendArbitraryMsgFromDelegate
+  std::atomic<bool> mPendingSendBrainSummary { false };
+  std::atomic<bool> mPendingSendDSPConfig { false };
+  std::atomic<bool> mPendingMarkDirty { false };
 };
