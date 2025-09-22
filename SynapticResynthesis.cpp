@@ -522,28 +522,52 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
   }
   else if (msgTag == kMsgTagBrainExport)
   {
-    // Run synchronously on the UI thread to ensure immediate UI update
-    std::string savePath;
-    if (!platform::GetSaveFilePath(savePath, L"Synaptic Brain (*.sbrain)\0*.sbrain\0All Files (*.*)\0*.*\0\0", L"SynapticResynthesis-Brain.sbrain"))
-      return true; // user cancelled
-    iplug::IByteChunk blob; mBrain.SerializeSnapshotToChunk(blob);
-    FILE* fp = fopen(savePath.c_str(), "wb");
-    if (fp)
-    {
-      fwrite(blob.GetData(), 1, (size_t) blob.Size(), fp);
-      fclose(fp);
-      mExternalBrainPath = savePath;
-      mUseExternalBrain = true;
-      mBrainDirty = false;
-      // Notify UI about new external ref immediately
-      nlohmann::json j; j["id"] = "brainExternalRef"; j["info"] = { {"path", mExternalBrainPath} };
-      const std::string payload = j.dump();
-      SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
-      // Also refresh DSP config so storage indicator updates consistently
-      SendDSPConfigToUI();
-      // Export implies state saved externally; still treat as modification so hosts with chunks notice external ref change
-      MarkHostStateDirty();
-    }
+    // Move to background thread to avoid WebView2 re-entrancy when showing native dialogs
+    std::thread([this]() {
+      // Show overlay while we open dialog and write file
+      {
+        nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Exporting Brain...");
+        const std::string payload = j.dump();
+        SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+      }
+
+      std::string savePath;
+      const bool chose = platform::GetSaveFilePath(savePath, L"Synaptic Brain (*.sbrain)\0*.sbrain\0All Files (*.*)\0*.*\0\0", L"SynapticResynthesis-Brain.sbrain");
+      if (!chose)
+      {
+        // Hide overlay and bail on cancel
+        nlohmann::json j; j["id"] = "overlay"; j["visible"] = false; const std::string payload = j.dump();
+        SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+        return;
+      }
+
+      iplug::IByteChunk blob; mBrain.SerializeSnapshotToChunk(blob);
+      FILE* fp = fopen(savePath.c_str(), "wb");
+      if (fp)
+      {
+        fwrite(blob.GetData(), 1, (size_t) blob.Size(), fp);
+        fclose(fp);
+        mExternalBrainPath = savePath;
+        mUseExternalBrain = true;
+        mBrainDirty = false;
+        // Notify UI about new external ref immediately
+        {
+          nlohmann::json j; j["id"] = "brainExternalRef"; j["info"] = { {"path", mExternalBrainPath} };
+          const std::string payload = j.dump();
+          SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+        }
+        // Also refresh DSP config so storage indicator updates consistently
+        SendDSPConfigToUI();
+        // Export implies state saved externally; still treat as modification so hosts with chunks notice external ref change
+        MarkHostStateDirty();
+      }
+
+      // Hide overlay at end
+      {
+        nlohmann::json j; j["id"] = "overlay"; j["visible"] = false; const std::string payload = j.dump();
+        SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+      }
+    }).detach();
     return true;
   }
   else if (msgTag == kMsgTagBrainImport)
