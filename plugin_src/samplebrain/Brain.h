@@ -88,9 +88,17 @@ namespace synaptic
     RechunkStats RechunkAllFiles(int newChunkSizeSamples, int targetSampleRate, RechunkProgressFn onProgress = nullptr);
     int GetChunkSize() const { return mChunkSize; }
 
+    // Re-analyze all existing chunks (no rechunking). Uses current window (SetWindow) and provided sampleRate.
+    struct ReanalyzeStats { int filesProcessed = 0; int chunksProcessed = 0; };
+    ReanalyzeStats ReanalyzeAllChunks(int targetSampleRate, RechunkProgressFn onProgress = nullptr);
+
     // Snapshot serialization (unified for project state and .sbrain files)
     bool SerializeSnapshotToChunk(iplug::IByteChunk& out) const;
     int DeserializeSnapshotFromChunk(const iplug::IByteChunk& in, int startPos);
+
+    // Accessor for saved analysis window type as stored in snapshot
+    enum class SavedWindowType { Hann, Hamming, Blackman, Rectangular };
+    SavedWindowType GetSavedAnalysisWindowType() const { return mSavedAnalysisWindowType; }
 
   private:
     static float ComputeRMS(const std::vector<iplug::sample>& buffer, int offset, int count);
@@ -106,6 +114,8 @@ namespace synaptic
     std::vector<BrainChunk> chunks_;
     int mChunkSize = 0;
     const class Window* mWindow = nullptr;
+    // Saved in snapshot for import; defaults to Hann if unknown
+    SavedWindowType mSavedAnalysisWindowType = SavedWindowType::Hann;
   };
 }
 

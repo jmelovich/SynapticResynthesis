@@ -503,6 +503,48 @@ namespace synaptic
     return stats;
   }
 
+  Brain::ReanalyzeStats Brain::ReanalyzeAllChunks(int targetSampleRate, RechunkProgressFn onProgress)
+  {
+    ReanalyzeStats stats;
+    if (targetSampleRate <= 0) return stats;
+    // Snapshot file list under lock
+    std::vector<BrainFile> filesSnapshot;
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      filesSnapshot = files_;
+    }
+    // Iterate files and re-run analysis on their chunks
+    for (const auto& f : filesSnapshot)
+    {
+      ++stats.filesProcessed;
+      if (onProgress) onProgress(f.displayName);
+      // For each chunk index, reanalyze its audio
+      std::vector<int> idxs = f.chunkIndices;
+      for (int gi : idxs)
+      {
+        BrainChunk* cptr = nullptr;
+        {
+          std::unique_lock<std::mutex> lock(mutex_);
+          if (gi >= 0 && gi < (int) chunks_.size()) cptr = &chunks_[gi];
+        }
+        if (!cptr) continue;
+        BrainChunk local;
+        {
+          std::unique_lock<std::mutex> lock(mutex_);
+          local = *cptr; // copy to avoid holding lock during analysis
+        }
+        const int validFrames = std::min(local.audio.numFrames, (int) (local.audio.channelSamples.empty() ? 0 : local.audio.channelSamples[0].size()));
+        AnalyzeChunk(local, validFrames, (double) targetSampleRate);
+        {
+          std::unique_lock<std::mutex> lock(mutex_);
+          if (gi >= 0 && gi < (int) chunks_.size()) chunks_[gi] = std::move(local);
+        }
+        ++stats.chunksProcessed;
+      }
+    }
+    return stats;
+  }
+
   int Brain::GetTotalChunks() const
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -524,7 +566,17 @@ namespace synaptic
     int32_t chunkSize = mChunkSize;
     out.Put(&chunkSize);
     // Window type for analysis (store as string for readability)
-    std::string win = "hann"; // current analysis uses Window in AnalyzeChunk with SetWindow provided externally
+    std::string win = "hann";
+    if (mWindow)
+    {
+      switch (mWindow->GetType())
+      {
+        case Window::Type::Hann: win = "hann"; break;
+        case Window::Type::Hamming: win = "hamming"; break;
+        case Window::Type::Blackman: win = "blackman"; break;
+        case Window::Type::Rectangular: win = "rectangular"; break;
+      }
+    }
     PutString(out, win);
 
     int32_t nFiles = (int32_t) files_.size();
@@ -593,6 +645,11 @@ namespace synaptic
     uint16_t ver = 0; pos = in.Get(&ver, pos); if (pos < 0 || ver > kSnapshotVersion) return -1;
     int32_t chunkSize = 0; pos = in.Get(&chunkSize, pos); if (pos < 0) return -1; mChunkSize = chunkSize;
     std::string win; if (!GetString(in, pos, win)) return -1;
+    // Save imported window type for caller to consume
+    if (win == "hann") mSavedAnalysisWindowType = SavedWindowType::Hann;
+    else if (win == "hamming") mSavedAnalysisWindowType = SavedWindowType::Hamming;
+    else if (win == "blackman") mSavedAnalysisWindowType = SavedWindowType::Blackman;
+    else if (win == "rectangular") mSavedAnalysisWindowType = SavedWindowType::Rectangular;
 
     files_.clear(); idToFileIndex_.clear(); chunks_.clear();
 

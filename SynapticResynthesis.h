@@ -27,6 +27,8 @@ enum EMsgTags
   kMsgTagBinaryTest = 3,
   kMsgTagSetChunkSize = 4,
   kMsgTagSetBufferWindowSize = 5,
+  // Analysis window used for offline brain analysis (non-automatable IParam mirrors this)
+  kMsgTagSetAnalysisWindowMode = 8,
   kMsgTagSetOutputWindowMode = 7,
   kMsgTagSetAlgorithm = 6,
   // Brain UI -> C++ messages
@@ -74,6 +76,7 @@ private:
   int mChunkSize = 3000;
   int mBufferWindowSize = 1;
   int mOutputWindowMode = 1; // 1=Hann,2=Hamming,3=Blackman,4=Rectangular
+  int mAnalysisWindowMode = 1; // 1=Hann,2=Hamming,3=Blackman,4=Rectangular (for Brain analysis)
   synaptic::AudioStreamChunker mChunker {2};
   std::unique_ptr<synaptic::IChunkBufferTransformer> mTransformer;
   int mAlgorithmId = 0; // 0=passthrough, 1=sine, 2=samplebrain
@@ -81,6 +84,7 @@ private:
   int mParamIdxChunkSize = -1;
   int mParamIdxBufferWindow = -1;
   int mParamIdxOutputWindow = -1;
+  int mParamIdxAnalysisWindow = -1;
   int mParamIdxAlgorithm = -1;
   int mParamIdxDirtyFlag = -1; // hidden internal param used to nudge host dirty state
   struct TransformerParamBinding {
@@ -116,4 +120,9 @@ private:
   std::atomic<bool> mPendingSendBrainSummary { false };
   std::atomic<bool> mPendingSendDSPConfig { false };
   std::atomic<bool> mPendingMarkDirty { false };
+
+  // Import coordination
+  std::atomic<int> mPendingImportedChunkSize { -1 }; // -1 = none
+  std::atomic<int> mPendingImportedAnalysisWindow { -1 }; // 1..4, -1 none
+  std::atomic<bool> mSuppressNextAnalysisReanalyze { false };
 };

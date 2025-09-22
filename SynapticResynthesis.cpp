@@ -32,10 +32,10 @@ namespace {
 
   static int ComputeTotalParams()
   {
-    // base params (kNumParams) + ChunkSize + BufferWindow + Algorithm + OutputWindow + union of transformer params + hidden dirty flag
+    // base params (kNumParams) + ChunkSize + BufferWindow + Algorithm + OutputWindow + DirtyFlag + AnalysisWindow + union of transformer params
     std::vector<synaptic::IChunkBufferTransformer::ExposedParamDesc> unionDescs;
     BuildTransformerUnion(unionDescs);
-    return kNumParams + 5 + (int) unionDescs.size();
+    return kNumParams + 6 + (int) unionDescs.size();
   }
 }
 
@@ -103,10 +103,18 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
   GetParam(mParamIdxOutputWindow)->SetDisplayText(2, "Blackman");
   GetParam(mParamIdxOutputWindow)->SetDisplayText(3, "Rectangular");
 
+  // Analysis window function (for brain analysis)
+  mParamIdxAnalysisWindow = kNumParams + 5;
+  GetParam(mParamIdxAnalysisWindow)->InitEnum("Chunk Analysis Window", mAnalysisWindowMode - 1, 4, "", IParam::kFlagCannotAutomate);
+  GetParam(mParamIdxAnalysisWindow)->SetDisplayText(0, "Hann");
+  GetParam(mParamIdxAnalysisWindow)->SetDisplayText(1, "Hamming");
+  GetParam(mParamIdxAnalysisWindow)->SetDisplayText(2, "Blackman");
+  GetParam(mParamIdxAnalysisWindow)->SetDisplayText(3, "Rectangular");
+
   // Build union descs and initialize the remaining pre-allocated params
   std::vector<synaptic::IChunkBufferTransformer::ExposedParamDesc> unionDescs;
   BuildTransformerUnion(unionDescs);
-  int base = kNumParams + 4;
+  int base = kNumParams + 6;
   mTransformerBindings.clear();
   for (size_t i = 0; i < unionDescs.size(); ++i)
   {
@@ -167,6 +175,38 @@ void SynapticResynthesis::DrainUiQueueOnMainThread()
       local.swap(mUiQueue);
     }
   }
+  // Apply any pending imported settings (chunk size + analysis window) on main thread
+  {
+    const int impCS = mPendingImportedChunkSize.exchange(-1);
+    const int impAW = mPendingImportedAnalysisWindow.exchange(-1);
+    if (impCS > 0 || impAW > 0)
+    {
+      if (impCS > 0 && mParamIdxChunkSize >= 0)
+      {
+        const double norm = GetParam(mParamIdxChunkSize)->ToNormalized((double) impCS);
+        BeginInformHostOfParamChangeFromUI(mParamIdxChunkSize);
+        SendParameterValueFromUI(mParamIdxChunkSize, norm);
+        EndInformHostOfParamChangeFromUI(mParamIdxChunkSize);
+        mChunkSize = impCS;
+        mChunker.SetChunkSize(mChunkSize);
+      }
+      if (impAW > 0 && mParamIdxAnalysisWindow >= 0)
+      {
+        const int idx = std::clamp(impAW - 1, 0, 3);
+        const double norm = GetParam(mParamIdxAnalysisWindow)->ToNormalized((double) idx);
+        mSuppressNextAnalysisReanalyze = true;
+        BeginInformHostOfParamChangeFromUI(mParamIdxAnalysisWindow);
+        SendParameterValueFromUI(mParamIdxAnalysisWindow, norm);
+        EndInformHostOfParamChangeFromUI(mParamIdxAnalysisWindow);
+        mAnalysisWindowMode = impAW;
+      }
+      // Update analysis window instance and Brain pointer, but suppress auto-reanalysis because data already analyzed in file
+      auto toWin = [](int v){ using WT = synaptic::Window::Type; switch (v) { case 1: return WT::Hann; case 2: return WT::Hamming; case 3: return WT::Blackman; case 4: return WT::Rectangular; default: return WT::Hann; } };
+      mWindow.Set(toWin(mAnalysisWindowMode), mChunkSize);
+      mBrain.SetWindow(&mWindow);
+      SendDSPConfigToUI();
+    }
+  }
   for (const auto& s : local)
     SendArbitraryMsgFromDelegate(-1, (int) s.size(), s.c_str());
 }
@@ -221,8 +261,13 @@ void SynapticResynthesis::OnReset()
   if (mParamIdxBufferWindow >= 0) mBufferWindowSize = std::max(1, GetParam(mParamIdxBufferWindow)->Int());
   if (mParamIdxAlgorithm >= 0) mAlgorithmId = GetParam(mParamIdxAlgorithm)->Int();
   if (mParamIdxOutputWindow >= 0) mOutputWindowMode = 1 + std::clamp(GetParam(mParamIdxOutputWindow)->Int(), 0, 3);
+  if (mParamIdxAnalysisWindow >= 0) mAnalysisWindowMode = 1 + std::clamp(GetParam(mParamIdxAnalysisWindow)->Int(), 0, 3);
 
-  mWindow.Set(synaptic::Window::Type::Hann, mChunkSize);
+  auto toWin = [](int v){
+    using WT = synaptic::Window::Type;
+    switch (v) { case 1: return WT::Hann; case 2: return WT::Hamming; case 3: return WT::Blackman; case 4: return WT::Rectangular; default: return WT::Hann; }
+  };
+  mWindow.Set(toWin(mAnalysisWindowMode), mChunkSize);
   mBrain.SetWindow(&mWindow);
 
   mChunker.SetChunkSize(mChunkSize);
@@ -312,8 +357,12 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
     DBGMSG("Set Chunk Size: %i\n", mChunkSize);
     mChunker.SetChunkSize(mChunkSize);
 
-    // Update window size to match new chunk size
-    mWindow.Set(synaptic::Window::Type::Hann, mChunkSize);
+    // Update analysis window size to match new chunk size
+    auto toWin = [](int v){
+      using WT = synaptic::Window::Type;
+      switch (v) { case 1: return WT::Hann; case 2: return WT::Hamming; case 3: return WT::Blackman; case 4: return WT::Rectangular; default: return WT::Hann; }
+    };
+    mWindow.Set(toWin(mAnalysisWindowMode), mChunkSize);
 
     {
       nlohmann::json j; j["id"] = "brainChunkSize"; j["size"] = mChunkSize;
@@ -373,6 +422,47 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
     if (mTransformer)
     {
       mTransformer->SetOutputWindowMode(toMode(mOutputWindowMode));
+    }
+    SendDSPConfigToUI();
+    return true;
+  }
+  else if (msgTag == kMsgTagSetAnalysisWindowMode)
+  {
+    // ctrlTag carries an integer enum: 1=Hann,2=Hamming,3=Blackman,4=Rectangular
+    auto toWin = [](int v){
+      using WT = synaptic::Window::Type;
+      switch (v) { case 1: return WT::Hann; case 2: return WT::Hamming; case 3: return WT::Blackman; case 4: return WT::Rectangular; default: return WT::Hann; }
+    };
+    mAnalysisWindowMode = std::clamp(ctrlTag, 1, 4);
+    if (mParamIdxAnalysisWindow >= 0)
+    {
+      const int idx = mAnalysisWindowMode - 1;
+      const double norm = GetParam(mParamIdxAnalysisWindow)->ToNormalized((double) idx);
+      BeginInformHostOfParamChangeFromUI(mParamIdxAnalysisWindow);
+      SendParameterValueFromUI(mParamIdxAnalysisWindow, norm);
+      EndInformHostOfParamChangeFromUI(mParamIdxAnalysisWindow);
+    }
+    // Update analysis window used by Brain
+    mWindow.Set(toWin(mAnalysisWindowMode), mChunkSize);
+    mBrain.SetWindow(&mWindow);
+    // Trigger background reanalysis of all existing chunks
+    { nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Reanalyzing..."); const std::string payload = j.dump(); SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str()); }
+    if (!mRechunking.exchange(true))
+    {
+      std::thread([this]()
+      {
+        auto stats = mBrain.ReanalyzeAllChunks((int) GetSampleRate());
+        DBGMSG("Brain Reanalyze: files=%d chunks=%d\n", stats.filesProcessed, stats.chunksProcessed);
+        mBrainDirty = true;
+        mPendingSendBrainSummary = true;
+        { nlohmann::json j; j["id"] = "overlay"; j["visible"] = false; EnqueueUiPayload(j.dump()); }
+        mPendingMarkDirty = true;
+        mRechunking = false;
+      }).detach();
+    }
+    else
+    {
+      DBGMSG("Reanalyze request ignored: job already running.\n");
     }
     SendDSPConfigToUI();
     return true;
@@ -611,6 +701,18 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
       mBrain.DeserializeSnapshotFromChunk(in, 0);
       mBrain.SetWindow(&mWindow);
       mExternalBrainPath = openPath; mUseExternalBrain = true; mBrainDirty = false;
+      // After import, align UI params to imported brain's settings
+      const int importedChunkSize = mBrain.GetChunkSize();
+      int importedWindowMode = 1;
+      switch (mBrain.GetSavedAnalysisWindowType())
+      {
+        case synaptic::Brain::SavedWindowType::Hann: importedWindowMode = 1; break;
+        case synaptic::Brain::SavedWindowType::Hamming: importedWindowMode = 2; break;
+        case synaptic::Brain::SavedWindowType::Blackman: importedWindowMode = 3; break;
+        case synaptic::Brain::SavedWindowType::Rectangular: importedWindowMode = 4; break;
+      }
+      mPendingImportedChunkSize = importedChunkSize;
+      mPendingImportedAnalysisWindow = importedWindowMode;
       // Defer UI updates
       mPendingSendBrainSummary = true;
       { nlohmann::json j; j["id"] = "brainExternalRef"; j["info"] = { {"path", mExternalBrainPath} }; EnqueueUiPayload(j.dump()); }
@@ -810,8 +912,12 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
     mChunkSize = std::max(1, GetParam(mParamIdxChunkSize)->Int());
     mChunker.SetChunkSize(mChunkSize);
 
-    // Update window size to match new chunk size
-    mWindow.Set(synaptic::Window::Type::Hann, mChunkSize);
+    // Update analysis window size to match new chunk size
+    auto toWin = [](int v){
+      using WT = synaptic::Window::Type;
+      switch (v) { case 1: return WT::Hann; case 2: return WT::Hamming; case 3: return WT::Blackman; case 4: return WT::Rectangular; default: return WT::Hann; }
+    };
+    mWindow.Set(toWin(mAnalysisWindowMode), mChunkSize);
 
     // Do NOT rechunk synchronously on the audio thread. The UI button handler launches a background rechunk when needed.
     SetLatency(ComputeLatencySamples());
@@ -886,6 +992,41 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
       switch (mOutputWindowMode) { case 1: mode = OW::Hann; break; case 2: mode = OW::Hamming; break; case 3: mode = OW::Blackman; break; case 4: mode = OW::Rectangular; break; default: break; }
       mTransformer->SetOutputWindowMode(mode);
     }
+    return;
+  }
+
+  if (paramIdx == mParamIdxAnalysisWindow && mParamIdxAnalysisWindow >= 0)
+  {
+    mAnalysisWindowMode = 1 + std::clamp(GetParam(mParamIdxAnalysisWindow)->Int(), 0, 3);
+    auto toWin = [](int v){
+      using WT = synaptic::Window::Type;
+      switch (v) { case 1: return WT::Hann; case 2: return WT::Hamming; case 3: return WT::Blackman; case 4: return WT::Rectangular; default: return WT::Hann; }
+    };
+    mWindow.Set(toWin(mAnalysisWindowMode), mChunkSize);
+    mBrain.SetWindow(&mWindow);
+    // Kick background reanalysis when analysis window changes via host/restore, unless suppressed (e.g. import sync)
+    if (!mSuppressNextAnalysisReanalyze.exchange(false))
+    {
+      { nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Reanalyzing..."); const std::string payload = j.dump(); SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str()); }
+      if (!mRechunking.exchange(true))
+      {
+        std::thread([this]()
+        {
+          auto stats = mBrain.ReanalyzeAllChunks((int) GetSampleRate());
+          DBGMSG("Brain Reanalyze: files=%d chunks=%d\n", stats.filesProcessed, stats.chunksProcessed);
+          mBrainDirty = true;
+          mPendingSendBrainSummary = true;
+          { nlohmann::json j; j["id"] = "overlay"; j["visible"] = false; EnqueueUiPayload(j.dump()); }
+          mPendingMarkDirty = true;
+          mRechunking = false;
+        }).detach();
+      }
+      else
+      {
+        DBGMSG("Reanalyze request ignored: job already running.\n");
+      }
+    }
+    mPendingSendDSPConfig = true;
     return;
   }
 
@@ -965,6 +1106,7 @@ void SynapticResynthesis::SendDSPConfigToUI()
   j["chunkSize"] = mChunkSize;
   j["bufferWindowSize"] = mBufferWindowSize;
   j["outputWindowMode"] = mOutputWindowMode; // 1=Hann,2=Hamming,3=Blackman,4=Rectangular
+  j["analysisWindowMode"] = mAnalysisWindowMode; // 1=Hann,2=Hamming,3=Blackman,4=Rectangular
   j["algorithmId"] = mAlgorithmId;
   // storage info
   j["useExternalBrain"] = mUseExternalBrain;

@@ -166,6 +166,18 @@
       gap: 10px;
       margin-top: 8px;
     }
+    .reanalysis-box {
+      border: 2px dashed #f59e0b;
+      background: #fffbeb;
+      border-radius: 8px;
+      padding: 10px;
+      margin-top: 8px;
+    }
+    .reanalysis-box .hint {
+      color: #92400e;
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
     .param-row {
       display: flex;
       align-items: center;
@@ -364,6 +376,7 @@
         case "dspConfig": {
           const cs = document.getElementById('chunkSize');
           const ow = document.getElementById('outputWindow');
+          const aw = document.getElementById('analysisWindow');
           const alg = document.getElementById('algorithm');
           if (alg && Array.isArray(json["algorithms"])) {
             alg.innerHTML = '';
@@ -376,6 +389,7 @@
           }
           if (cs && typeof json["chunkSize"] === 'number') cs.value = json["chunkSize"];
           if (ow && typeof json["outputWindowMode"] === 'number') ow.value = String(json["outputWindowMode"]);
+          if (aw && typeof json["analysisWindowMode"] === 'number') aw.value = String(json["analysisWindowMode"]);
           if (alg && json["algorithmId"] !== undefined) alg.value = String(json["algorithmId"]);
           const bcs = document.getElementById('brain-chunk-size');
           if (bcs && typeof json["chunkSize"] === 'number') bcs.textContent = String(json["chunkSize"]);
@@ -446,9 +460,21 @@
 <h1>Synaptic Resynthesis</h1>
 <div id="dsp-section" class="controls-container">
   <div class="input-container">
-    <div class="input-group">
-      <label for="chunkSize">Chunk Size</label>
-      <input type="number" id="chunkSize" min="1" step="1" value="4096" />
+    <div class="reanalysis-box">
+      <div class="hint">Changing these settings will cause the Brain to reanalyze its chunks.</div>
+      <div class="input-group">
+        <label for="chunkSize">Chunk Size</label>
+        <input type="number" id="chunkSize" min="1" step="1" value="4096" />
+      </div>
+      <div class="input-group">
+        <label for="analysisWindow">Chunk Analysis Window</label>
+        <select id="analysisWindow">
+          <option value="1" selected>Hann</option>
+          <option value="2">Hamming</option>
+          <option value="3">Blackman</option>
+          <option value="4">Rectangular</option>
+        </select>
+      </div>
     </div>
     <div class="input-group">
       <label for="outputWindow">Output Window Function</label>
@@ -588,6 +614,7 @@
     const chunkSizeInput = document.getElementById('chunkSize');
     const bufferWindowSizeInput = document.getElementById('bufferWindowSize');
     const outputWindowSelect = document.getElementById('outputWindow');
+    const analysisWindowSelect = document.getElementById('analysisWindow');
     const algorithmSelect = document.getElementById('algorithm');
 
     function sanitizeInt(value, fallback, minVal = 1) {
@@ -608,6 +635,12 @@
       }
     }
 
+    function sendAnalysisWindowMode(value) {
+      if (typeof window['SAMFUI'] === 'function') {
+        window['SAMFUI'](8, value);
+      }
+    }
+
     function sendAlgorithm(value) {
       if (typeof window['SAMFUI'] === 'function') {
         window['SAMFUI'](6, value);
@@ -625,6 +658,11 @@
       sendOutputWindowMode(v);
     };
 
+    const onAnalysisWindowChange = (e) => {
+      const v = parseInt(e.target.value, 10) || 1;
+      sendAnalysisWindowMode(v);
+    };
+
     const onAlgorithmChange = (e) => {
       const v = parseInt(e.target.value, 10) || 0;
       sendAlgorithm(v);
@@ -636,6 +674,10 @@
 
     if (outputWindowSelect) {
       outputWindowSelect.addEventListener('change', onOutputWindowChange);
+    }
+
+    if (analysisWindowSelect) {
+      analysisWindowSelect.addEventListener('change', onAnalysisWindowChange);
     }
 
     if (algorithmSelect) {
