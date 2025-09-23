@@ -22,7 +22,7 @@ public:
   static float Harmonicity(float* input, int inputSize, int sampleRate, std::pair<float, float> fund) {
     float frequencyStep = (float)sampleRate / inputSize;
 
-    float m = ((sampleRate / 2) / fund.first);
+    float m = (sampleRate / 2) / fund.first;
     float harmonicity = m - std::floor(m);
 
     for (int i = 1; i < inputSize; i++)
@@ -34,8 +34,27 @@ public:
     return harmonicity;
   }
 
-  static float Monotony(float* input, int inputSize, int sampleRate, std::pair<float, float> fund) {
-    return -1.0; // TODO
+  static float Monotony(float* input, int inputSize, int sampleRate, std::pair<float, float> fund)
+  {
+    float monotony = 0;
+
+    float a_1 = input[0];
+    
+    for (int i = 1; i < inputSize; i++)
+    {
+      float a = std::sqrt(input[2 * i] * input[2 * i] + input[2 * i + 1] * input[2 * i + 1]);
+      float a_slope = a - a_1;
+
+      monotony += a_slope;
+
+      a_1 = a;
+    }
+
+    monotony += a_1 - input[1]; // nyquist (per pffft implementation)
+
+    monotony *= fund.first / sampleRate;
+
+    return monotony;
   }
 
   static float MeanAffinity(float* input, int inputSize, int sampleRate, std::pair<float, float> fund) {
