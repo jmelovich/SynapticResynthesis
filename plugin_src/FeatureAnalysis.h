@@ -20,7 +20,18 @@ public:
   }
 
   static float Harmonicity(float* input, int inputSize, int sampleRate, std::pair<float, float> fund) {
-    return -1.0; // TODO
+    float frequencyStep = (float)sampleRate / inputSize;
+
+    float m = ((sampleRate / 2) / fund.first);
+    float harmonicity = m - std::floor(m);
+
+    for (int i = 1; i < inputSize; i++)
+    {
+      m = frequencyStep*i / fund.first;
+      harmonicity += m - std::floor(m);
+    }
+
+    return harmonicity;
   }
 
   static float Monotony(float* input, int inputSize, int sampleRate, std::pair<float, float> fund) {
