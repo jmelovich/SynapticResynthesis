@@ -119,7 +119,7 @@ namespace synaptic
     chunk.fftSize = Nfft;
     chunk.fftMagnitudePerChannel.assign(chCount, std::vector<float>(Nfft/2 + 1, 0.0f));
     chunk.fftDominantHzPerChannel.assign(chCount, 0.0);
-
+    
     // Prepare PFFFT setup once per chunk
     PFFFT_Setup* setup = pffft_new_setup(Nfft, PFFFT_REAL);
     if (setup)
