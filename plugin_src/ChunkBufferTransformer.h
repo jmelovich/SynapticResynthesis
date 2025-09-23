@@ -27,24 +27,8 @@ namespace synaptic
     virtual void OnReset(double sampleRate, int chunkSize, int bufferWindowSize, int numChannels) = 0;
 
     // Called from audio thread each block to consume pending input chunks
-    // and push transformed output chunks. This wrapper calls ProcessCore()
-    // and then applies output windowing to any newly enqueued output chunks.
-    void Process(AudioStreamChunker& chunker)
-    {
-      const int prevOutCount = chunker.GetOutputCount();
-      ProcessCore(chunker);
-      if (mEnableOutputWindowing)
-      {
-        const int newOutCount = chunker.GetOutputCount();
-        for (int i = prevOutCount; i < newOutCount; ++i)
-        {
-          const int idx = chunker.GetOutputIndexFromOldest(i);
-          AudioChunk* out = chunker.GetMutableChunkByIndex(idx);
-          if (out)
-            ApplyWindowToChunk(*out);
-        }
-      }
-    }
+    // and push transformed output chunks.
+    virtual void Process(AudioStreamChunker& chunker) = 0;
 
     // Additional algorithmic latency in samples (not including chunk accumulation).
     // Useful when algorithms require extra buffering/lookahead.
@@ -52,6 +36,10 @@ namespace synaptic
 
     // Required lookahead in chunks before processing (to gate scheduling).
     virtual int GetRequiredLookaheadChunks() const = 0;
+
+    // Whether this transformer's output should be overlap-added by the chunker.
+    // If false, the chunker will use simple sequential playback.
+    virtual bool WantsOverlapAdd() const { return true; }
 
     // Generic parameter exposure API for UI
     enum class ParamType { Number, Boolean, Enum, Text };
@@ -94,62 +82,45 @@ namespace synaptic
     virtual bool SetParamFromBool(const std::string& /*id*/, bool /*v*/) { return false; }
     virtual bool SetParamFromString(const std::string& /*id*/, const std::string& /*v*/) { return false; }
 
-    // Global output windowing mode (none or specific function) controlled by host/UI.
-    enum class OutputWindowMode { Hann = 1, Hamming = 2, Blackman = 3, Rectangular = 4 };
-    void SetOutputWindowMode(OutputWindowMode mode)
-    {
-      mOutputWindowMode = mode;
-      mEnableOutputWindowing = true;
-    }
-
   protected:
-    // Core transform implementation to be provided by derived classes.
-    virtual void ProcessCore(AudioStreamChunker& chunker) = 0;
-
-    // Overridable hook to apply output windowing to a single chunk.
-    // Default: Hann window across valid frames on all channels.
-    virtual void ApplyWindowToChunk(AudioChunk& chunk)
+    // Helper function to copy input chunk to output chunk (common pattern)
+    static bool CopyInputToOutput(AudioStreamChunker& chunker, int inIdx)
     {
-      const int N = std::max(0, chunk.numFrames);
-      if (N <= 0) return;
-        // Lazily (re)build window if needed
-      const Window::Type desiredType = ToWindowType(mOutputWindowMode);
-      if (mWindow.Size() != N || mWindow.GetType() != desiredType)
+      int outIdx;
+      if (!chunker.AllocateWritableChunkIndex(outIdx))
       {
-        mWindow.Set(desiredType, N);
+        chunker.EnqueueOutputChunkIndex(inIdx);
+        return false;
       }
-      const auto& w = mWindow.Coeffs();
-      const int W = (int) w.size();
-      const int applyN = std::min(N, W);
-      const int chCount = (int) chunk.channelSamples.size();
-      for (int ch = 0; ch < chCount; ++ch)
+
+      AudioChunk* out = chunker.GetWritableChunkByIndex(outIdx);
+      const AudioChunk* in = chunker.GetChunkConstByIndex(inIdx);
+      if (!out || !in)
       {
-        auto& buf = chunk.channelSamples[ch];
-        const int M = std::min(applyN, (int) buf.size());
-        for (int i = 0; i < M; ++i)
-        {
-          buf[i] = (iplug::sample) (buf[i] * (iplug::sample) w[i]);
-        }
+        chunker.EnqueueOutputChunkIndex(inIdx);
+        return false;
       }
-    }
 
-    // Toggle for default windowing behavior.
-    bool mEnableOutputWindowing = true;
+      const int numChannels = (int) in->channelSamples.size();
+      const int outChunkSize = chunker.GetChunkSize();
+      const int framesToWrite = std::min(outChunkSize, std::max(0, in->numFrames));
 
-  private:
-    Window mWindow;
-    OutputWindowMode mOutputWindowMode = OutputWindowMode::Hann;
+      if ((int) out->channelSamples.size() != numChannels)
+        out->channelSamples.assign(numChannels, std::vector<iplug::sample>(outChunkSize, 0.0));
 
-    static Window::Type ToWindowType(OutputWindowMode m)
-    {
-      switch (m)
+      for (int ch = 0; ch < numChannels; ++ch)
       {
-        case OutputWindowMode::Hann: return Window::Type::Hann;
-        case OutputWindowMode::Hamming: return Window::Type::Hamming;
-        case OutputWindowMode::Blackman: return Window::Type::Blackman;
-        case OutputWindowMode::Rectangular: return Window::Type::Rectangular;
-        default: return Window::Type::Hann;
+        if ((int) out->channelSamples[ch].size() < outChunkSize)
+          out->channelSamples[ch].assign(outChunkSize, 0.0);
+        const int copyN = std::min(framesToWrite, (int) in->channelSamples[ch].size());
+        if (copyN > 0)
+          std::memcpy(out->channelSamples[ch].data(), in->channelSamples[ch].data(), sizeof(iplug::sample) * copyN);
+        for (int i = copyN; i < outChunkSize; ++i)
+          out->channelSamples[ch][i] = 0.0;
       }
+
+      chunker.CommitWritableChunkIndex(outIdx, framesToWrite);
+      return true;
     }
   };
 
@@ -159,42 +130,12 @@ namespace synaptic
   public:
     void OnReset(double /*sampleRate*/, int /*chunkSize*/, int /*bufferWindowSize*/, int /*numChannels*/) override {}
 
-    void ProcessCore(AudioStreamChunker& chunker) override
+    void Process(AudioStreamChunker& chunker) override
     {
       int inIdx;
       while (chunker.PopPendingInputChunkIndex(inIdx))
       {
-        // Allocate a fresh output chunk to avoid mutating input/windows
-        int outIdx;
-        if (!chunker.AllocateWritableChunkIndex(outIdx))
-        {
-          // Fallback: if no space, enqueue original (will be windowed in-place which may affect lookahead)
-          chunker.EnqueueOutputChunkIndex(inIdx);
-          continue;
-        }
-        AudioChunk* out = chunker.GetWritableChunkByIndex(outIdx);
-        const AudioChunk* in = chunker.GetChunkConstByIndex(inIdx);
-        if (!out || !in)
-        {
-          chunker.EnqueueOutputChunkIndex(inIdx);
-          continue;
-        }
-        const int numChannels = (int) in->channelSamples.size();
-        const int outChunkSize = chunker.GetChunkSize();
-        const int framesToWrite = std::min(outChunkSize, std::max(0, in->numFrames));
-        if ((int) out->channelSamples.size() != numChannels)
-          out->channelSamples.assign(numChannels, std::vector<iplug::sample>(outChunkSize, 0.0));
-        for (int ch = 0; ch < numChannels; ++ch)
-        {
-          if ((int) out->channelSamples[ch].size() < outChunkSize)
-            out->channelSamples[ch].assign(outChunkSize, 0.0);
-          const int copyN = std::min(framesToWrite, (int) in->channelSamples[ch].size());
-          if (copyN > 0)
-            std::memcpy(out->channelSamples[ch].data(), in->channelSamples[ch].data(), sizeof(iplug::sample) * copyN);
-          // zero-fill remainder if any
-          for (int i = copyN; i < outChunkSize; ++i) out->channelSamples[ch][i] = 0.0;
-        }
-        chunker.CommitWritableChunkIndex(outIdx, framesToWrite);
+        CopyInputToOutput(chunker, inIdx);
       }
     }
 
@@ -219,7 +160,7 @@ namespace synaptic
       mSampleRate = (sampleRate > 0.0) ? sampleRate : 48000.0;
     }
 
-    void ProcessCore(AudioStreamChunker& chunker) override
+    void Process(AudioStreamChunker& chunker) override
     {
       const int chunkSize = chunker.GetChunkSize();
       const int numChannels = chunker.GetNumChannels();
@@ -341,7 +282,7 @@ namespace synaptic
 
     void SetBrain(const Brain* brain) { mBrain = brain; }
 
-    void ProcessCore(AudioStreamChunker& chunker) override
+    void Process(AudioStreamChunker& chunker) override
     {
       if (!mBrain)
       {
@@ -349,35 +290,7 @@ namespace synaptic
         int idx;
         while (chunker.PopPendingInputChunkIndex(idx))
         {
-          // allocate and copy to keep output separate from input
-          int outIdx;
-          if (!chunker.AllocateWritableChunkIndex(outIdx))
-          {
-            chunker.EnqueueOutputChunkIndex(idx);
-            continue;
-          }
-          AudioChunk* out = chunker.GetWritableChunkByIndex(outIdx);
-          const AudioChunk* in = chunker.GetChunkConstByIndex(idx);
-          if (!out || !in)
-          {
-            chunker.EnqueueOutputChunkIndex(idx);
-            continue;
-          }
-          const int numChannels = (int) in->channelSamples.size();
-          const int outChunkSize = chunker.GetChunkSize();
-          const int framesToWrite = std::min(outChunkSize, std::max(0, in->numFrames));
-          if ((int) out->channelSamples.size() != numChannels)
-            out->channelSamples.assign(numChannels, std::vector<iplug::sample>(outChunkSize, 0.0));
-          for (int ch = 0; ch < numChannels; ++ch)
-          {
-            if ((int) out->channelSamples[ch].size() < outChunkSize)
-              out->channelSamples[ch].assign(outChunkSize, 0.0);
-            const int copyN = std::min(framesToWrite, (int) in->channelSamples[ch].size());
-            if (copyN > 0)
-              std::memcpy(out->channelSamples[ch].data(), in->channelSamples[ch].data(), sizeof(iplug::sample) * copyN);
-            for (int i = copyN; i < outChunkSize; ++i) out->channelSamples[ch][i] = 0.0;
-          }
-          chunker.CommitWritableChunkIndex(outIdx, framesToWrite);
+          CopyInputToOutput(chunker, idx);
         }
         return;
       }
@@ -587,7 +500,7 @@ namespace synaptic
       out.clear();
       ExposedParamDesc p0;
       p0.id = "inputWindow";
-      p0.label = "Input Chunk Windowing";
+      p0.label = "Input Analysis Window";
       p0.type = ParamType::Enum;
       p0.control = ControlType::Select;
       p0.options = {

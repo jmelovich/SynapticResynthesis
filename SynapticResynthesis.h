@@ -77,9 +77,11 @@ private:
   int mBufferWindowSize = 1;
   int mOutputWindowMode = 1; // 1=Hann,2=Hamming,3=Blackman,4=Rectangular
   int mAnalysisWindowMode = 1; // 1=Hann,2=Hamming,3=Blackman,4=Rectangular (for Brain analysis)
+  bool mEnableOverlapAdd = true; // Enable overlap-add windowing
   synaptic::AudioStreamChunker mChunker {2};
   std::unique_ptr<synaptic::IChunkBufferTransformer> mTransformer;
   int mAlgorithmId = 0; // 0=passthrough, 1=sine, 2=samplebrain
+  synaptic::Window mOutputWindow;
   // Indices of core params created at runtime
   int mParamIdxChunkSize = -1;
   int mParamIdxBufferWindow = -1;
@@ -87,6 +89,7 @@ private:
   int mParamIdxAnalysisWindow = -1;
   int mParamIdxAlgorithm = -1;
   int mParamIdxDirtyFlag = -1; // hidden internal param used to nudge host dirty state
+  int mParamIdxEnableOverlap = -1;
   struct TransformerParamBinding {
     std::string id;
     synaptic::IChunkBufferTransformer::ParamType type;
@@ -108,7 +111,11 @@ private:
   void SendBrainSummaryToUI();
   void SendTransformerParamsToUI();
   void SendDSPConfigToUI();
-  void ApplyTransformerParamsFromIParams();
+  void UpdateChunkerWindowing();
+
+  // Utility function to convert window mode integer to Window::Type
+  static synaptic::Window::Type IntToWindowType(int mode);
+
   // Notify host that state changed (e.g., brain edited) so host marks project as modified
   void MarkHostStateDirty();
 
