@@ -32,10 +32,10 @@ namespace {
 
   static int ComputeTotalParams()
   {
-    // base params (kNumParams) + ChunkSize + BufferWindow + Algorithm + OutputWindow + DirtyFlag + AnalysisWindow + union of transformer params
+    // base params (kNumParams) + ChunkSize + BufferWindow + Algorithm + OutputWindow + DirtyFlag + AnalysisWindow + EnableOverlap + union of transformer params
     std::vector<synaptic::IChunkBufferTransformer::ExposedParamDesc> unionDescs;
     BuildTransformerUnion(unionDescs);
-    return kNumParams + 6 + (int) unionDescs.size();
+    return kNumParams + 7 + (int) unionDescs.size();
   }
 }
 
@@ -63,13 +63,6 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
   mTransformer = synaptic::TransformerFactory::CreateByUiIndex(mAlgorithmId);
   if (auto sb = dynamic_cast<synaptic::SimpleSampleBrainTransformer*>(mTransformer.get()))
     sb->SetBrain(&mBrain);
-  if (mTransformer)
-  {
-    using OW = synaptic::IChunkBufferTransformer::OutputWindowMode;
-    OW mode = OW::Hann;
-    switch (mOutputWindowMode) { case 1: mode = OW::Hann; break; case 2: mode = OW::Hamming; break; case 3: mode = OW::Blackman; break; case 4: mode = OW::Rectangular; break; default: break; }
-    mTransformer->SetOutputWindowMode(mode);
-  }
 
   // Initialize window with default Hann window
   mWindow.Set(synaptic::Window::Type::Hann, mChunkSize); // Default size, will be updated as needed
@@ -111,10 +104,14 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
   GetParam(mParamIdxAnalysisWindow)->SetDisplayText(2, "Blackman");
   GetParam(mParamIdxAnalysisWindow)->SetDisplayText(3, "Rectangular");
 
+  // Enable overlap-add processing
+  mParamIdxEnableOverlap = kNumParams + 6;
+  GetParam(mParamIdxEnableOverlap)->InitBool("Enable Overlap-Add", mEnableOverlapAdd);
+
   // Build union descs and initialize the remaining pre-allocated params
   std::vector<synaptic::IChunkBufferTransformer::ExposedParamDesc> unionDescs;
   BuildTransformerUnion(unionDescs);
-  int base = kNumParams + 6;
+  int base = kNumParams + 7;
   mTransformerBindings.clear();
   for (size_t i = 0; i < unionDescs.size(); ++i)
   {
@@ -201,8 +198,7 @@ void SynapticResynthesis::DrainUiQueueOnMainThread()
         mAnalysisWindowMode = impAW;
       }
       // Update analysis window instance and Brain pointer, but suppress auto-reanalysis because data already analyzed in file
-      auto toWin = [](int v){ using WT = synaptic::Window::Type; switch (v) { case 1: return WT::Hann; case 2: return WT::Hamming; case 3: return WT::Blackman; case 4: return WT::Rectangular; default: return WT::Hann; } };
-      mWindow.Set(toWin(mAnalysisWindowMode), mChunkSize);
+      mWindow.Set(IntToWindowType(mAnalysisWindowMode), mChunkSize);
       mBrain.SetWindow(&mWindow);
       SendDSPConfigToUI();
     }
@@ -262,12 +258,9 @@ void SynapticResynthesis::OnReset()
   if (mParamIdxAlgorithm >= 0) mAlgorithmId = GetParam(mParamIdxAlgorithm)->Int();
   if (mParamIdxOutputWindow >= 0) mOutputWindowMode = 1 + std::clamp(GetParam(mParamIdxOutputWindow)->Int(), 0, 3);
   if (mParamIdxAnalysisWindow >= 0) mAnalysisWindowMode = 1 + std::clamp(GetParam(mParamIdxAnalysisWindow)->Int(), 0, 3);
+  if (mParamIdxEnableOverlap >= 0) mEnableOverlapAdd = GetParam(mParamIdxEnableOverlap)->Bool();
 
-  auto toWin = [](int v){
-    using WT = synaptic::Window::Type;
-    switch (v) { case 1: return WT::Hann; case 2: return WT::Hamming; case 3: return WT::Blackman; case 4: return WT::Rectangular; default: return WT::Hann; }
-  };
-  mWindow.Set(toWin(mAnalysisWindowMode), mChunkSize);
+  mWindow.Set(IntToWindowType(mAnalysisWindowMode), mChunkSize);
   mBrain.SetWindow(&mWindow);
 
   mChunker.SetChunkSize(mChunkSize);
@@ -276,14 +269,7 @@ void SynapticResynthesis::OnReset()
   mChunker.SetNumChannels(NInChansConnected());
   mChunker.Reset();
 
-  // Apply output window mode to transformer
-  if (mTransformer)
-  {
-    using OW = synaptic::IChunkBufferTransformer::OutputWindowMode;
-    OW mode = OW::Hann;
-    switch (mOutputWindowMode) { case 1: mode = OW::Hann; break; case 2: mode = OW::Hamming; break; case 3: mode = OW::Blackman; break; case 4: mode = OW::Rectangular; break; default: break; }
-    mTransformer->SetOutputWindowMode(mode);
-  }
+  UpdateChunkerWindowing();
 
   // Report algorithmic latency to the host (in samples)
   SetLatency(ComputeLatencySamples());
@@ -358,11 +344,9 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
     mChunker.SetChunkSize(mChunkSize);
 
     // Update analysis window size to match new chunk size
-    auto toWin = [](int v){
-      using WT = synaptic::Window::Type;
-      switch (v) { case 1: return WT::Hann; case 2: return WT::Hamming; case 3: return WT::Blackman; case 4: return WT::Rectangular; default: return WT::Hann; }
-    };
-    mWindow.Set(toWin(mAnalysisWindowMode), mChunkSize);
+    mWindow.Set(IntToWindowType(mAnalysisWindowMode), mChunkSize);
+
+    UpdateChunkerWindowing();
 
     {
       nlohmann::json j; j["id"] = "brainChunkSize"; j["size"] = mChunkSize;
@@ -406,10 +390,6 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
   else if (msgTag == kMsgTagSetOutputWindowMode)
   {
     // ctrlTag carries an integer enum: 1=Hann,2=Hamming,3=Blackman,4=Rectangular
-    auto toMode = [](int v){
-      using OW = synaptic::IChunkBufferTransformer::OutputWindowMode;
-      switch (v) { case 1: return OW::Hann; case 2: return OW::Hamming; case 3: return OW::Blackman; case 4: return OW::Rectangular; default: return OW::Hann; }
-    };
     mOutputWindowMode = std::clamp(ctrlTag, 1, 4);
     if (mParamIdxOutputWindow >= 0)
     {
@@ -419,10 +399,9 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
       SendParameterValueFromUI(mParamIdxOutputWindow, norm);
       EndInformHostOfParamChangeFromUI(mParamIdxOutputWindow);
     }
-    if (mTransformer)
-    {
-      mTransformer->SetOutputWindowMode(toMode(mOutputWindowMode));
-    }
+
+    UpdateChunkerWindowing();
+
     SendDSPConfigToUI();
     return true;
   }
@@ -443,7 +422,7 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
       EndInformHostOfParamChangeFromUI(mParamIdxAnalysisWindow);
     }
     // Update analysis window used by Brain
-    mWindow.Set(toWin(mAnalysisWindowMode), mChunkSize);
+    mWindow.Set(IntToWindowType(mAnalysisWindowMode), mChunkSize);
     mBrain.SetWindow(&mWindow);
     // Trigger background reanalysis of all existing chunks
     { nlohmann::json j; j["id"] = "overlay"; j["visible"] = true; j["text"] = std::string("Reanalyzing..."); const std::string payload = j.dump(); SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str()); }
@@ -491,14 +470,7 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
     if (mTransformer)
       mTransformer->OnReset(GetSampleRate(), mChunkSize, mBufferWindowSize, NInChansConnected());
 
-    // Apply global output window mode to the new transformer
-    if (mTransformer)
-    {
-      using OW = synaptic::IChunkBufferTransformer::OutputWindowMode;
-      OW mode = OW::Hann;
-      switch (mOutputWindowMode) { case 1: mode = OW::Hann; break; case 2: mode = OW::Hamming; break; case 3: mode = OW::Blackman; break; case 4: mode = OW::Rectangular; break; default: break; }
-      mTransformer->SetOutputWindowMode(mode);
-    }
+    UpdateChunkerWindowing();
 
     // Reapply persisted IParam values to the new transformer instance
     for (const auto& b : mTransformerBindings)
@@ -913,11 +885,9 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
     mChunker.SetChunkSize(mChunkSize);
 
     // Update analysis window size to match new chunk size
-    auto toWin = [](int v){
-      using WT = synaptic::Window::Type;
-      switch (v) { case 1: return WT::Hann; case 2: return WT::Hamming; case 3: return WT::Blackman; case 4: return WT::Rectangular; default: return WT::Hann; }
-    };
-    mWindow.Set(toWin(mAnalysisWindowMode), mChunkSize);
+    mWindow.Set(IntToWindowType(mAnalysisWindowMode), mChunkSize);
+
+    UpdateChunkerWindowing();
 
     // Do NOT rechunk synchronously on the audio thread. The UI button handler launches a background rechunk when needed.
     SetLatency(ComputeLatencySamples());
@@ -944,15 +914,10 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
       sb->SetBrain(&mBrain);
     if (mTransformer)
       mTransformer->OnReset(GetSampleRate(), mChunkSize, mBufferWindowSize, NInChansConnected());
-    // Apply currently selected global output window mode to the new transformer
-    if (mTransformer)
-    {
-      using OW = synaptic::IChunkBufferTransformer::OutputWindowMode;
-      OW mode = OW::Hann;
-      switch (mOutputWindowMode) { case 1: mode = OW::Hann; break; case 2: mode = OW::Hamming; break; case 3: mode = OW::Blackman; break; case 4: mode = OW::Rectangular; break; default: break; }
-      mTransformer->SetOutputWindowMode(mode);
-    }
-    // Re-apply persisted transformer IParam values (if any) to the new instance
+
+    UpdateChunkerWindowing();
+
+    // Reapply persisted IParam values to the new instance
     for (const auto& b : mTransformerBindings)
     {
       if (b.paramIdx < 0 || !mTransformer) continue;
@@ -985,24 +950,14 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
   if (paramIdx == mParamIdxOutputWindow && mParamIdxOutputWindow >= 0)
   {
     mOutputWindowMode = 1 + std::clamp(GetParam(mParamIdxOutputWindow)->Int(), 0, 3);
-    if (mTransformer)
-    {
-      using OW = synaptic::IChunkBufferTransformer::OutputWindowMode;
-      OW mode = OW::Hann;
-      switch (mOutputWindowMode) { case 1: mode = OW::Hann; break; case 2: mode = OW::Hamming; break; case 3: mode = OW::Blackman; break; case 4: mode = OW::Rectangular; break; default: break; }
-      mTransformer->SetOutputWindowMode(mode);
-    }
+    UpdateChunkerWindowing();
     return;
   }
 
   if (paramIdx == mParamIdxAnalysisWindow && mParamIdxAnalysisWindow >= 0)
   {
     mAnalysisWindowMode = 1 + std::clamp(GetParam(mParamIdxAnalysisWindow)->Int(), 0, 3);
-    auto toWin = [](int v){
-      using WT = synaptic::Window::Type;
-      switch (v) { case 1: return WT::Hann; case 2: return WT::Hamming; case 3: return WT::Blackman; case 4: return WT::Rectangular; default: return WT::Hann; }
-    };
-    mWindow.Set(toWin(mAnalysisWindowMode), mChunkSize);
+    mWindow.Set(IntToWindowType(mAnalysisWindowMode), mChunkSize);
     mBrain.SetWindow(&mWindow);
     // Kick background reanalysis when analysis window changes via host/restore, unless suppressed (e.g. import sync)
     if (!mSuppressNextAnalysisReanalyze.exchange(false))
@@ -1027,6 +982,13 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
       }
     }
     mPendingSendDSPConfig = true;
+    return;
+  }
+
+  if (paramIdx == mParamIdxEnableOverlap && mParamIdxEnableOverlap >= 0)
+  {
+    mEnableOverlapAdd = GetParam(mParamIdxEnableOverlap)->Bool();
+    UpdateChunkerWindowing();
     return;
   }
 
@@ -1129,6 +1091,43 @@ void SynapticResynthesis::SendDSPConfigToUI()
   }
   const std::string payload = j.dump();
   SendArbitraryMsgFromDelegate(-1, (int) payload.size(), payload.c_str());
+}
+
+synaptic::Window::Type SynapticResynthesis::IntToWindowType(int mode)
+{
+  using WT = synaptic::Window::Type;
+  switch (mode)
+  {
+    case 1: return WT::Hann;
+    case 2: return WT::Hamming;
+    case 3: return WT::Blackman;
+    case 4: return WT::Rectangular;
+    default: return WT::Hann;
+  }
+}
+
+void SynapticResynthesis::UpdateChunkerWindowing()
+{
+  // Validate chunk size
+  if (mChunkSize <= 0)
+  {
+    DBGMSG("Warning: Invalid chunk size %d, using default\n", mChunkSize);
+    mChunkSize = 3000;
+  }
+
+  // Set up output window first
+  mOutputWindow.Set(IntToWindowType(mOutputWindowMode), mChunkSize);
+
+  // Configure overlap behavior based on user setting, window type, and transformer capabilities
+  const bool isRectangular = (mOutputWindowMode == 4); // Rectangular
+  const bool transformerWantsOverlap = mTransformer ? mTransformer->WantsOverlapAdd() : true;
+  const bool shouldUseOverlap = mEnableOverlapAdd && !isRectangular && transformerWantsOverlap;
+
+  mChunker.EnableOverlap(shouldUseOverlap);
+  mChunker.SetOutputWindow(mOutputWindow);
+
+  DBGMSG("Window config: type=%d, userEnabled=%s, shouldUseOverlap=%s, chunkSize=%d\n",
+         mOutputWindowMode, mEnableOverlapAdd ? "true" : "false", shouldUseOverlap ? "true" : "false", mChunkSize);
 }
 
 void SynapticResynthesis::MarkHostStateDirty()

@@ -334,6 +334,15 @@
     }
 
     function OnParamChange(param, value) {
+      // Handle overlap checkbox (paramIdx=7)
+      if (param == 7) {
+        const checkbox = document.getElementById('enableOverlap');
+        if (checkbox) {
+          checkbox.checked = value > 0.5;
+        }
+        return;
+      }
+
       // Find the knob control with matching param-id
       const knob = document.querySelector(`knob-control[param-id="${param}"]`);
       if (knob) {
@@ -484,6 +493,10 @@
         <option value="3">Blackman</option>
         <option value="4">Rectangular</option>
       </select>
+    </div>
+    <div class="input-group">
+      <label for="enableOverlap">Enable Overlap-Add Windowing</label>
+      <input type="checkbox" id="enableOverlap" checked />
     </div>
     <div class="input-group">
       <label for="algorithm">Transformer</label>
@@ -682,6 +695,17 @@
 
     if (algorithmSelect) {
       algorithmSelect.addEventListener('change', onAlgorithmChange);
+    }
+
+    // Enable Overlap-Add checkbox
+    const enableOverlapCheckbox = document.getElementById('enableOverlap');
+    if (enableOverlapCheckbox) {
+      enableOverlapCheckbox.addEventListener('change', (e) => {
+        const isChecked = e.target.checked;
+        if (typeof window['SPVFUI'] === 'function') {
+          window['SPVFUI'](7, isChecked ? 1.0 : 0.0); // paramIdx=7 for EnableOverlap (kNumParams+6)
+        }
+      });
     }
 
     // Generic transformer params UI rendering and messaging

@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "IPlug_include_in_plug_hdr.h"
+#include "Window.h"
 
 namespace synaptic
 {
@@ -76,16 +77,27 @@ namespace synaptic
 
     void Configure(int numChannels, int chunkSize, int windowSize)
     {
-      mNumChannels = std::max(1, numChannels);
-      mChunkSize = std::max(1, chunkSize);
-      mBufferWindowSize = std::max(1, windowSize);
+      const int newNumChannels = std::max(1, numChannels);
+      const int newChunkSize = std::max(1, chunkSize);
+      const int newBufferWindowSize = std::max(1, windowSize);
+      const int newPoolCapacity = newBufferWindowSize + mExtraPool;
 
+      // Only reallocate if dimensions actually changed
+      const bool needsReallocation = (newNumChannels != mNumChannels ||
+                                     newChunkSize != mChunkSize ||
+                                     newPoolCapacity != mPoolCapacity);
+
+      mNumChannels = newNumChannels;
+      mChunkSize = newChunkSize;
+      mBufferWindowSize = newBufferWindowSize;
+      mPoolCapacity = newPoolCapacity;
+
+      if (needsReallocation)
+      {
       // Pre-size accumulation scratch
       mAccumulation.assign(mNumChannels, std::vector<sample>(mChunkSize, 0.0));
-      mAccumulatedFrames = 0;
 
       // Pool sizing: window + extra headroom for pending/output
-      mPoolCapacity = mBufferWindowSize + mExtraPool;
       mPool.assign(mPoolCapacity, {});
       for (int i = 0; i < mPoolCapacity; ++i)
       {
@@ -94,6 +106,15 @@ namespace synaptic
         e.chunk.numFrames = mChunkSize;
         e.chunk.channelSamples.assign(mNumChannels, std::vector<sample>(mChunkSize, 0.0));
       }
+
+        // Overlap-add buffer
+        mOutputOverlapBuffer.assign(mNumChannels, std::vector<sample>(mChunkSize * 2, 0.0));
+      }
+
+      // Always reset state
+      mAccumulatedFrames = 0;
+      mOutputFrontFrameIndex = 0;
+      mOutputOverlapValidSamples = 0;
 
       // Initialize rings
       mFree.Init(mPoolCapacity);
@@ -104,8 +125,6 @@ namespace synaptic
       // All indices free initially
       for (int i = 0; i < mPoolCapacity; ++i)
         mFree.Push(i);
-
-      mOutputFrontFrameIndex = 0;
     }
 
     void SetChunkSize(int chunkSize)
@@ -121,6 +140,34 @@ namespace synaptic
     void SetNumChannels(int numChannels)
     {
       Configure(numChannels, mChunkSize, mBufferWindowSize);
+    }
+
+    void EnableOverlap(bool enable)
+    {
+      if (mEnableOverlap != enable)
+      {
+        mEnableOverlap = enable;
+        Reset();
+      }
+    }
+
+    void SetOutputWindow(const synaptic::Window& w)
+    {
+      // If window type is changing, reset overlap buffer to prevent artifacts
+      if (mOutputWindow.GetType() != w.GetType())
+      {
+        ResetOverlapBuffer();
+      }
+      mOutputWindow = w;
+    }
+
+    void ResetOverlapBuffer()
+    {
+      mOutputOverlapValidSamples = 0;
+      for (int ch = 0; ch < std::min(mNumChannels, (int)mOutputOverlapBuffer.size()); ++ch)
+      {
+        std::fill(mOutputOverlapBuffer[ch].begin(), mOutputOverlapBuffer[ch].end(), 0.0f);
+      }
     }
 
     void Reset()
@@ -152,13 +199,25 @@ namespace synaptic
         mAccumulatedFrames += framesToCopy;
         frameIndex += framesToCopy;
 
-        if (mAccumulatedFrames >= mChunkSize)
+        // Use appropriate hop size for input processing
+        const int inputHopSize = (mEnableOverlap && mOutputWindow.GetOverlap() > 0.0f)
+          ? mChunkSize / 2  // 50% hop only when overlap-add is enabled
+          : mChunkSize;     // 100% hop when overlap-add is disabled or rectangular window
+        while (mAccumulatedFrames >= mChunkSize)
         {
           int poolIdx;
           if (!mFree.Pop(poolIdx))
           {
-            // No space; drop this chunk silently
+            // No space; drop oldest part of accumulation buffer and continue
+            mAccumulatedFrames -= inputHopSize;
+            if (mAccumulatedFrames > 0)
+            {
+              for (int ch = 0; ch < mNumChannels; ++ch)
+                std::memmove(mAccumulation[ch].data(), mAccumulation[ch].data() + inputHopSize, sizeof(sample) * mAccumulatedFrames);
+            }
+            else {
             mAccumulatedFrames = 0;
+            }
             continue;
           }
 
@@ -191,7 +250,17 @@ namespace synaptic
           }
           ++entry.refCount; // pending ref
 
+          // Shift accumulation buffer by consistent hop size
+          mAccumulatedFrames -= inputHopSize;
+          if (mAccumulatedFrames > 0)
+          {
+            for (int ch = 0; ch < mNumChannels; ++ch)
+              std::memmove(mAccumulation[ch].data(), mAccumulation[ch].data() + inputHopSize, sizeof(sample) * mAccumulatedFrames);
+          }
+          else
+          {
           mAccumulatedFrames = 0;
+          }
         }
       }
     }
@@ -261,7 +330,112 @@ namespace synaptic
       if (!outputs || nFrames <= 0 || outChans <= 0) return;
 
       const int chansToWrite = std::min(outChans, mNumChannels);
-      for (int s = 0; s < nFrames; ++s)
+
+      // Use overlap-add only when there's actual overlap (not rectangular window)
+      const bool useOverlapAdd = mEnableOverlap && (mOutputWindow.GetOverlap() > 0.0f);
+
+      if (useOverlapAdd)
+      {
+        // Use consistent hop size for all windows to maintain timing
+        // Mathematical overlap properties are handled by coefficients and scaling only
+        const int hopSize = mChunkSize / 2;  // Consistent 50% hop for all windows
+        const float rescale = mOutputWindow.GetOverlapRescale();
+
+        // First, process any queued chunks and overlap-add them to our buffer
+        while (!mOutput.Empty())
+        {
+          int idx;
+          mOutput.Pop(idx);
+          PoolEntry& e = mPool[idx];
+
+          if (e.chunk.numFrames > 0)
+          {
+            if (mOutputWindow.Size() != e.chunk.numFrames)
+              mOutputWindow.Set(mOutputWindow.GetType(), e.chunk.numFrames);
+
+            const auto& coeffs = mOutputWindow.Coeffs();
+            const int frames = e.chunk.numFrames;
+            const int addPos = (mOutputOverlapValidSamples >= hopSize) ? (mOutputOverlapValidSamples - hopSize) : 0;
+            const int requiredSize = addPos + frames;
+
+            if ((int) mOutputOverlapBuffer[0].size() < requiredSize)
+            {
+              for (int ch = 0; ch < mNumChannels; ++ch)
+                mOutputOverlapBuffer[ch].resize(requiredSize, 0.0);
+            }
+
+            for (int ch = 0; ch < std::min(mNumChannels, (int)mOutputOverlapBuffer.size()); ++ch)
+            {
+              if (ch < (int)e.chunk.channelSamples.size())
+              {
+                for (int i = 0; i < frames; ++i)
+                {
+                  if (addPos + i < (int)mOutputOverlapBuffer[ch].size() && i < (int)coeffs.size())
+                  {
+                    mOutputOverlapBuffer[ch][addPos + i] += e.chunk.channelSamples[ch][i] * coeffs[i];
+                  }
+                }
+              }
+            }
+            mOutputOverlapValidSamples = requiredSize;
+          }
+          DecRefAndMaybeFree(idx);
+        }
+
+        // Now, copy from our buffer to the output
+        // Don't start outputting until we have enough samples
+        const int minSamplesBeforeOutput = mChunkSize / 2;  // Consistent across all windows
+        if (mOutputOverlapValidSamples < minSamplesBeforeOutput)
+        {
+          // Not enough samples yet, output silence and wait
+          for (int ch = 0; ch < outChans; ++ch)
+            std::memset(outputs[ch], 0, sizeof(sample) * nFrames);
+        }
+        else
+        {
+          // Always consume output at normal rate for consistent playback speed
+          const int framesToCopy = std::min(nFrames, mOutputOverlapValidSamples);
+
+          for (int ch = 0; ch < chansToWrite; ++ch)
+          {
+            for (int i = 0; i < framesToCopy; ++i)
+            {
+              outputs[ch][i] = mOutputOverlapBuffer[ch][i] * rescale;
+            }
+          }
+
+          // Zero out remainder of host buffer if we didn't have enough
+          if (framesToCopy < nFrames)
+          {
+            for (int ch = 0; ch < outChans; ++ch)
+              std::memset(outputs[ch] + framesToCopy, 0, sizeof(sample) * (nFrames - framesToCopy));
+          }
+
+          // Shift our internal buffer
+          const int newValidSamples = mOutputOverlapValidSamples - framesToCopy;
+          if (newValidSamples > 0)
+          {
+            for (int ch = 0; ch < mNumChannels; ++ch)
+            {
+              std::memmove(mOutputOverlapBuffer[ch].data(), mOutputOverlapBuffer[ch].data() + framesToCopy, newValidSamples * sizeof(sample));
+            }
+          }
+          mOutputOverlapValidSamples = newValidSamples;
+
+          // Zero out the tail of our buffer to avoid stale audio
+          const int tailStart = mOutputOverlapValidSamples > 0 ? mOutputOverlapValidSamples : 0;
+          const int tailSize = (int)mOutputOverlapBuffer[0].size() - tailStart;
+          if (tailSize > 0)
+          {
+            for (int ch = 0; ch < mNumChannels; ++ch)
+              std::memset(mOutputOverlapBuffer[ch].data() + tailStart, 0, sizeof(sample) * tailSize);
+          }
+        }
+      }
+      else
+      {
+        // Original sequential playback logic with optional individual chunk windowing
+        for (int s = 0; s < nFrames; ++s)
       {
         for (int ch = 0; ch < outChans; ++ch)
           if (outputs[ch]) outputs[ch][s] = 0.0;
@@ -274,12 +448,22 @@ namespace synaptic
             PoolEntry& e = mPool[idx];
             if (mOutputFrontFrameIndex < e.chunk.numFrames)
             {
+                // Apply individual chunk windowing if window type has overlap > 0
+                float windowCoeff = 1.0f;
+                if (mOutputWindow.GetOverlap() > 0.0f && mOutputFrontFrameIndex < mOutputWindow.Size())
+                {
+                  const auto& coeffs = mOutputWindow.Coeffs();
+                  windowCoeff = coeffs[mOutputFrontFrameIndex];
+                }
+
               for (int ch = 0; ch < chansToWrite; ++ch)
               {
                 if (outputs[ch] && ch < (int)e.chunk.channelSamples.size() &&
                     mOutputFrontFrameIndex < (int)e.chunk.channelSamples[ch].size())
-                  outputs[ch][s] = e.chunk.channelSamples[ch][mOutputFrontFrameIndex];
-              }
+                  {
+                    outputs[ch][s] = e.chunk.channelSamples[ch][mOutputFrontFrameIndex] * windowCoeff;
+                  }
+                }
             }
 
             ++mOutputFrontFrameIndex;
@@ -290,6 +474,7 @@ namespace synaptic
               mOutput.Pop(finished);
               DecRefAndMaybeFree(finished); // drop output ref
               mOutputFrontFrameIndex = 0;
+              }
             }
           }
         }
@@ -375,6 +560,7 @@ namespace synaptic
     int mNumChannels = 2;
     int mChunkSize = 3000;
     int mBufferWindowSize = 1;
+    bool mEnableOverlap = true;
     int mExtraPool = 8; // additional capacity beyond window size
     int mPoolCapacity = 0;
 
@@ -391,6 +577,10 @@ namespace synaptic
 
     // Output streaming state
     int mOutputFrontFrameIndex = 0;
+    // Overlap-add state
+    synaptic::Window mOutputWindow;
+    std::vector<std::vector<sample>> mOutputOverlapBuffer;
+    int mOutputOverlapValidSamples = 0;
   };
 }
 
