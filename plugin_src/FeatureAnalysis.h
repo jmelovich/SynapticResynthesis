@@ -11,84 +11,160 @@ public:
     return {-1.0, -1.0}; // TODO
   }
 
-  static float Affinity(float* input, int inputSize, int sampleRate, std::pair<float, float> fund) {
-    return sum_aifi(input, inputSize, sampleRate) / (fund.first * sum_ai(input, inputSize));
+  static float GetAffinity(float* input, int inputSize, int sampleRate, std::pair<float, float> fund)
+  {
+    auto peaks = GetPeaks(input, inputSize, sampleRate);
+    return Affinity(peaks, fund);
   }
 
-  static float Sharpness(float* input, int inputSize, int sampleRate, std::pair<float, float> fund) {
-    return fund.second / sum_ai(input, inputSize);
+  static float GetSharpness(float* input, int inputSize, int sampleRate, std::pair<float, float> fund)
+  {
+    auto peaks = GetPeaks(input, inputSize, sampleRate);
+    return Sharpness(peaks, fund);
   }
 
-  static float Harmonicity(float* input, int inputSize, int sampleRate, std::pair<float, float> fund) {
-    float frequencyStep = (float)sampleRate / inputSize;
+  static float GetHarmonicity(float* input, int inputSize, int sampleRate, std::pair<float, float> fund)
+  {
+    auto peaks = GetPeaks(input, inputSize, sampleRate);
+    return Harmonicity(peaks, fund);
+  }
 
-    float m = (sampleRate / 2) / fund.first;
-    float harmonicity = m - std::floor(m);
+  static float GetMonotony(float* input, int inputSize, int sampleRate, std::pair<float, float> fund)
+  {
+    auto peaks = GetPeaks(input, inputSize, sampleRate);
+    return Monotony(peaks, fund);
+  }
 
-    for (int i = 1; i < inputSize; i++)
+  static float GetMeanAffinity(float* input, int inputSize, int sampleRate, std::pair<float, float> fund)
+  {
+    auto peaks = GetPeaks(input, inputSize, sampleRate);
+    return MeanAffinity(peaks, fund);
+  }
+
+  static float GetMeanContrast(float* input, int inputSize, int sampleRate, std::pair<float, float> fund)
+  {
+    auto peaks = GetPeaks(input, inputSize, sampleRate);
+    return MeanContrast(peaks, fund);
+  }
+
+private:
+
+  static float Affinity(std::vector<std::pair<float, float>> peaks, std::pair<float, float> fund)
+  {
+    return sum_aifi(peaks) / (fund.first * sum_ai(peaks));
+  }
+
+  static float Sharpness(std::vector<std::pair<float, float>> peaks, std::pair<float, float> fund)
+  {
+    return fund.second / sum_ai(peaks);
+  }
+
+  static float Harmonicity(std::vector<std::pair<float, float>> peaks, std::pair<float, float> fund)
+  {
+    float harmonicity = 0;
+
+    for (auto peak : peaks)
     {
-      m = frequencyStep*i / fund.first;
+      float m = peak.first / fund.first;
       harmonicity += m - std::floor(m);
     }
 
     return harmonicity;
   }
 
-  static float Monotony(float* input, int inputSize, int sampleRate, std::pair<float, float> fund)
+  static float Monotony(std::vector<std::pair<float, float>> peaks, std::pair<float, float> fund)
   {
     float monotony = 0;
-
-    float a_1 = input[0];
     
-    for (int i = 1; i < inputSize; i++)
+    for (auto peak = peaks.begin(); peak < peaks.end() - 1; peak++)
     {
-      float a = std::sqrt(input[2 * i] * input[2 * i] + input[2 * i + 1] * input[2 * i + 1]);
-      float a_slope = a - a_1;
+      float a_slope = (*(peak + 1)).second - (*peak).second;
+      float f_slope = (*(peak + 1)).first - (*peak).first;
 
-      monotony += a_slope;
-
-      a_1 = a;
+      monotony += a_slope / f_slope;
     }
 
-    monotony += a_1 - input[1]; // nyquist (per pffft implementation)
-
-    monotony *= fund.first / sampleRate;
+    monotony *= fund.first / peaks.size();
 
     return monotony;
   }
 
-  static float MeanAffinity(float* input, int inputSize, int sampleRate, std::pair<float, float> fund) {
-    return -1.0; // TODO
-  }
-
-  static float MeanContrast(float* input, int inputSize, int sampleRate, std::pair<float, float> fund) {
-    return -1.0; // TODO
-  }
-
-  private:
-  static float sum_ai(float* input, int inputSize)
+  static float MeanAffinity(std::vector<std::pair<float, float>> peaks, std::pair<float, float> fund)
   {
-    float ai = input[1]; // nyquist (per pffft implementation)
-    for (int i = 1; i < inputSize; i++)
+    float meanAffinity = 0;
+
+    float avgFreq = AverageFreq(peaks);
+    for (auto peak : peaks)
     {
-      float mag = std::sqrt(input[2 * i] * input[2 * i] + input[2 * i + 1] * input[2 * i + 1]);
-      ai += mag;
+      meanAffinity += abs(peak.first - avgFreq);
+    }
+
+    meanAffinity /= peaks.size() * fund.first;
+
+    return meanAffinity;
+  }
+
+  static float MeanContrast(std::vector<std::pair<float, float>> peaks, std::pair<float, float> fund)
+  {
+    return -1.0; // TODO
+  }
+
+  static float AverageFreq(std::vector<std::pair<float, float>> peaks) {
+    float avg = 0;
+    for (auto peak : peaks)
+    {
+      avg += peak.first;
+    }
+    avg /= peaks.size();
+    return avg;
+  }
+
+  static float sum_ai(std::vector<std::pair<float, float>> peaks)
+  {
+    float ai = 0;
+    for (auto peak : peaks)
+    {
+      ai += peak.second;
     }
 
     return ai;
   }
 
-  static float sum_aifi(float* input, int inputSize, int sampleRate)
+  static float sum_aifi(std::vector<std::pair<float, float>> peaks)
   {
-    float frequencyStep = (float)sampleRate / inputSize;
-
-    float aifi = input[1] * (sampleRate / 2); // nyquist (per pffft implementation)
-    for (int i = 1; i < inputSize; i++)
+    float aifi = 0;
+    for (auto peak : peaks)
     {
-      float mag = std::sqrt(input[2 * i] * input[2 * i] + input[2 * i + 1] * input[2 * i + 1]);
-      aifi += mag * frequencyStep * i;
+      aifi += peak.first * peak.second;
     }
 
     return aifi;
+  }
+
+  // vector of frequency/magnitude pairs
+  static std::vector<std::pair<float, float>> GetPeaks(float* input, int inputSize, int sampleRate)
+  {
+    float frequencyStep = (float)sampleRate / inputSize;
+    std::vector<std::pair<float, float>> peaks;
+
+    float prev = input[0];
+
+    for (int i = 1; i <= inputSize/2; i++)
+    {
+      float mag = (i != inputSize/2)
+        ? std::sqrt(input[2 * i] * input[2 * i] + input[2 * i + 1] * input[2 * i + 1])
+        : input[1];
+
+      if (mag < prev)
+      {
+        peaks.push_back({frequencyStep * (i - 1), prev});
+      }
+      else if (i == inputSize/2)
+      {
+        peaks.push_back({sampleRate / 2, mag});
+      }
+
+      prev = mag;
+    }
   }
 };

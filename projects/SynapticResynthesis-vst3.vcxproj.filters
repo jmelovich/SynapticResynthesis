@@ -269,6 +269,7 @@
     <ClInclude Include="..\..\..\IPlug\ISender.h" />
     <ClInclude Include="..\plugin_src\Window.h" />
     <ClInclude Include="..\plugin_src\samplebrain\Brain.h" />
+    <ClInclude Include="..\plugin_src\FeatureAnalysis.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="resources">
