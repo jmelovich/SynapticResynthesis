@@ -2,13 +2,94 @@
 
 #include "IPlug_include_in_plug_hdr.h"
 #include "SynapticResynthesis.h"
+#include <cfloat>
+#include <cmath>
+#include <utility>
 
 class FeatureAnalysis
 {
 public:
-  static std::pair<float, float> FundamentalFrequency(float* input, int inputSize)
+  static std::pair<float, float> FundamentalFrequency(const float* input, int inputSize, float sampleRate, int nHarmonics = 6)
   {
-    return {-1.0, -1.0}; // TODO
+    if (!input || inputSize < 4) // need at least DC, Nyquist, and 1 complex bin
+      return {-1.f, -1.f};
+
+    const int nBins = (inputSize + 2) / 2; // DC + Nyquist + (complex bins)
+    if (nBins <= 2)
+      return {-1.f, -1.f};
+
+    const float binHz = sampleRate / inputSize; // bin resolution
+
+    // Temporary storage on stack (real-time safe).
+    // Limit max bins to avoid stack overflow in RT context.
+    constexpr int MAX_BINS = 8192;
+    if (nBins > MAX_BINS)
+      return {-1.f, -1.f};
+
+    float logMag[MAX_BINS];
+
+    // Compute log magnitude spectrum
+    const float eps = 1e-12f;
+    logMag[0] = std::log(std::fabs(input[0]) + eps);         // DC
+    logMag[nBins - 1] = std::log(std::fabs(input[1]) + eps); // Nyquist
+
+    for (int k = 1; k < nBins - 1; k++)
+    {
+      float re = input[2 * k];
+      float im = input[2 * k + 1];
+      float mag = std::sqrt(re * re + im * im);
+      logMag[k] = std::log(mag + eps);
+    }
+
+    // Harmonic Product Spectrum (log domain → sum)
+    float bestVal = -FLT_MAX;
+    int bestK = -1;
+
+    // skip DC bin
+    for (int k = 1; k < nBins; ++k)
+    {
+      float acc = 0.f;
+      for (int h = 1; h <= nHarmonics; ++h)
+      {
+        int idx = k * h;
+        if (idx >= nBins)
+          break;
+        acc += logMag[idx];
+      }
+      if (acc > bestVal)
+      {
+        bestVal = acc;
+        bestK = k;
+      }
+    }
+
+    if (bestK <= 0)
+      return {-1.f, -1.f};
+
+    float f0 = bestK * binHz;
+
+    // Amplitude: recover from magnitude spectrum (linear domain, not log)
+    float re = (bestK == nBins - 1) ? input[1] : input[2 * bestK];
+    float im = (bestK == nBins - 1) ? 0.f : input[2 * bestK + 1];
+    float amp = std::sqrt(re * re + im * im);
+
+    return {f0, amp};
+  }
+
+  static std::vector<float> GetFeatures(float* input, int inputSize, int sampleRate) {
+    auto fund = FundamentalFrequency(input, inputSize);
+    auto peaks = GetPeaks(input, inputSize, sampleRate);
+
+    std::vector<float> features(7, 0.0);
+    features[0] = fund.first;
+    features[1] = Affinity(peaks, fund);
+    features[2] = Sharpness(peaks, fund);
+    features[3] = Harmonicity(peaks, fund);
+    features[4] = Monotony(peaks, fund);
+    features[5] = MeanAffinity(peaks, fund);
+    features[6] = MeanContrast(peaks, fund);
+
+    return features;
   }
 
   static float GetAffinity(float* input, int inputSize, int sampleRate, std::pair<float, float> fund)
