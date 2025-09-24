@@ -77,7 +77,7 @@ public:
   }
 
   static std::vector<float> GetFeatures(float* input, int inputSize, int sampleRate) {
-    auto fund = FundamentalFrequency(input, inputSize);
+    auto fund = FundamentalFrequency(input, inputSize, sampleRate);
     auto peaks = GetPeaks(input, inputSize, sampleRate);
 
     std::vector<float> features(7, 0.0);
@@ -92,38 +92,44 @@ public:
     return features;
   }
 
-  static float GetAffinity(float* input, int inputSize, int sampleRate, std::pair<float, float> fund)
+  static float GetAffinity(float* input, int inputSize, int sampleRate)
   {
+    auto fund = FundamentalFrequency(input, inputSize, sampleRate);
     auto peaks = GetPeaks(input, inputSize, sampleRate);
     return Affinity(peaks, fund);
   }
 
-  static float GetSharpness(float* input, int inputSize, int sampleRate, std::pair<float, float> fund)
+  static float GetSharpness(float* input, int inputSize, int sampleRate)
   {
+    auto fund = FundamentalFrequency(input, inputSize, sampleRate);
     auto peaks = GetPeaks(input, inputSize, sampleRate);
     return Sharpness(peaks, fund);
   }
 
-  static float GetHarmonicity(float* input, int inputSize, int sampleRate, std::pair<float, float> fund)
+  static float GetHarmonicity(float* input, int inputSize, int sampleRate)
   {
+    auto fund = FundamentalFrequency(input, inputSize, sampleRate);
     auto peaks = GetPeaks(input, inputSize, sampleRate);
     return Harmonicity(peaks, fund);
   }
 
-  static float GetMonotony(float* input, int inputSize, int sampleRate, std::pair<float, float> fund)
+  static float GetMonotony(float* input, int inputSize, int sampleRate)
   {
+    auto fund = FundamentalFrequency(input, inputSize, sampleRate);
     auto peaks = GetPeaks(input, inputSize, sampleRate);
     return Monotony(peaks, fund);
   }
 
-  static float GetMeanAffinity(float* input, int inputSize, int sampleRate, std::pair<float, float> fund)
+  static float GetMeanAffinity(float* input, int inputSize, int sampleRate)
   {
+    auto fund = FundamentalFrequency(input, inputSize, sampleRate);
     auto peaks = GetPeaks(input, inputSize, sampleRate);
     return MeanAffinity(peaks, fund);
   }
 
-  static float GetMeanContrast(float* input, int inputSize, int sampleRate, std::pair<float, float> fund)
+  static float GetMeanContrast(float* input, int inputSize, int sampleRate)
   {
+    auto fund = FundamentalFrequency(input, inputSize, sampleRate);
     auto peaks = GetPeaks(input, inputSize, sampleRate);
     return MeanContrast(peaks, fund);
   }
