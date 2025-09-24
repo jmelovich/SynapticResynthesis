@@ -106,7 +106,15 @@ private:
 
   static float MeanContrast(std::vector<std::pair<float, float>> peaks, std::pair<float, float> fund)
   {
-    return -1.0; // TODO
+    float meanContrast = 0;
+    for (auto peak : peaks)
+    {
+      meanContrast += abs(fund.second - peak.second);
+    }
+
+    meanContrast /= peaks.size();
+
+    return meanContrast;
   }
 
   static float AverageFreq(std::vector<std::pair<float, float>> peaks) {
