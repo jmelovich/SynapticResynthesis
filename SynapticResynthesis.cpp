@@ -42,6 +42,7 @@ namespace {
 SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
 : Plugin(info, MakeConfig(ComputeTotalParams(), kNumPresets))
 {
+  GetParam(kInGain)->InitGain("Input Gain", 0.0, -70, 0.);
   GetParam(kOutGain)->InitGain("Output Gain", 0.0, -70, 0.);
 
 #ifdef DEBUG
@@ -210,6 +211,7 @@ void SynapticResynthesis::DrainUiQueueOnMainThread()
 
 void SynapticResynthesis::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
 {
+  const double inGain = GetParam(kInGain)->DBToAmp();
   const double outGain = GetParam(kOutGain)->DBToAmp();
 
   // Safety check for valid inputs/outputs
@@ -873,6 +875,12 @@ void SynapticResynthesis::OnRestoreState()
 
 void SynapticResynthesis::OnParamChange(int paramIdx)
 {
+  if (paramIdx == kInGain)
+  {
+    DBGMSG("input gain %f\n", GetParam(paramIdx)->Value());
+    return;
+  }
+
   if (paramIdx == kOutGain)
   {
     DBGMSG("output gain %f\n", GetParam(paramIdx)->Value());

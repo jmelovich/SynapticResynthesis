@@ -16,7 +16,7 @@ const int kNumPresets = 3;
 enum EParams
 {
   kOutGain = 0,
-
+  kInGain,
   kNumParams
 };
 
