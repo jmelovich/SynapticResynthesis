@@ -42,7 +42,7 @@ namespace {
 SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
 : Plugin(info, MakeConfig(ComputeTotalParams(), kNumPresets))
 {
-  GetParam(kGain)->InitGain("Gain", 0.0, -70, 0.);
+  GetParam(kOutGain)->InitGain("Output Gain", 0.0, -70, 0.);
 
 #ifdef DEBUG
   SetEnableDevTools(true);
@@ -210,7 +210,7 @@ void SynapticResynthesis::DrainUiQueueOnMainThread()
 
 void SynapticResynthesis::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
 {
-  const double gain = GetParam(kGain)->DBToAmp();
+  const double outGain = GetParam(kOutGain)->DBToAmp();
 
   // Safety check for valid inputs/outputs
   const int inChans = NInChansConnected();
@@ -241,7 +241,7 @@ void SynapticResynthesis::ProcessBlock(sample** inputs, sample** outputs, int nF
   // Apply gain
   for (int s = 0; s < nFrames; s++)
   {
-    const double smoothedGain = mGainSmoother.Process(gain);
+    const double smoothedGain = mGainSmoother.Process(outGain);
     for (int ch = 0; ch < outChans; ++ch)
       outputs[ch][s] *= smoothedGain;
   }
@@ -873,9 +873,9 @@ void SynapticResynthesis::OnRestoreState()
 
 void SynapticResynthesis::OnParamChange(int paramIdx)
 {
-  if (paramIdx == kGain)
+  if (paramIdx == kOutGain)
   {
-    DBGMSG("gain %f\n", GetParam(paramIdx)->Value());
+    DBGMSG("output gain %f\n", GetParam(paramIdx)->Value());
     return;
   }
 
