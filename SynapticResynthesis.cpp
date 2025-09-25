@@ -32,10 +32,11 @@ namespace {
 
   static int ComputeTotalParams()
   {
-    // base params (kNumParams) + ChunkSize + BufferWindow + Algorithm + OutputWindow + DirtyFlag + AnalysisWindow + EnableOverlap + union of transformer params
+    // Fixed params are enumerated in EParams up to kNumParams.
+    // Dynamic transformer params are appended after kNumParams.
     std::vector<synaptic::IChunkBufferTransformer::ExposedParamDesc> unionDescs;
     BuildTransformerUnion(unionDescs);
-    return kNumParams + 7 + (int) unionDescs.size();
+    return kNumParams + (int) unionDescs.size();
   }
 }
 
@@ -73,15 +74,15 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
 
   // Note: OnReset will be called later with proper channel counts
 
-  // Create core DSP params into the pre-allocated slots
-  mParamIdxChunkSize = kNumParams + 0; GetParam(mParamIdxChunkSize)->InitInt("Chunk Size", mChunkSize, 1, 262144, "samples", IParam::kFlagCannotAutomate);
-  // Buffer window size is no longer user-exposed (internal). Reserve slot but don't publish.
-  mParamIdxBufferWindow = kNumParams + 1; GetParam(mParamIdxBufferWindow)->InitInt("Buffer Window", mBufferWindowSize, 1, 1024, "chunks", IParam::kFlagCannotAutomate);
+  // Create core DSP params using fixed enum indices
+  mParamIdxChunkSize = kChunkSize; GetParam(mParamIdxChunkSize)->InitInt("Chunk Size", mChunkSize, 1, 262144, "samples", IParam::kFlagCannotAutomate);
+  // Buffer window size is no longer user-exposed (internal)
+  mParamIdxBufferWindow = kBufferWindow; GetParam(mParamIdxBufferWindow)->InitInt("Buffer Window", mBufferWindowSize, 1, 1024, "chunks", IParam::kFlagCannotAutomate);
   // Hidden dirty flag param solely for host-dirty nudges (non-automatable)
-  mParamIdxDirtyFlag = kNumParams + 4; // allocate dedicated slot
+  mParamIdxDirtyFlag = kDirtyFlag;
   GetParam(mParamIdxDirtyFlag)->InitBool("Dirty Flag", false, "", IParam::kFlagCannotAutomate);
   // Build algorithm enum from factory UI list (deterministic)
-  mParamIdxAlgorithm = kNumParams + 2;
+  mParamIdxAlgorithm = kAlgorithm;
   {
     const int count = synaptic::TransformerFactory::GetUiCount();
     GetParam(mParamIdxAlgorithm)->InitEnum("Algorithm", mAlgorithmId, count, "");
@@ -90,7 +91,7 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
       GetParam(mParamIdxAlgorithm)->SetDisplayText(i, labels[i].c_str());
   }
   // Output window function (global)
-  mParamIdxOutputWindow = kNumParams + 3;
+  mParamIdxOutputWindow = kOutputWindow;
   GetParam(mParamIdxOutputWindow)->InitEnum("Output Window", mOutputWindowMode - 1, 4, "");
   GetParam(mParamIdxOutputWindow)->SetDisplayText(0, "Hann");
   GetParam(mParamIdxOutputWindow)->SetDisplayText(1, "Hamming");
@@ -98,7 +99,7 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
   GetParam(mParamIdxOutputWindow)->SetDisplayText(3, "Rectangular");
 
   // Analysis window function (for brain analysis)
-  mParamIdxAnalysisWindow = kNumParams + 5;
+  mParamIdxAnalysisWindow = kAnalysisWindow;
   GetParam(mParamIdxAnalysisWindow)->InitEnum("Chunk Analysis Window", mAnalysisWindowMode - 1, 4, "", IParam::kFlagCannotAutomate);
   GetParam(mParamIdxAnalysisWindow)->SetDisplayText(0, "Hann");
   GetParam(mParamIdxAnalysisWindow)->SetDisplayText(1, "Hamming");
@@ -106,13 +107,13 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
   GetParam(mParamIdxAnalysisWindow)->SetDisplayText(3, "Rectangular");
 
   // Enable overlap-add processing
-  mParamIdxEnableOverlap = kNumParams + 6;
+  mParamIdxEnableOverlap = kEnableOverlap;
   GetParam(mParamIdxEnableOverlap)->InitBool("Enable Overlap-Add", mEnableOverlapAdd);
 
   // Build union descs and initialize the remaining pre-allocated params
   std::vector<synaptic::IChunkBufferTransformer::ExposedParamDesc> unionDescs;
   BuildTransformerUnion(unionDescs);
-  int base = kNumParams + 7;
+  int base = kNumParams;
   mTransformerBindings.clear();
   for (size_t i = 0; i < unionDescs.size(); ++i)
   {
@@ -224,6 +225,13 @@ void SynapticResynthesis::ProcessBlock(sample** inputs, sample** outputs, int nF
       if (outputs[ch])
         std::memset(outputs[ch], 0, sizeof(sample) * nFrames);
     return;
+  }
+
+  for (int ch = 0; ch < outChans; ch++) {
+    for (int s = 0; s < nFrames; s++)
+    {
+      inputs[ch][s] *= inGain;
+    }
   }
 
   // Feed the input into the chunker
