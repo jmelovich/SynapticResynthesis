@@ -166,6 +166,18 @@
       gap: 10px;
       margin-top: 8px;
     }
+    .reanalysis-box {
+      border: 2px dashed #f59e0b;
+      background: #fffbeb;
+      border-radius: 8px;
+      padding: 10px;
+      margin-top: 8px;
+    }
+    .reanalysis-box .hint {
+      color: #92400e;
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
     .param-row {
       display: flex;
       align-items: center;
@@ -238,7 +250,7 @@
       flex-direction: column;
       gap: 6px;
       margin-top: 12px;
-      max-height: 300px;
+      max-height: 200px;
       overflow-y: auto;
       padding: 6px;
       border: 1px solid #e5e7eb;
@@ -322,6 +334,15 @@
     }
 
     function OnParamChange(param, value) {
+      // Handle overlap checkbox (paramIdx=7)
+      if (param == 7) {
+        const checkbox = document.getElementById('enableOverlap');
+        if (checkbox) {
+          checkbox.checked = value > 0.5;
+        }
+        return;
+      }
+
       // Find the knob control with matching param-id
       const knob = document.querySelector(`knob-control[param-id="${param}"]`);
       if (knob) {
@@ -363,7 +384,8 @@
           break;
         case "dspConfig": {
           const cs = document.getElementById('chunkSize');
-          const bw = document.getElementById('bufferWindowSize');
+          const ow = document.getElementById('outputWindow');
+          const aw = document.getElementById('analysisWindow');
           const alg = document.getElementById('algorithm');
           if (alg && Array.isArray(json["algorithms"])) {
             alg.innerHTML = '';
@@ -375,10 +397,16 @@
             });
           }
           if (cs && typeof json["chunkSize"] === 'number') cs.value = json["chunkSize"];
-          if (bw && typeof json["bufferWindowSize"] === 'number') bw.value = json["bufferWindowSize"];
+          if (ow && typeof json["outputWindowMode"] === 'number') ow.value = String(json["outputWindowMode"]);
+          if (aw && typeof json["analysisWindowMode"] === 'number') aw.value = String(json["analysisWindowMode"]);
           if (alg && json["algorithmId"] !== undefined) alg.value = String(json["algorithmId"]);
           const bcs = document.getElementById('brain-chunk-size');
           if (bcs && typeof json["chunkSize"] === 'number') bcs.textContent = String(json["chunkSize"]);
+          const storageEl = document.getElementById('brain-external-ref');
+          if (storageEl) {
+            const isExt = !!json["useExternalBrain"]; const p = json["externalPath"] || '';
+            storageEl.textContent = isExt && p ? String(p) : '(inline)';
+          }
           break;
         }
         case "brainChunkSize":
@@ -397,6 +425,12 @@
         case "transformerParams":
           renderTransformerParams(json["params"] || []);
           break;
+        case "brainExternalRef": {
+          const info = json["info"] || {};
+          const el = document.getElementById('brain-external-ref');
+          if (el) el.textContent = info.path ? (String(info.path)) : '(inline)';
+          break;
+        }
         }
       }
     }
@@ -435,13 +469,34 @@
 <h1>Synaptic Resynthesis</h1>
 <div id="dsp-section" class="controls-container">
   <div class="input-container">
-    <div class="input-group">
-      <label for="chunkSize">Chunk Size</label>
-      <input type="number" id="chunkSize" min="1" step="1" value="4096" />
+    <div class="reanalysis-box">
+      <div class="hint">Changing these settings will cause the Brain to reanalyze its chunks.</div>
+      <div class="input-group">
+        <label for="chunkSize">Chunk Size</label>
+        <input type="number" id="chunkSize" min="1" step="1" value="4096" />
+      </div>
+      <div class="input-group">
+        <label for="analysisWindow">Chunk Analysis Window</label>
+        <select id="analysisWindow">
+          <option value="1" selected>Hann</option>
+          <option value="2">Hamming</option>
+          <option value="3">Blackman</option>
+          <option value="4">Rectangular</option>
+        </select>
+      </div>
     </div>
     <div class="input-group">
-      <label for="bufferWindowSize">Buffer Window Size</label>
-      <input type="number" id="bufferWindowSize" min="1" step="1" value="4" />
+      <label for="outputWindow">Output Window Function</label>
+      <select id="outputWindow">
+        <option value="1" selected>Hann</option>
+        <option value="2">Hamming</option>
+        <option value="3">Blackman</option>
+        <option value="4">Rectangular</option>
+      </select>
+    </div>
+    <div class="input-group">
+      <label for="enableOverlap">Enable Overlap-Add Windowing</label>
+      <input type="checkbox" id="enableOverlap" checked />
     </div>
     <div class="input-group">
       <label for="algorithm">Transformer</label>
@@ -461,7 +516,8 @@
     </div>
   </div>
   <div class="knob-container">
-    <knob-control label="Gain" param-id=0></knob-control>
+    <knob-control label="Input Gain" param-id=0></knob-control>
+    <knob-control label="Output Gain" param-id=8></knob-control>
   </div>
 </div>
 
@@ -473,9 +529,16 @@
   <div style="margin-top:6px; color:#374151; font-size:13px;">
     Brain chunk size: <span id="brain-chunk-size">-</span>
     &nbsp;•&nbsp; Files: <span id="brain-file-count">0</span>
+    &nbsp;•&nbsp; Storage: <span id="brain-external-ref">(inline)</span>
   </div>
   <div id="brain-files" class="brain-list"></div>
   <p style="color:#6b7280; font-size:12px;">Note: Chunk size currently set by DSP section and used for import.</p>
+  <div class="button-group" style="margin-top:6px;">
+    <button id="export-brain-btn">Export Brain (.sbrain)</button>
+    <button id="import-brain-btn">Import Brain (.sbrain)</button>
+    <button id="reset-brain-btn">Reset Brain</button>
+    <button id="detach-brain-btn">Detach File Ref</button>
+  </div>
 </div>
 
 <script>
@@ -564,6 +627,8 @@
     // Integer inputs -> send to plugin via ctrlTag (no binary payload)
     const chunkSizeInput = document.getElementById('chunkSize');
     const bufferWindowSizeInput = document.getElementById('bufferWindowSize');
+    const outputWindowSelect = document.getElementById('outputWindow');
+    const analysisWindowSelect = document.getElementById('analysisWindow');
     const algorithmSelect = document.getElementById('algorithm');
 
     function sanitizeInt(value, fallback, minVal = 1) {
@@ -578,9 +643,15 @@
       }
     }
 
-    function sendBufferWindowSize(value) {
+    function sendOutputWindowMode(value) {
       if (typeof window['SAMFUI'] === 'function') {
-        window['SAMFUI'](5, value);
+        window['SAMFUI'](7, value);
+      }
+    }
+
+    function sendAnalysisWindowMode(value) {
+      if (typeof window['SAMFUI'] === 'function') {
+        window['SAMFUI'](8, value);
       }
     }
 
@@ -596,10 +667,14 @@
       sendChunkSize(v);
     };
 
-    const onBufferWindowChange = (e) => {
-      const v = sanitizeInt(e.target.value, 4, 1);
-      e.target.value = v;
-      sendBufferWindowSize(v);
+    const onOutputWindowChange = (e) => {
+      const v = parseInt(e.target.value, 10) || 1;
+      sendOutputWindowMode(v);
+    };
+
+    const onAnalysisWindowChange = (e) => {
+      const v = parseInt(e.target.value, 10) || 1;
+      sendAnalysisWindowMode(v);
     };
 
     const onAlgorithmChange = (e) => {
@@ -611,12 +686,27 @@
       chunkSizeInput.addEventListener('change', onChunkChange);
     }
 
-    if (bufferWindowSizeInput) {
-      bufferWindowSizeInput.addEventListener('change', onBufferWindowChange);
+    if (outputWindowSelect) {
+      outputWindowSelect.addEventListener('change', onOutputWindowChange);
+    }
+
+    if (analysisWindowSelect) {
+      analysisWindowSelect.addEventListener('change', onAnalysisWindowChange);
     }
 
     if (algorithmSelect) {
       algorithmSelect.addEventListener('change', onAlgorithmChange);
+    }
+
+    // Enable Overlap-Add checkbox
+    const enableOverlapCheckbox = document.getElementById('enableOverlap');
+    if (enableOverlapCheckbox) {
+      enableOverlapCheckbox.addEventListener('change', (e) => {
+        const isChecked = e.target.checked;
+        if (typeof window['SPVFUI'] === 'function') {
+          window['SPVFUI'](7, isChecked ? 1.0 : 0.0); // paramIdx=7 for EnableOverlap (kNumParams+6)
+        }
+      });
     }
 
     // Generic transformer params UI rendering and messaging
@@ -779,6 +869,29 @@
         }
       });
     }
+
+    // Export/Import buttons
+    const exportBtn = document.getElementById('export-brain-btn');
+    const importBtn = document.getElementById('import-brain-btn');
+    if (exportBtn) {
+      exportBtn.addEventListener('click', () => {
+        if (typeof window['SAMFUI'] === 'function') window['SAMFUI'](104, -1);
+      });
+    }
+    if (importBtn) {
+      importBtn.addEventListener('click', async () => {
+        if (typeof window['SAMFUI'] === 'function') {
+          // C++ side will show overlay and native Open File dialog, then load
+          window['SAMFUI'](105, -1);
+        }
+      });
+    }
+
+    // Reset and Detach
+    const resetBtn = document.getElementById('reset-brain-btn');
+    if (resetBtn) resetBtn.addEventListener('click', () => { if (typeof window['SAMFUI'] === 'function') window['SAMFUI'](106, -1); });
+    const detachBtn = document.getElementById('detach-brain-btn');
+    if (detachBtn) detachBtn.addEventListener('click', () => { if (typeof window['SAMFUI'] === 'function') window['SAMFUI'](107, -1); });
 </script>
 </body>
 </html>

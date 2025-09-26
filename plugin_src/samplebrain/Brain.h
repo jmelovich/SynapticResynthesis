@@ -7,6 +7,7 @@
 #include <functional>
 
 #include "plugin_src/AudioStreamChunker.h"
+#include "IPlugStructs.h"
 
 // Forward declare miniaudio types to avoid including the large header here.
 // We will include it in the .cpp only.
@@ -21,9 +22,20 @@ namespace synaptic
     // Per-channel analysis
     std::vector<float> rmsPerChannel;     // RMS per channel
     std::vector<double> freqHzPerChannel; // ZCR-based frequency per channel
+    // FFT analysis (per channel)
+    // Magnitude spectrum per channel (length = fftSize/2 + 1), computed via PFFFT
+    std::vector<std::vector<float>> fftMagnitudePerChannel;
+    // Dominant frequency (Hz) derived from FFT magnitude peak per channel
+    std::vector<double> fftDominantHzPerChannel;
+    // FFT size actually used for analysis. PFFFT has strict size constraints:
+    // - N must be factorable by 2/3/5 only, and for real transforms on SSE it must be a multiple of 32.
+    // Therefore we may zero-pad each chunk up to the next valid N (>= audio.numFrames), so this can
+    // differ from the logical chunk size. We store it to make the analysis explicit and reproducible.
+    int fftSize = 0;
     // Aggregate (averages across channels)
     float avgRms = 0.0f;
     double avgFreqHz = 0.0;
+    double avgFftDominantHz = 0.0;
   };
 
   struct BrainFile
@@ -46,6 +58,9 @@ namespace synaptic
       idToFileIndex_.clear();
       chunks_.clear();
     }
+
+    // Set the window to use for FFT analysis
+    void SetWindow(const class Window* window) { mWindow = window; }
 
     // Decode an entire audio file from memory and split into chunks.
     // Returns the new fileId on success, or -1 on failure.
@@ -73,11 +88,23 @@ namespace synaptic
     RechunkStats RechunkAllFiles(int newChunkSizeSamples, int targetSampleRate, RechunkProgressFn onProgress = nullptr);
     int GetChunkSize() const { return mChunkSize; }
 
+    // Re-analyze all existing chunks (no rechunking). Uses current window (SetWindow) and provided sampleRate.
+    struct ReanalyzeStats { int filesProcessed = 0; int chunksProcessed = 0; };
+    ReanalyzeStats ReanalyzeAllChunks(int targetSampleRate, RechunkProgressFn onProgress = nullptr);
+
+    // Snapshot serialization (unified for project state and .sbrain files)
+    bool SerializeSnapshotToChunk(iplug::IByteChunk& out) const;
+    int DeserializeSnapshotFromChunk(const iplug::IByteChunk& in, int startPos);
+
+    // Accessor for saved analysis window type as stored in snapshot
+    enum class SavedWindowType { Hann, Hamming, Blackman, Rectangular };
+    SavedWindowType GetSavedAnalysisWindowType() const { return mSavedAnalysisWindowType; }
+
   private:
     static float ComputeRMS(const std::vector<iplug::sample>& buffer, int offset, int count);
     static double ComputeZeroCrossingFreq(const std::vector<iplug::sample>& buffer, int offset, int count, double sampleRate);
     // Analyze the provided chunk over validFrames (<= chunk.audio.numFrames) and fill per-channel and average metrics
-    static void AnalyzeChunk(BrainChunk& chunk, int validFrames, double sampleRate);
+    void AnalyzeChunk(BrainChunk& chunk, int validFrames, double sampleRate);
 
   private:
     mutable std::mutex mutex_;
@@ -86,6 +113,9 @@ namespace synaptic
     std::unordered_map<int, int> idToFileIndex_;
     std::vector<BrainChunk> chunks_;
     int mChunkSize = 0;
+    const class Window* mWindow = nullptr;
+    // Saved in snapshot for import; defaults to Hann if unknown
+    SavedWindowType mSavedAnalysisWindowType = SavedWindowType::Hann;
   };
 }
 
