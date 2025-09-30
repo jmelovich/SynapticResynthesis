@@ -14,7 +14,7 @@
 namespace synaptic
 {
   static constexpr uint32_t kSnapshotMagic = 0x53424252; // 'SBBR' Synaptic Brain BRain
-  static constexpr uint16_t kSnapshotVersion = 1;
+  static constexpr uint16_t kSnapshotVersion = 2; // v2: window type stored as int instead of string
 
   static void PutString(iplug::IByteChunk& chunk, const std::string& s)
   {
@@ -119,7 +119,7 @@ namespace synaptic
     chunk.fftSize = Nfft;
     chunk.fftMagnitudePerChannel.assign(chCount, std::vector<float>(Nfft/2 + 1, 0.0f));
     chunk.fftDominantHzPerChannel.assign(chCount, 0.0);
-    
+
     // Prepare PFFFT setup once per chunk
     PFFFT_Setup* setup = pffft_new_setup(Nfft, PFFFT_REAL);
     if (setup)
@@ -565,19 +565,9 @@ namespace synaptic
     out.Put(&kSnapshotVersion);
     int32_t chunkSize = mChunkSize;
     out.Put(&chunkSize);
-    // Window type for analysis (store as string for readability)
-    std::string win = "hann";
-    if (mWindow)
-    {
-      switch (mWindow->GetType())
-      {
-        case Window::Type::Hann: win = "hann"; break;
-        case Window::Type::Hamming: win = "hamming"; break;
-        case Window::Type::Blackman: win = "blackman"; break;
-        case Window::Type::Rectangular: win = "rectangular"; break;
-      }
-    }
-    PutString(out, win);
+    // Window type for analysis (store as int for simplicity)
+    int32_t winMode = mWindow ? Window::TypeToInt(mWindow->GetType()) : 1;
+    out.Put(&winMode);
 
     int32_t nFiles = (int32_t) files_.size();
     out.Put(&nFiles);
@@ -644,12 +634,28 @@ namespace synaptic
     uint32_t magic = 0; pos = in.Get(&magic, pos); if (pos < 0 || magic != kSnapshotMagic) return -1;
     uint16_t ver = 0; pos = in.Get(&ver, pos); if (pos < 0 || ver > kSnapshotVersion) return -1;
     int32_t chunkSize = 0; pos = in.Get(&chunkSize, pos); if (pos < 0) return -1; mChunkSize = chunkSize;
-    std::string win; if (!GetString(in, pos, win)) return -1;
-    // Save imported window type for caller to consume
-    if (win == "hann") mSavedAnalysisWindowType = SavedWindowType::Hann;
-    else if (win == "hamming") mSavedAnalysisWindowType = SavedWindowType::Hamming;
-    else if (win == "blackman") mSavedAnalysisWindowType = SavedWindowType::Blackman;
-    else if (win == "rectangular") mSavedAnalysisWindowType = SavedWindowType::Rectangular;
+
+    // Handle window type: v1 used string, v2 uses int
+    if (ver == 1)
+    {
+      // Version 1: read string
+      std::string win;
+      if (!GetString(in, pos, win)) return -1;
+      // Convert string to window type
+      if (win == "hann") mSavedAnalysisWindowType = Window::Type::Hann;
+      else if (win == "hamming") mSavedAnalysisWindowType = Window::Type::Hamming;
+      else if (win == "blackman") mSavedAnalysisWindowType = Window::Type::Blackman;
+      else if (win == "rectangular") mSavedAnalysisWindowType = Window::Type::Rectangular;
+      else mSavedAnalysisWindowType = Window::Type::Hann; // default fallback
+    }
+    else
+    {
+      // Version 2: read int
+      int32_t winMode = 1;
+      pos = in.Get(&winMode, pos);
+      if (pos < 0) return -1;
+      mSavedAnalysisWindowType = Window::IntToType(winMode);
+    }
 
     files_.clear(); idToFileIndex_.clear(); chunks_.clear();
 

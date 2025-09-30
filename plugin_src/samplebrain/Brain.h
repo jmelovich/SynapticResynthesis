@@ -97,8 +97,7 @@ namespace synaptic
     int DeserializeSnapshotFromChunk(const iplug::IByteChunk& in, int startPos);
 
     // Accessor for saved analysis window type as stored in snapshot
-    enum class SavedWindowType { Hann, Hamming, Blackman, Rectangular };
-    SavedWindowType GetSavedAnalysisWindowType() const { return mSavedAnalysisWindowType; }
+    Window::Type GetSavedAnalysisWindowType() const { return mSavedAnalysisWindowType; }
 
   private:
     static float ComputeRMS(const std::vector<iplug::sample>& buffer, int offset, int count);
@@ -115,7 +114,7 @@ namespace synaptic
     int mChunkSize = 0;
     const class Window* mWindow = nullptr;
     // Saved in snapshot for import; defaults to Hann if unknown
-    SavedWindowType mSavedAnalysisWindowType = SavedWindowType::Hann;
+    Window::Type mSavedAnalysisWindowType = Window::Type::Hann;
   };
 }
 
