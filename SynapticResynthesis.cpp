@@ -42,6 +42,7 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
 {
   GetParam(kInGain)->InitGain("Input Gain", 0.0, -70, 0.);
   GetParam(kOutGain)->InitGain("Output Gain", 0.0, -70, 0.);
+  GetParam(kAGC)->InitBool("AGC", false);
 
   // Initialize DSP config with defaults
   mDSPConfig.chunkSize = 3000;
@@ -134,6 +135,7 @@ void SynapticResynthesis::ProcessBlock(sample** inputs, sample** outputs, int nF
 {
   const double inGain = GetParam(kInGain)->DBToAmp();
   const double outGain = GetParam(kOutGain)->DBToAmp();
+  const double agcEnabled = GetParam(kAGC)->Bool();
 
   // Safety check for valid inputs/outputs
   const int inChans = NInChansConnected();
@@ -147,7 +149,8 @@ void SynapticResynthesis::ProcessBlock(sample** inputs, sample** outputs, int nF
     return;
   }
 
-  for (int ch = 0; ch < outChans; ch++) {
+  for (int ch = 0; ch < outChans; ch++)
+  {
     for (int s = 0; s < nFrames; s++)
     {
       inputs[ch][s] *= inGain;
@@ -166,7 +169,7 @@ void SynapticResynthesis::ProcessBlock(sample** inputs, sample** outputs, int nF
   }
 
   // Render queued output to the host buffers
-  mChunker.RenderOutput(outputs, nFrames, outChans);
+  mChunker.RenderOutput(outputs, nFrames, outChans, agcEnabled);
 
   // Apply gain
   for (int s = 0; s < nFrames; s++)

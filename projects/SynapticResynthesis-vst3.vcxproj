@@ -382,6 +382,7 @@
     <None Include="..\config\SynapticResynthesis-win.props">
       <SubType>Designer</SubType>
     </None>
+    <None Include="..\resources\web\index.html" />
     <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

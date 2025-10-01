@@ -411,6 +411,7 @@
       <Filter>config</Filter>
     </None>
     <None Include="packages.config" />
+    <None Include="..\resources\web\index.html" />
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="$(MSBuildThisFileDirectory)..\..\natvis\wil.natvis" />

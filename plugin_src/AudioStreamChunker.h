@@ -15,6 +15,7 @@ namespace synaptic
   {
     std::vector<std::vector<sample>> channelSamples; // [channel][frame]
     int numFrames = 0;
+    double inRMS = 0;
   };
 
   struct PoolEntry
@@ -229,6 +230,19 @@ namespace synaptic
           }
           entry.chunk.numFrames = mChunkSize;
 
+          // Get RMS of current frame and store in AudioChunk
+          float inChunkRMS = 0;
+          for (int ch = 0; ch < mNumChannels; ch++)
+          {
+            sample* __restrict chunk = entry.chunk.channelSamples[ch].data();
+            for (int i = 0; i < entry.chunk.numFrames; i++)
+            {
+              inChunkRMS += chunk[i] * chunk[i]; // gather Sum of Squares
+            }
+          }
+          inChunkRMS = sqrt(inChunkRMS / entry.chunk.numFrames * 2); // get Root Mean Square (rms)
+          entry.chunk.inRMS = inChunkRMS;
+
           // Insert into lookahead window
           if (mWindow.Full())
           {
@@ -325,7 +339,7 @@ namespace synaptic
       }
     }
 
-    void RenderOutput(sample** outputs, int nFrames, int outChans)
+    void RenderOutput(sample** outputs, int nFrames, int outChans, bool agcEnabled = false)
     {
       if (!outputs || nFrames <= 0 || outChans <= 0) return;
 
@@ -350,6 +364,24 @@ namespace synaptic
 
           if (e.chunk.numFrames > 0)
           {
+            float agc = 1.0f;
+            if (agcEnabled)
+            {
+              // Get RMS of current frame and store in AudioChunk
+              float outChunkRMS = 0;
+              for (int ch = 0; ch < mNumChannels; ch++)
+              {
+                sample* __restrict chunk = e.chunk.channelSamples[ch].data();
+                for (int i = 0; i < e.chunk.numFrames; i++)
+                {
+                  outChunkRMS += chunk[i] * chunk[i]; // gather Sum of Squares
+                }
+              }
+              outChunkRMS = sqrt(outChunkRMS / e.chunk.numFrames * 2); // get Root Mean Square (rms)
+
+              agc = e.chunk.inRMS / outChunkRMS;
+            }
+
             if (mOutputWindow.Size() != e.chunk.numFrames)
               mOutputWindow.Set(mOutputWindow.GetType(), e.chunk.numFrames);
 
@@ -372,7 +404,7 @@ namespace synaptic
                 {
                   if (addPos + i < (int)mOutputOverlapBuffer[ch].size() && i < (int)coeffs.size())
                   {
-                    mOutputOverlapBuffer[ch][addPos + i] += e.chunk.channelSamples[ch][i] * coeffs[i];
+                    mOutputOverlapBuffer[ch][addPos + i] += e.chunk.channelSamples[ch][i] * coeffs[i] * agc;
                   }
                 }
               }

@@ -21,8 +21,8 @@ const int kNumPresets = 3;
 
 enum EParams
 {
-  kInGain = 0,
   // Fixed, non-dynamic parameters
+  kInGain = 0,
   kChunkSize,
   kBufferWindow,
   kAlgorithm,
@@ -31,6 +31,7 @@ enum EParams
   kAnalysisWindow,
   kEnableOverlap,
   kOutGain,
+  kAGC,
   // Dynamic transformer parameters are indexed after this sentinel
   kNumParams
 };

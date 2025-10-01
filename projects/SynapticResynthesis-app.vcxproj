@@ -348,6 +348,7 @@
       <SubType>Designer</SubType>
     </None>
     <None Include="..\config\SynapticResynthesis-mac.xcconfig" />
+    <None Include="..\resources\web\index.html" />
     <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
