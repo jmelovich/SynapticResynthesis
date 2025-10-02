@@ -38,16 +38,12 @@ enum EParams
 
 enum EMsgTags
 {
-  kMsgTagButton1 = 0,
-  kMsgTagButton2 = 1,
-  kMsgTagButton3 = 2,
-  kMsgTagBinaryTest = 3,
   kMsgTagSetChunkSize = 4,
   kMsgTagSetBufferWindowSize = 5,
+  kMsgTagSetAlgorithm = 6,
+  kMsgTagSetOutputWindowMode = 7,
   // Analysis window used for offline brain analysis (non-automatable IParam mirrors this)
   kMsgTagSetAnalysisWindowMode = 8,
-  kMsgTagSetOutputWindowMode = 7,
-  kMsgTagSetAlgorithm = 6,
   // Brain UI -> C++ messages
   kMsgTagBrainAddFile = 100,
   kMsgTagBrainRemoveFile = 101,
@@ -60,6 +56,8 @@ enum EMsgTags
   kMsgTagBrainImport = 105,
   kMsgTagBrainReset = 106,
   kMsgTagBrainDetach = 107,
+  // Window resize
+  kMsgTagResizeToFit = 108,
   // C++ -> UI JSON updates use msgTag = -1, with id fields "brainSummary"
 
 };
@@ -86,8 +84,6 @@ public:
 
 private:
   // === Message Handlers (called by UIMessageRouter) ===
-  bool HandleResizeMsg(int width, int height);
-  bool HandleBinaryTestMsg(int dataSize, const void* pData);
   bool HandleUiReadyMsg();
   bool HandleSetChunkSizeMsg(int newSize);
   bool HandleSetBufferWindowSizeMsg(int newSize);
@@ -101,6 +97,7 @@ private:
   bool HandleBrainImportMsg();
   bool HandleBrainResetMsg();
   bool HandleBrainDetachMsg();
+  bool HandleResizeToFitMsg(int dataSize, const void* pData);
 
   // === Helper Methods ===
   void UpdateChunkerWindowing();

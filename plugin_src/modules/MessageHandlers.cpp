@@ -10,20 +10,6 @@
 
 // === UI Control Message Handlers ===
 
-bool SynapticResynthesis::HandleResizeMsg(int width, int height)
-{
-  Resize(width, height);
-  return true;
-}
-
-bool SynapticResynthesis::HandleBinaryTestMsg(int dataSize, const void* pData)
-{
-  auto uint8Data = reinterpret_cast<const uint8_t*>(pData);
-  DBGMSG("Data Size %i bytes\n", dataSize);
-  DBGMSG("Byte values: %i, %i, %i, %i\n", uint8Data[0], uint8Data[1], uint8Data[2], uint8Data[3]);
-  return true;
-}
-
 bool SynapticResynthesis::HandleUiReadyMsg()
 {
   // UI is ready to receive state; resend current values to repopulate panels
@@ -311,5 +297,31 @@ bool SynapticResynthesis::HandleBrainDetachMsg()
   mBrainManager.Detach();
   MarkHostStateDirty();
   return true;
+}
+
+bool SynapticResynthesis::HandleResizeToFitMsg(int dataSize, const void* pData)
+{
+  if (!pData || dataSize <= 0)
+    return false;
+
+  const char* bytes = reinterpret_cast<const char*>(pData);
+  std::string s(bytes, bytes + dataSize);
+  try
+  {
+    auto j = nlohmann::json::parse(s);
+    int width = j.value("width", 1024);
+    int height = j.value("height", 600);
+
+    // Clamp to reasonable bounds
+    width = std::clamp(width, 400, 2560);
+    height = std::clamp(height, 300, 1440);
+
+    Resize(width, height);
+    return true;
+  }
+  catch (...)
+  {
+    return false;
+  }
 }
 

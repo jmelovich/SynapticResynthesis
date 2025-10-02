@@ -27,18 +27,6 @@ namespace synaptic
       switch (msgTag)
       {
         // UI Control Messages
-        case ::kMsgTagButton1:
-          return plugin->HandleResizeMsg(512, 335);
-
-        case ::kMsgTagButton2:
-          return plugin->HandleResizeMsg(1024, 335);
-
-        case ::kMsgTagButton3:
-          return plugin->HandleResizeMsg(1024, 768);
-
-        case ::kMsgTagBinaryTest:
-          return plugin->HandleBinaryTestMsg(dataSize, pData);
-
         case ::kMsgTagUiReady:
           return plugin->HandleUiReadyMsg();
 
@@ -80,6 +68,9 @@ namespace synaptic
 
         case ::kMsgTagBrainDetach:
           return plugin->HandleBrainDetachMsg();
+
+        case ::kMsgTagResizeToFit:
+          return plugin->HandleResizeToFitMsg(dataSize, pData);
 
         default:
           return false;
