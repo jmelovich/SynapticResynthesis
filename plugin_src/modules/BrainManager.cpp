@@ -136,6 +136,14 @@ namespace synaptic
   {
     if (!mBrain) return;
 
+    // Skip if brain is empty (no files to rechunk)
+    if (mBrain->GetTotalChunks() == 0)
+    {
+      DBGMSG("Rechunk skipped: brain is empty\n");
+      if (onComplete) onComplete();
+      return;
+    }
+
     // Check if already running
     if (mOperationInProgress.exchange(true))
     {
@@ -168,6 +176,14 @@ namespace synaptic
   void BrainManager::ReanalyzeAllChunksAsync(int sampleRate, CompletionFn onComplete)
   {
     if (!mBrain) return;
+
+    // Skip if brain is empty (no files to reanalyze)
+    if (mBrain->GetTotalChunks() == 0)
+    {
+      DBGMSG("Reanalyze skipped: brain is empty\n");
+      if (onComplete) onComplete();
+      return;
+    }
 
     // Check if already running
     if (mOperationInProgress.exchange(true))
