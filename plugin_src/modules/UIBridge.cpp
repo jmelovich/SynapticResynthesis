@@ -36,7 +36,7 @@ namespace synaptic
     SendJSON(j);
   }
 
-  void UIBridge::SendTransformerParams(const IChunkBufferTransformer* transformer)
+  void UIBridge::SendTransformerParams(std::shared_ptr<const IChunkBufferTransformer> transformer)
   {
     nlohmann::json j;
     j["id"] = "transformerParams";
@@ -50,6 +50,7 @@ namespace synaptic
     }
 
     // Get parameter descriptions from transformer
+    // Holding shared_ptr keeps transformer alive during this entire function
     std::vector<IChunkBufferTransformer::ExposedParamDesc> descs;
     transformer->GetParamDescs(descs);
 
@@ -201,7 +202,7 @@ namespace synaptic
   }
 
   void UIBridge::SendAllState(const Brain& brain,
-                              const IChunkBufferTransformer* transformer,
+                              std::shared_ptr<const IChunkBufferTransformer> transformer,
                               const DSPConfig& config)
   {
     SendTransformerParams(transformer);

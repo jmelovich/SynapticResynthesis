@@ -39,8 +39,9 @@ namespace synaptic
     /**
      * @brief Send current transformer parameter schema and values to UI
      * Sends JSON with id="transformerParams" containing parameter descriptions
+     * Takes shared_ptr to prevent transformer from being destroyed during async operations
      */
-    void SendTransformerParams(const IChunkBufferTransformer* transformer);
+    void SendTransformerParams(std::shared_ptr<const IChunkBufferTransformer> transformer);
 
     /**
      * @brief Send DSP configuration to UI
@@ -64,7 +65,7 @@ namespace synaptic
      * @brief Send all state to UI (used on UI ready and state restore)
      */
     void SendAllState(const Brain& brain,
-                     const IChunkBufferTransformer* transformer,
+                     std::shared_ptr<const IChunkBufferTransformer> transformer,
                      const DSPConfig& config);
 
     // === Overlay Controls ===

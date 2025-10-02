@@ -80,7 +80,7 @@ namespace synaptic
      * Coordinates: config update, transformer creation, brain wiring, reset, binding application, latency
      */
     template<typename PluginT>
-    std::unique_ptr<IChunkBufferTransformer> HandleAlgorithmChange(
+    std::shared_ptr<IChunkBufferTransformer> HandleAlgorithmChange(
       int paramIdx, iplug::IParam* param, DSPConfig& config,
       PluginT* plugin, synaptic::Brain& brain, double sampleRate, int channels)
     {

@@ -11,7 +11,7 @@ namespace synaptic
     {
       out.clear();
       std::vector<IChunkBufferTransformer::ExposedParamDesc> tmp;
-      auto consider = [&](std::unique_ptr<IChunkBufferTransformer> t){
+      auto consider = [&](std::shared_ptr<IChunkBufferTransformer> t){
         tmp.clear();
         t->GetParamDescs(tmp);
         for (const auto& d : tmp)

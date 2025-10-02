@@ -13,7 +13,7 @@
 bool SynapticResynthesis::HandleUiReadyMsg()
 {
   // UI is ready to receive state; resend current values to repopulate panels
-  mUIBridge.SendTransformerParams(mTransformer.get());
+  mUIBridge.SendTransformerParams(mTransformer);
 
   SyncAndSendDSPConfig();
 
@@ -144,7 +144,7 @@ bool SynapticResynthesis::HandleSetAlgorithmMsg(int algorithmId)
   UpdateChunkerWindowing();
 
   // Send transformer params and DSP config to UI (use pending transformer since swap hasn't happened yet)
-  mUIBridge.SendTransformerParams(mPendingTransformer.get());
+  mUIBridge.SendTransformerParams(mPendingTransformer);
   SyncAndSendDSPConfig();
   // Note: SetLatency will be called in ProcessBlock after swap
   return true;
@@ -217,7 +217,7 @@ bool SynapticResynthesis::HandleTransformerSetParamMsg(const void* jsonData, int
         }
         SetParameterFromUI(it->paramIdx, GetParam(it->paramIdx)->FromNormalized(normalized));
       }
-      mUIBridge.SendTransformerParams(mTransformer.get());
+      mUIBridge.SendTransformerParams(mTransformer);
     }
     return ok;
   }

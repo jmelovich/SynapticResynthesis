@@ -230,7 +230,7 @@ void SynapticResynthesis::OnReset()
 
   // When audio engine resets, leave brain state intact; just resend summary to UI
   mUIBridge.SendBrainSummary(mBrain);
-  mUIBridge.SendTransformerParams(mTransformer.get());
+  mUIBridge.SendTransformerParams(mTransformer);
 
   // Update and send DSP config to UI
   SyncAndSendDSPConfig();
@@ -247,7 +247,7 @@ void SynapticResynthesis::OnUIOpen()
 {
   // Ensure UI gets current values when window opens
   Plugin::OnUIOpen();
-  mUIBridge.SendTransformerParams(mTransformer.get());
+  mUIBridge.SendTransformerParams(mTransformer);
 
   SyncAndSendDSPConfig();
 
@@ -263,7 +263,7 @@ void SynapticResynthesis::OnIdle()
 void SynapticResynthesis::OnRestoreState()
 {
   Plugin::OnRestoreState();
-  mUIBridge.SendTransformerParams(mTransformer.get());
+  mUIBridge.SendTransformerParams(mTransformer);
 
   SyncAndSendDSPConfig();
 
@@ -456,7 +456,7 @@ int SynapticResynthesis::UnserializeState(const IByteChunk& chunk, int startPos)
 
   SyncAndSendDSPConfig();
 
-  mUIBridge.SendTransformerParams(mTransformer.get());
+  mUIBridge.SendTransformerParams(mTransformer);
   mUIBridge.SendExternalRefInfo(mBrainManager.UseExternal(), mBrainManager.ExternalPath());
 
   return pos;
