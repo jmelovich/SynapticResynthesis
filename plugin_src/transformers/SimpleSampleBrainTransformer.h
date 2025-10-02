@@ -105,6 +105,7 @@ namespace synaptic
         {
           // For each output channel, independently pick best brain chunk+channel
           const int total = mBrain->GetTotalChunks();
+          bool foundAnyMatch = false;
           for (int ch = 0; ch < numChannels; ++ch)
           {
             int bestChunk = -1;
@@ -141,6 +142,7 @@ namespace synaptic
 
             if (bestChunk >= 0)
             {
+              foundAnyMatch = true;
               const BrainChunk* match = mBrain->GetChunkByGlobalIndex(bestChunk);
               const int framesToWrite = std::min(chunkSize, match ? match->audio.numFrames : chunkSize);
               const int srcChans = match ? (int) match->audio.channelSamples.size() : 0;
@@ -150,8 +152,23 @@ namespace synaptic
               for (int i = framesToWrite; i < chunkSize; ++i)
                 out->channelSamples[ch][i] = 0.0;
             }
+            else
+            {
+              // No match found for this channel - output silence
+              for (int i = 0; i < chunkSize; ++i)
+                out->channelSamples[ch][i] = 0.0;
+            }
           }
-          chunker.CommitWritableChunkIndex(outIdx, chunkSize, in->inRMS);
+
+          // If brain was completely empty, just output silence
+          if (!foundAnyMatch && total == 0)
+          {
+            chunker.CommitWritableChunkIndex(outIdx, chunkSize, 0.0);
+          }
+          else
+          {
+            chunker.CommitWritableChunkIndex(outIdx, chunkSize, in->inRMS);
+          }
         }
         else
         {
