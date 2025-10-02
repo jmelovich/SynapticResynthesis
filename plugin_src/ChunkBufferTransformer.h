@@ -119,7 +119,7 @@ namespace synaptic
           out->channelSamples[ch][i] = 0.0;
       }
 
-      chunker.CommitWritableChunkIndex(outIdx, framesToWrite);
+      chunker.CommitWritableChunkIndex(outIdx, framesToWrite, in->inRMS);
       return true;
     }
   };
@@ -189,21 +189,17 @@ namespace synaptic
 
           const auto& channelData = in->channelSamples[ch];
 
-          double rmsAcc = 0.0;
           int zc = 0;
           double prev = channelData[0];
-          rmsAcc += prev * prev;
 
           for (int i = 1; i < N; ++i)
           {
             double x = channelData[i];
-            rmsAcc += x * x;
             if ((prev <= 0.0 && x > 0.0) || (prev >= 0.0 && x < 0.0))
               ++zc;
             prev = x;
           }
 
-          const double rms = std::sqrt(rmsAcc / N);
           double freq = (double) zc * mSampleRate / (2.0 * N);
 
           // Freq clamping
@@ -213,7 +209,8 @@ namespace synaptic
           if (freq > nyquist - 20.0) freq = nyquist - 20.0;
 
           freqs[ch] = freq;
-          amps[ch] = std::min(1.0, rms * 1.41421356237); // RMS to peak
+          // Use pre-calculated input RMS from chunker, convert to peak amplitude
+          amps[ch] = std::min(1.0, in->inRMS * 1.41421356237); // RMS to peak
         }
 
         // 2. Allocate and synthesize
@@ -252,7 +249,7 @@ namespace synaptic
           }
         }
 
-        chunker.CommitWritableChunkIndex(outIdx, framesToWrite);
+        chunker.CommitWritableChunkIndex(outIdx, framesToWrite, in->inRMS);
       }
     }
 
@@ -310,8 +307,7 @@ namespace synaptic
         const int N = in->numFrames;
         const double nyquist = 0.5 * mSampleRate;
 
-        // Analyze all channels
-        std::vector<double> inRms(numChannels, 0.0);
+        // Analyze all channels (frequency only, RMS already computed by chunker)
         std::vector<double> inFreq(numChannels, 440.0);
         std::vector<double> inFftFreq(numChannels, 440.0);
         for (int ch = 0; ch < numChannels; ++ch)
@@ -319,19 +315,15 @@ namespace synaptic
           if (ch >= (int) in->channelSamples.size() || in->channelSamples[ch].empty())
             continue;
           const auto& buf = in->channelSamples[ch];
-          double rmsAcc = 0.0;
           int zc = 0;
           double prev = buf[0];
-          rmsAcc += prev * prev;
           for (int i = 1; i < N; ++i)
           {
             double x = buf[i];
-            rmsAcc += x * x;
             if ((prev <= 0.0 && x > 0.0) || (prev >= 0.0 && x < 0.0))
               ++zc;
             prev = x;
           }
-          inRms[ch] = std::sqrt(rmsAcc / std::max(1, N));
           double f = (double) zc * mSampleRate / (2.0 * (double) N);
           if (!(f > 0.0)) f = 440.0;
           if (f < 20.0) f = 20.0;
@@ -403,7 +395,7 @@ namespace synaptic
                 const double br = (bch < (int) bc->rmsPerChannel.size()) ? (double) bc->rmsPerChannel[bch] : (double) bc->avgRms;
                 const double inFeatureF = mUseFftFreq ? inFftFreq[ch] : inFreq[ch];
                 double df = std::abs(inFeatureF - bf) / nyquist;
-                double da = std::abs(inRms[ch] - br);
+                double da = std::abs(in->inRMS - br);
                 if (da > 1.0) da = 1.0;
                 double score = mWeightFreq * df + mWeightAmp * da;
                 if (score < bestScore)
@@ -427,7 +419,7 @@ namespace synaptic
                 out->channelSamples[ch][i] = 0.0;
             }
           }
-          chunker.CommitWritableChunkIndex(outIdx, chunkSize);
+          chunker.CommitWritableChunkIndex(outIdx, chunkSize, in->inRMS);
         }
         else
         {
@@ -437,7 +429,6 @@ namespace synaptic
           const int total = mBrain->GetTotalChunks();
           const double inFreqAvg = (numChannels > 0) ? std::accumulate(inFreq.begin(), inFreq.end(), 0.0) / (double) numChannels : 440.0;
           const double inFftAvg = (numChannels > 0) ? std::accumulate(inFftFreq.begin(), inFftFreq.end(), 0.0) / (double) numChannels : 440.0;
-          const double inRmsAvg = (numChannels > 0) ? std::accumulate(inRms.begin(), inRms.end(), 0.0) / (double) numChannels : 0.0;
           for (int bi = 0; bi < total; ++bi)
           {
             const BrainChunk* bc = mBrain->GetChunkByGlobalIndex(bi);
@@ -448,7 +439,7 @@ namespace synaptic
             const double br = (double) bc->avgRms;
             const double inFeatureAvg = mUseFftFreq ? inFftAvg : inFreqAvg;
             double df = std::abs(inFeatureAvg - bf) / nyquist;
-            double da = std::abs(inRmsAvg - br);
+            double da = std::abs(in->inRMS - br);
             if (da > 1.0) da = 1.0;
             double score = mWeightFreq * df + mWeightAmp * da;
             if (score < bestScore)
@@ -482,7 +473,7 @@ namespace synaptic
               out->channelSamples[ch][i] = 0.0;
           }
 
-          chunker.CommitWritableChunkIndex(outIdx, framesToWrite);
+          chunker.CommitWritableChunkIndex(outIdx, framesToWrite, in->inRMS);
         }
       }
     }

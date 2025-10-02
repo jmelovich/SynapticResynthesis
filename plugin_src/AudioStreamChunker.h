@@ -316,13 +316,15 @@ namespace synaptic
     }
 
     // Commit a synthesized chunk to output. numFrames will be clamped to [0, mChunkSize].
-    void CommitWritableChunkIndex(int idx, int numFrames)
+    // inRMS should be the RMS of the corresponding input chunk for AGC to work correctly.
+    void CommitWritableChunkIndex(int idx, int numFrames, double inRMS = 0.0)
     {
       if (idx < 0 || idx >= mPoolCapacity) return;
       PoolEntry& e = mPool[idx];
       if (numFrames < 0) numFrames = 0;
       if (numFrames > mChunkSize) numFrames = mChunkSize;
       e.chunk.numFrames = numFrames;
+      e.chunk.inRMS = inRMS;  // Set input RMS for AGC
       // add output ref and enqueue
       ++e.refCount;
       mOutput.Push(idx);
