@@ -116,7 +116,24 @@
     <ClCompile Include="..\..\..\IPlug\Extras\WebView\IPlugWebView.cpp">
       <Filter>IPlug\Extras\WebView</Filter>
     </ClCompile>
-    <ClCompile Include="..\plugin_src\samplebrain\Brain.cpp" />
+    <ClCompile Include="..\plugin_src\modules\BrainManager.cpp">
+      <Filter>plugin_src\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="..\plugin_src\modules\MessageHandlers.cpp">
+      <Filter>plugin_src\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="..\plugin_src\modules\ParameterManager.cpp">
+      <Filter>plugin_src\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="..\plugin_src\modules\StateSerializer.cpp">
+      <Filter>plugin_src\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="..\plugin_src\modules\UIBridge.cpp">
+      <Filter>plugin_src\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="..\plugin_src\samplebrain\Brain.cpp">
+      <Filter>plugin_src\samplebrain</Filter>
+    </ClCompile>
     <ClCompile Include="..\exdeps\pffft\pffft.c" />
   </ItemGroup>
   <ItemGroup>
@@ -267,9 +284,48 @@
       <Filter>IPlug\Extras\WebView</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\IPlug\ISender.h" />
-    <ClInclude Include="..\plugin_src\Window.h" />
-    <ClInclude Include="..\plugin_src\samplebrain\Brain.h" />
-    <ClInclude Include="..\plugin_src\FeatureAnalysis.h" />
+    <ClInclude Include="..\exdeps\miniaudio\miniaudio.h">
+      <Filter>exdeps</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\AudioStreamChunker.h">
+      <Filter>plugin_src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\ChunkBufferTransformer.h">
+      <Filter>plugin_src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\FeatureAnalysis.h">
+      <Filter>plugin_src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\PlatformFileDialogs.h">
+      <Filter>plugin_src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\TransformerFactory.h">
+      <Filter>plugin_src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\Window.h">
+      <Filter>plugin_src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\modules\BrainManager.h">
+      <Filter>plugin_src\modules</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\modules\DSPConfig.h">
+      <Filter>plugin_src\modules</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\modules\ParameterManager.h">
+      <Filter>plugin_src\modules</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\modules\StateSerializer.h">
+      <Filter>plugin_src\modules</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\modules\UIBridge.h">
+      <Filter>plugin_src\modules</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\modules\UIMessageHandler.h">
+      <Filter>plugin_src\modules</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\samplebrain\Brain.h">
+      <Filter>plugin_src\samplebrain</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="resources">
@@ -323,6 +379,18 @@
     <Filter Include="IPlug\Extras\WebView">
       <UniqueIdentifier>{208b5a1d-9e44-4998-8311-ef027a7f18ee}</UniqueIdentifier>
     </Filter>
+    <Filter Include="plugin_src">
+      <UniqueIdentifier>{f1a2b3c4-d5e6-f7a8-b9c0-d1e2f3a4b5c6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="plugin_src\modules">
+      <UniqueIdentifier>{a1b2c3d4-e5f6-a7b8-c9d0-e1f2a3b4c5d6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="plugin_src\samplebrain">
+      <UniqueIdentifier>{b1c2d3e4-f5a6-b7c8-d9e0-f1a2b3c4d5e6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="exdeps">
+      <UniqueIdentifier>{c1d2e3f4-a5b6-c7d8-e9f0-a1b2c3d4e5f6}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\resources\main.rc">
@@ -343,6 +411,7 @@
       <Filter>config</Filter>
     </None>
     <None Include="packages.config" />
+    <None Include="..\resources\web\index.html" />
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="$(MSBuildThisFileDirectory)..\..\natvis\wil.natvis" />

@@ -7,6 +7,12 @@
 #include "plugin_src/ChunkBufferTransformer.h"
 #include "plugin_src/samplebrain/Brain.h"
 #include "plugin_src/Window.h"
+#include "plugin_src/modules/DSPConfig.h"
+#include "plugin_src/modules/UIBridge.h"
+#include "plugin_src/modules/ParameterManager.h"
+#include "plugin_src/modules/BrainManager.h"
+#include "plugin_src/modules/StateSerializer.h"
+#include "plugin_src/modules/UIMessageHandler.h"
 #include <atomic>
 
 using namespace iplug;
@@ -15,8 +21,8 @@ const int kNumPresets = 3;
 
 enum EParams
 {
-  kInGain = 0,
   // Fixed, non-dynamic parameters
+  kInGain = 0,
   kChunkSize,
   kBufferWindow,
   kAlgorithm,
@@ -24,23 +30,20 @@ enum EParams
   kDirtyFlag,
   kAnalysisWindow,
   kEnableOverlap,
-  // Dynamic transformer parameters are indexed after this sentinel
   kOutGain,
+  kAGC,
+  // Dynamic transformer parameters are indexed after this sentinel
   kNumParams
 };
 
 enum EMsgTags
 {
-  kMsgTagButton1 = 0,
-  kMsgTagButton2 = 1,
-  kMsgTagButton3 = 2,
-  kMsgTagBinaryTest = 3,
   kMsgTagSetChunkSize = 4,
   kMsgTagSetBufferWindowSize = 5,
+  kMsgTagSetAlgorithm = 6,
+  kMsgTagSetOutputWindowMode = 7,
   // Analysis window used for offline brain analysis (non-automatable IParam mirrors this)
   kMsgTagSetAnalysisWindowMode = 8,
-  kMsgTagSetOutputWindowMode = 7,
-  kMsgTagSetAlgorithm = 6,
   // Brain UI -> C++ messages
   kMsgTagBrainAddFile = 100,
   kMsgTagBrainRemoveFile = 101,
@@ -53,12 +56,17 @@ enum EMsgTags
   kMsgTagBrainImport = 105,
   kMsgTagBrainReset = 106,
   kMsgTagBrainDetach = 107,
+  // Window resize
+  kMsgTagResizeToFit = 108,
   // C++ -> UI JSON updates use msgTag = -1, with id fields "brainSummary"
 
 };
 
 class SynapticResynthesis final : public Plugin
 {
+  // Allow UIMessageRouter to call private handler methods
+  friend class synaptic::UIMessageRouter;
+
 public:
   SynapticResynthesis(const InstanceInfo& info);
 
@@ -73,73 +81,56 @@ public:
   // state serialization
   bool SerializeState(IByteChunk& chunk) const override;
   int UnserializeState(const IByteChunk& chunk, int startPos) override;
-  bool CanNavigateToURL(const char* url);
-  bool OnCanDownloadMIMEType(const char* mimeType) override;
-  void OnFailedToDownloadFile(const char* path) override;
-  void OnDownloadedFile(const char* path) override;
-  void OnGetLocalDownloadPathForFile(const char* fileName, WDL_String& localPath) override;
 
 private:
-  float mLastPeak = 0.;
-  FastSinOscillator<sample> mOscillator {0., 440.};
-  LogParamSmooth<sample, 1> mGainSmoother;
-  int mChunkSize = 3000;
-  int mBufferWindowSize = 1;
-  int mOutputWindowMode = 1; // 1=Hann,2=Hamming,3=Blackman,4=Rectangular
-  int mAnalysisWindowMode = 1; // 1=Hann,2=Hamming,3=Blackman,4=Rectangular (for Brain analysis)
-  bool mEnableOverlapAdd = true; // Enable overlap-add windowing
-  synaptic::AudioStreamChunker mChunker {2};
-  std::unique_ptr<synaptic::IChunkBufferTransformer> mTransformer;
-  int mAlgorithmId = 0; // 0=passthrough, 1=sine, 2=samplebrain
-  synaptic::Window mOutputWindow;
-  // Indices of core params created at runtime
-  int mParamIdxChunkSize = -1;
-  int mParamIdxBufferWindow = -1;
-  int mParamIdxOutputWindow = -1;
-  int mParamIdxAnalysisWindow = -1;
-  int mParamIdxAlgorithm = -1;
-  int mParamIdxDirtyFlag = -1; // hidden internal param used to nudge host dirty state
-  int mParamIdxEnableOverlap = -1;
-  struct TransformerParamBinding {
-    std::string id;
-    synaptic::IChunkBufferTransformer::ParamType type;
-    int paramIdx = -1;
-    // For enums, map index<->string value
-    std::vector<std::string> enumValues; // order corresponds to indices 0..N-1
-  };
-  std::vector<TransformerParamBinding> mTransformerBindings; // union across all transformers
-  int ComputeLatencySamples() const { return mChunkSize + (mTransformer ? mTransformer->GetAdditionalLatencySamples(mChunkSize, mBufferWindowSize) : 0); }
+  // === Message Handlers (called by UIMessageRouter) ===
+  bool HandleUiReadyMsg();
+  bool HandleSetChunkSizeMsg(int newSize);
+  bool HandleSetBufferWindowSizeMsg(int newSize);
+  bool HandleSetOutputWindowMsg(int mode);
+  bool HandleSetAnalysisWindowMsg(int mode);
+  bool HandleSetAlgorithmMsg(int algorithmId);
+  bool HandleTransformerSetParamMsg(const void* jsonData, int dataSize);
+  bool HandleBrainAddFileMsg(int dataSize, const void* pData);
+  bool HandleBrainRemoveFileMsg(int fileId);
+  bool HandleBrainExportMsg();
+  bool HandleBrainImportMsg();
+  bool HandleBrainResetMsg();
+  bool HandleBrainDetachMsg();
+  bool HandleResizeToFitMsg(int dataSize, const void* pData);
 
-  // Samplebrain in-memory state
-  synaptic::Brain mBrain;
-  synaptic::Window mWindow;
-  // External snapshot reference (Proposal 2 step)
-  std::string mExternalBrainPath;
-  bool mUseExternalBrain = false;
-  mutable bool mBrainDirty = false;
-  std::atomic<bool> mRechunking { false };
-  void SendBrainSummaryToUI();
-  void SendTransformerParamsToUI();
-  void SendDSPConfigToUI();
+  // === Helper Methods ===
   void UpdateChunkerWindowing();
-
-  // Utility function to convert window mode integer to Window::Type
-  static synaptic::Window::Type IntToWindowType(int mode);
-
-  // Notify host that state changed (e.g., brain edited) so host marks project as modified
   void MarkHostStateDirty();
-
-  // UI thread dispatch helpers
-  void EnqueueUiPayload(const std::string& payload);
   void DrainUiQueueOnMainThread();
-  std::mutex mUiQueueMutex;
-  std::vector<std::string> mUiQueue; // raw JSON payloads to send via SendArbitraryMsgFromDelegate
+  void SyncAndSendDSPConfig();
+  void SetParameterFromUI(int paramIdx, double value);
+  void UpdateBrainAnalysisWindow();
+
+  // === Brain State (must be declared before BrainManager) ===
+  synaptic::Brain mBrain;
+  synaptic::Window mAnalysisWindow;  // For brain analysis
+
+  // === Modules ===
+  synaptic::DSPConfig mDSPConfig;
+  synaptic::UIBridge mUIBridge;
+  synaptic::ParameterManager mParamManager;
+  synaptic::BrainManager mBrainManager;
+  synaptic::StateSerializer mStateSerializer;
+
+  // === DSP Components ===
+  LogParamSmooth<sample, 1> mGainSmoother;
+  synaptic::AudioStreamChunker mChunker {2};
+  std::shared_ptr<synaptic::IChunkBufferTransformer> mTransformer;
+  std::shared_ptr<synaptic::IChunkBufferTransformer> mPendingTransformer; // For thread-safe swapping
+  synaptic::Window mOutputWindow;
+
+  // Utility methods
+  int ComputeLatencySamples() const { return mDSPConfig.chunkSize + (mTransformer ? mTransformer->GetAdditionalLatencySamples(mDSPConfig.chunkSize, mDSPConfig.bufferWindowSize) : 0); }
+
+  // Atomic flags for deferred updates
   std::atomic<bool> mPendingSendBrainSummary { false };
   std::atomic<bool> mPendingSendDSPConfig { false };
   std::atomic<bool> mPendingMarkDirty { false };
-
-  // Import coordination
-  std::atomic<int> mPendingImportedChunkSize { -1 }; // -1 = none
-  std::atomic<int> mPendingImportedAnalysisWindow { -1 }; // 1..4, -1 none
   std::atomic<bool> mSuppressNextAnalysisReanalyze { false };
 };

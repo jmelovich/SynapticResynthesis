@@ -290,6 +290,20 @@
     <ClInclude Include="..\..\..\IPlug\IPlug_include_in_plug_hdr.h" />
     <ClInclude Include="..\..\..\IPlug\IPlug_include_in_plug_src.h" />
     <ClInclude Include="..\..\..\IPlug\ISender.h" />
+    <ClInclude Include="..\exdeps\miniaudio\miniaudio.h" />
+    <ClInclude Include="..\plugin_src\AudioStreamChunker.h" />
+    <ClInclude Include="..\plugin_src\ChunkBufferTransformer.h" />
+    <ClInclude Include="..\plugin_src\FeatureAnalysis.h" />
+    <ClInclude Include="..\plugin_src\PlatformFileDialogs.h" />
+    <ClInclude Include="..\plugin_src\TransformerFactory.h" />
+    <ClInclude Include="..\plugin_src\modules\BrainManager.h" />
+    <ClInclude Include="..\plugin_src\modules\DSPConfig.h" />
+    <ClInclude Include="..\plugin_src\modules\ParameterManager.h" />
+    <ClInclude Include="..\plugin_src\modules\StateSerializer.h" />
+    <ClInclude Include="..\plugin_src\modules\UIBridge.h" />
+    <ClInclude Include="..\plugin_src\modules\UIMessageHandler.h" />
+    <ClInclude Include="..\plugin_src\samplebrain\Brain.h" />
+    <ClInclude Include="..\plugin_src\Window.h" />
     <ClInclude Include="..\SynapticResynthesis.h" />
     <ClInclude Include="..\resources\resource.h" />
   </ItemGroup>
@@ -312,9 +326,14 @@
     <ClCompile Include="..\..\..\IPlug\IPlugPluginBase.cpp" />
     <ClCompile Include="..\..\..\IPlug\IPlugProcessor.cpp" />
     <ClCompile Include="..\..\..\IPlug\IPlugTimer.cpp" />
+    <ClCompile Include="..\plugin_src\modules\BrainManager.cpp" />
+    <ClCompile Include="..\plugin_src\modules\MessageHandlers.cpp" />
+    <ClCompile Include="..\plugin_src\modules\ParameterManager.cpp" />
+    <ClCompile Include="..\plugin_src\modules\StateSerializer.cpp" />
+    <ClCompile Include="..\plugin_src\modules\UIBridge.cpp" />
+    <ClCompile Include="..\plugin_src\samplebrain\Brain.cpp" />
     <ClCompile Include="..\SynapticResynthesis.cpp" />
     <ClCompile Include="..\exdeps\pffft\pffft.c" />
-    <ClCompile Include="..\plugin_src\samplebrain\Brain.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\resources\main.rc" />
@@ -329,6 +348,7 @@
       <SubType>Designer</SubType>
     </None>
     <None Include="..\config\SynapticResynthesis-mac.xcconfig" />
+    <None Include="..\resources\web\index.html" />
     <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

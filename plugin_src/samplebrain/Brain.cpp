@@ -10,11 +10,12 @@
 // Use PFFFT for FFT analysis
 #include "../../exdeps/pffft/pffft.h"
 #include "../Window.h"
+#include "../FeatureAnalysis.h"
 
 namespace synaptic
 {
   static constexpr uint32_t kSnapshotMagic = 0x53424252; // 'SBBR' Synaptic Brain BRain
-  static constexpr uint16_t kSnapshotVersion = 1;
+  static constexpr uint16_t kSnapshotVersion = 3; // v3: added extended features
 
   static void PutString(iplug::IByteChunk& chunk, const std::string& s)
   {
@@ -119,7 +120,11 @@ namespace synaptic
     chunk.fftSize = Nfft;
     chunk.fftMagnitudePerChannel.assign(chCount, std::vector<float>(Nfft/2 + 1, 0.0f));
     chunk.fftDominantHzPerChannel.assign(chCount, 0.0);
-    
+
+    // Initialize extended features
+    chunk.extendedFeaturesPerChannel.assign(chCount, std::vector<float>(7, 0.0f));
+    chunk.avgExtendedFeatures.assign(7, 0.0f);
+
     // Prepare PFFFT setup once per chunk
     PFFFT_Setup* setup = pffft_new_setup(Nfft, PFFFT_REAL);
     if (setup)
@@ -176,6 +181,15 @@ namespace synaptic
           if (domHz < 20.0) domHz = 20.0;
           if (domHz > ny - 20.0) domHz = ny - 20.0;
           chunk.fftDominantHzPerChannel[ch] = domHz;
+
+          // Compute extended features using FeatureAnalysis (outAligned has ordered FFT output)
+          auto features = FeatureAnalysis::GetFeatures(outAligned, Nfft, (float)sampleRate);
+          if (features.size() >= 7)
+          {
+            chunk.extendedFeaturesPerChannel[ch] = features;
+            for (int f = 0; f < 7; ++f)
+              chunk.avgExtendedFeatures[f] += features[f];
+          }
         }
       }
       if (inAligned) pffft_aligned_free(inAligned);
@@ -187,6 +201,10 @@ namespace synaptic
     double fftSum = 0.0;
     for (int ch = 0; ch < chCount; ++ch) fftSum += chunk.fftDominantHzPerChannel[ch];
     chunk.avgFftDominantHz = (chCount > 0) ? (fftSum / (double) chCount) : 0.0;
+
+    // Average extended features across channels
+    for (int f = 0; f < 7; ++f)
+      chunk.avgExtendedFeatures[f] /= (chCount > 0) ? (float)chCount : 1.0f;
   }
 
   int Brain::AddAudioFileFromMemory(const void* data,
@@ -565,19 +583,9 @@ namespace synaptic
     out.Put(&kSnapshotVersion);
     int32_t chunkSize = mChunkSize;
     out.Put(&chunkSize);
-    // Window type for analysis (store as string for readability)
-    std::string win = "hann";
-    if (mWindow)
-    {
-      switch (mWindow->GetType())
-      {
-        case Window::Type::Hann: win = "hann"; break;
-        case Window::Type::Hamming: win = "hamming"; break;
-        case Window::Type::Blackman: win = "blackman"; break;
-        case Window::Type::Rectangular: win = "rectangular"; break;
-      }
-    }
-    PutString(out, win);
+    // Window type for analysis (store as int for simplicity)
+    int32_t winMode = mWindow ? Window::TypeToInt(mWindow->GetType()) : 1;
+    out.Put(&winMode);
 
     int32_t nFiles = (int32_t) files_.size();
     out.Put(&nFiles);
@@ -632,6 +640,18 @@ namespace synaptic
       out.Put(&c.avgRms);
       out.Put(&c.avgFreqHz);
       out.Put(&c.avgFftDominantHz);
+      // Extended features (v3)
+      int32_t extChans = (int32_t) c.extendedFeaturesPerChannel.size(); out.Put(&extChans);
+      for (int ch = 0; ch < extChans; ++ch)
+      {
+        int32_t numFeatures = (int32_t) c.extendedFeaturesPerChannel[ch].size();
+        out.Put(&numFeatures);
+        if (numFeatures > 0)
+          out.PutBytes(c.extendedFeaturesPerChannel[ch].data(), (int)(sizeof(float) * numFeatures));
+      }
+      int32_t avgFeatCount = (int32_t) c.avgExtendedFeatures.size(); out.Put(&avgFeatCount);
+      if (avgFeatCount > 0)
+        out.PutBytes(c.avgExtendedFeatures.data(), (int)(sizeof(float) * avgFeatCount));
     }
 
     return true;
@@ -644,12 +664,28 @@ namespace synaptic
     uint32_t magic = 0; pos = in.Get(&magic, pos); if (pos < 0 || magic != kSnapshotMagic) return -1;
     uint16_t ver = 0; pos = in.Get(&ver, pos); if (pos < 0 || ver > kSnapshotVersion) return -1;
     int32_t chunkSize = 0; pos = in.Get(&chunkSize, pos); if (pos < 0) return -1; mChunkSize = chunkSize;
-    std::string win; if (!GetString(in, pos, win)) return -1;
-    // Save imported window type for caller to consume
-    if (win == "hann") mSavedAnalysisWindowType = SavedWindowType::Hann;
-    else if (win == "hamming") mSavedAnalysisWindowType = SavedWindowType::Hamming;
-    else if (win == "blackman") mSavedAnalysisWindowType = SavedWindowType::Blackman;
-    else if (win == "rectangular") mSavedAnalysisWindowType = SavedWindowType::Rectangular;
+
+    // Handle window type: v1 used string, v2 uses int
+    if (ver == 1)
+    {
+      // Version 1: read string
+      std::string win;
+      if (!GetString(in, pos, win)) return -1;
+      // Convert string to window type
+      if (win == "hann") mSavedAnalysisWindowType = Window::Type::Hann;
+      else if (win == "hamming") mSavedAnalysisWindowType = Window::Type::Hamming;
+      else if (win == "blackman") mSavedAnalysisWindowType = Window::Type::Blackman;
+      else if (win == "rectangular") mSavedAnalysisWindowType = Window::Type::Rectangular;
+      else mSavedAnalysisWindowType = Window::Type::Hann; // default fallback
+    }
+    else
+    {
+      // Version 2: read int
+      int32_t winMode = 1;
+      pos = in.Get(&winMode, pos);
+      if (pos < 0) return -1;
+      mSavedAnalysisWindowType = Window::IntToType(winMode);
+    }
 
     files_.clear(); idToFileIndex_.clear(); chunks_.clear();
 
@@ -711,6 +747,29 @@ namespace synaptic
       pos = in.Get(&c.avgRms, pos); if (pos < 0) return -1;
       pos = in.Get(&c.avgFreqHz, pos); if (pos < 0) return -1;
       pos = in.Get(&c.avgFftDominantHz, pos); if (pos < 0) return -1;
+      // Extended features (v3+)
+      if (ver >= 3)
+      {
+        int32_t extChans = 0; pos = in.Get(&extChans, pos); if (pos < 0 || extChans < 0) return -1;
+        c.extendedFeaturesPerChannel.resize(extChans);
+        for (int ch = 0; ch < extChans; ++ch)
+        {
+          int32_t numFeatures = 0; pos = in.Get(&numFeatures, pos); if (pos < 0 || numFeatures < 0) return -1;
+          c.extendedFeaturesPerChannel[ch].resize(numFeatures);
+          if (numFeatures > 0)
+          {
+            pos = in.GetBytes(c.extendedFeaturesPerChannel[ch].data(), (int)(sizeof(float) * numFeatures), pos);
+            if (pos < 0) return -1;
+          }
+        }
+        int32_t avgFeatCount = 0; pos = in.Get(&avgFeatCount, pos); if (pos < 0 || avgFeatCount < 0) return -1;
+        c.avgExtendedFeatures.resize(avgFeatCount);
+        if (avgFeatCount > 0)
+        {
+          pos = in.GetBytes(c.avgExtendedFeatures.data(), (int)(sizeof(float) * avgFeatCount), pos);
+          if (pos < 0) return -1;
+        }
+      }
     }
 
     return pos;

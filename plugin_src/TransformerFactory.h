@@ -6,6 +6,8 @@
 #include <functional>
 
 #include "ChunkBufferTransformer.h"
+#include "transformers/SimpleSampleBrainTransformer.h"
+#include "transformers/ExpandedSimpleSampleBrainTransformer.h"
 
 namespace synaptic
 {
@@ -17,7 +19,7 @@ namespace synaptic
     // Human-readable label for UI.
     const char* label;
     // Factory to construct a new instance.
-    std::function<std::unique_ptr<IChunkBufferTransformer>()> create;
+    std::function<std::shared_ptr<IChunkBufferTransformer>()> create;
     // Whether to include in the UI dropdown.
     bool includeInUI = true;
   };
@@ -34,6 +36,7 @@ namespace synaptic
         { "passthrough", "Passthrough", []{ return std::make_unique<PassthroughTransformer>(); }, true },
         { "sinematch", "Simple Sine Match", []{ return std::make_unique<SineMatchTransformer>(); }, true },
         { "samplebrain", "Simple SampleBrain", []{ return std::make_unique<SimpleSampleBrainTransformer>(); }, true },
+        { "expandedsamplebrain", "Expanded SampleBrain", []{ return std::make_unique<ExpandedSimpleSampleBrainTransformer>(); }, true },
       };
       return kAll;
     }
@@ -82,14 +85,14 @@ namespace synaptic
       return -1;
     }
 
-    static std::unique_ptr<IChunkBufferTransformer> CreateById(const std::string& id)
+    static std::shared_ptr<IChunkBufferTransformer> CreateById(const std::string& id)
     {
       for (const auto& t : GetAll())
         if (id == t.id) return t.create();
       return nullptr;
     }
 
-    static std::unique_ptr<IChunkBufferTransformer> CreateByUiIndex(int index)
+    static std::shared_ptr<IChunkBufferTransformer> CreateByUiIndex(int index)
     {
       if (index < 0) return nullptr;
       const auto list = GetUiList();

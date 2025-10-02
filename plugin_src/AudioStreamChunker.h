@@ -15,6 +15,7 @@ namespace synaptic
   {
     std::vector<std::vector<sample>> channelSamples; // [channel][frame]
     int numFrames = 0;
+    double inRMS = 0;
   };
 
   struct PoolEntry
@@ -115,6 +116,8 @@ namespace synaptic
       mAccumulatedFrames = 0;
       mOutputFrontFrameIndex = 0;
       mOutputOverlapValidSamples = 0;
+      mTotalInputSamplesPushed = 0;
+      mTotalOutputSamplesRendered = 0;
 
       // Initialize rings
       mFree.Init(mPoolCapacity);
@@ -181,6 +184,9 @@ namespace synaptic
     {
       if (!inputs || nFrames <= 0 || mNumChannels <= 0) return;
 
+      // Track total input samples for exact latency alignment
+      mTotalInputSamplesPushed += nFrames;
+
       int frameIndex = 0;
       while (frameIndex < nFrames)
       {
@@ -228,6 +234,19 @@ namespace synaptic
             std::memcpy(entry.chunk.channelSamples[ch].data(), mAccumulation[ch].data(), sizeof(sample) * mChunkSize);
           }
           entry.chunk.numFrames = mChunkSize;
+
+          // Get RMS of current frame and store in AudioChunk
+          float inChunkRMS = 0;
+          for (int ch = 0; ch < mNumChannels; ch++)
+          {
+            sample* __restrict chunk = entry.chunk.channelSamples[ch].data();
+            for (int i = 0; i < entry.chunk.numFrames; i++)
+            {
+              inChunkRMS += chunk[i] * chunk[i]; // gather Sum of Squares
+            }
+          }
+          inChunkRMS = sqrt(inChunkRMS / entry.chunk.numFrames * 2); // get Root Mean Square (rms)
+          entry.chunk.inRMS = inChunkRMS;
 
           // Insert into lookahead window
           if (mWindow.Full())
@@ -302,13 +321,15 @@ namespace synaptic
     }
 
     // Commit a synthesized chunk to output. numFrames will be clamped to [0, mChunkSize].
-    void CommitWritableChunkIndex(int idx, int numFrames)
+    // inRMS should be the RMS of the corresponding input chunk for AGC to work correctly.
+    void CommitWritableChunkIndex(int idx, int numFrames, double inRMS = 0.0)
     {
       if (idx < 0 || idx >= mPoolCapacity) return;
       PoolEntry& e = mPool[idx];
       if (numFrames < 0) numFrames = 0;
       if (numFrames > mChunkSize) numFrames = mChunkSize;
       e.chunk.numFrames = numFrames;
+      e.chunk.inRMS = inRMS;  // Set input RMS for AGC
       // add output ref and enqueue
       ++e.refCount;
       mOutput.Push(idx);
@@ -325,7 +346,7 @@ namespace synaptic
       }
     }
 
-    void RenderOutput(sample** outputs, int nFrames, int outChans)
+    void RenderOutput(sample** outputs, int nFrames, int outChans, bool agcEnabled = false)
     {
       if (!outputs || nFrames <= 0 || outChans <= 0) return;
 
@@ -350,6 +371,24 @@ namespace synaptic
 
           if (e.chunk.numFrames > 0)
           {
+            float agc = 1.0f;
+            if (agcEnabled)
+            {
+              // Get RMS of current frame and store in AudioChunk
+              float outChunkRMS = 0;
+              for (int ch = 0; ch < mNumChannels; ch++)
+              {
+                sample* __restrict chunk = e.chunk.channelSamples[ch].data();
+                for (int i = 0; i < e.chunk.numFrames; i++)
+                {
+                  outChunkRMS += chunk[i] * chunk[i]; // gather Sum of Squares
+                }
+              }
+              outChunkRMS = sqrt(outChunkRMS / e.chunk.numFrames * 2); // get Root Mean Square (rms)
+
+              agc = e.chunk.inRMS / outChunkRMS;
+            }
+
             if (mOutputWindow.Size() != e.chunk.numFrames)
               mOutputWindow.Set(mOutputWindow.GetType(), e.chunk.numFrames);
 
@@ -372,7 +411,7 @@ namespace synaptic
                 {
                   if (addPos + i < (int)mOutputOverlapBuffer[ch].size() && i < (int)coeffs.size())
                   {
-                    mOutputOverlapBuffer[ch][addPos + i] += e.chunk.channelSamples[ch][i] * coeffs[i];
+                    mOutputOverlapBuffer[ch][addPos + i] += e.chunk.channelSamples[ch][i] * coeffs[i] * agc;
                   }
                 }
               }
@@ -383,18 +422,14 @@ namespace synaptic
         }
 
         // Now, copy from our buffer to the output
-        // Don't start outputting until we have enough samples
-        const int minSamplesBeforeOutput = mChunkSize / 2;  // Consistent across all windows
-        if (mOutputOverlapValidSamples < minSamplesBeforeOutput)
+        // Maintain exactly chunkSize samples of latency
+        const int64_t samplesAvailableToRender = mTotalInputSamplesPushed - mChunkSize - mTotalOutputSamplesRendered;
+        const int64_t maxToRender = std::max((int64_t)0, std::min((int64_t)mOutputOverlapValidSamples, samplesAvailableToRender));
+        const int framesToCopy = std::min((int64_t)nFrames, maxToRender);
+
+        if (framesToCopy > 0)
         {
-          // Not enough samples yet, output silence and wait
-          for (int ch = 0; ch < outChans; ++ch)
-            std::memset(outputs[ch], 0, sizeof(sample) * nFrames);
-        }
-        else
-        {
-          // Always consume output at normal rate for consistent playback speed
-          const int framesToCopy = std::min(nFrames, mOutputOverlapValidSamples);
+          // Copy available samples with rescaling
 
           for (int ch = 0; ch < chansToWrite; ++ch)
           {
@@ -402,13 +437,6 @@ namespace synaptic
             {
               outputs[ch][i] = mOutputOverlapBuffer[ch][i] * rescale;
             }
-          }
-
-          // Zero out remainder of host buffer if we didn't have enough
-          if (framesToCopy < nFrames)
-          {
-            for (int ch = 0; ch < outChans; ++ch)
-              std::memset(outputs[ch] + framesToCopy, 0, sizeof(sample) * (nFrames - framesToCopy));
           }
 
           // Shift our internal buffer
@@ -430,17 +458,31 @@ namespace synaptic
             for (int ch = 0; ch < mNumChannels; ++ch)
               std::memset(mOutputOverlapBuffer[ch].data() + tailStart, 0, sizeof(sample) * tailSize);
           }
+
+          // Track output samples
+          mTotalOutputSamplesRendered += framesToCopy;
+        }
+
+        // Zero out remainder of host buffer if we didn't render enough
+        if (framesToCopy < nFrames)
+        {
+          for (int ch = 0; ch < outChans; ++ch)
+            std::memset(outputs[ch] + framesToCopy, 0, sizeof(sample) * (nFrames - framesToCopy));
         }
       }
       else
       {
-        // Original sequential playback logic with optional individual chunk windowing
+        // Sequential playback with exact latency control
+        // Only render samples when we maintain exactly chunkSize latency
         for (int s = 0; s < nFrames; ++s)
       {
+        // Check if we can output this specific sample
+        const bool canOutputThisSample = (mTotalOutputSamplesRendered < mTotalInputSamplesPushed - mChunkSize);
+
         for (int ch = 0; ch < outChans; ++ch)
           if (outputs[ch]) outputs[ch][s] = 0.0;
 
-        if (!mOutput.Empty())
+        if (canOutputThisSample && !mOutput.Empty())
         {
           int idx = mOutput.PeekOldest();
           if (idx >= 0 && idx < mPoolCapacity)
@@ -467,6 +509,8 @@ namespace synaptic
             }
 
             ++mOutputFrontFrameIndex;
+            ++mTotalOutputSamplesRendered;  // Track output for latency control
+
             if (mOutputFrontFrameIndex >= e.chunk.numFrames)
             {
               // finished this chunk
@@ -563,6 +607,8 @@ namespace synaptic
     bool mEnableOverlap = true;
     int mExtraPool = 8; // additional capacity beyond window size
     int mPoolCapacity = 0;
+    int64_t mTotalInputSamplesPushed = 0; // Track total input for exact latency alignment
+    int64_t mTotalOutputSamplesRendered = 0; // Track total output to maintain exact latency
 
     // Accumulation scratch (per-channel, size chunkSize)
     std::vector<std::vector<sample>> mAccumulation;

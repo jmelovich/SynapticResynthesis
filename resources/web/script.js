@@ -153,7 +153,16 @@ function SPVFUI(paramIdx, value) {
 (function installUiReadyHandshake(){
   function trySend(attempts){
     if (typeof window.SAMFUI === 'function' && typeof window.IPlugSendMsg === 'function') {
-      try { window.SAMFUI(103); } catch (_) {}
+      try {
+        window.SAMFUI(103);
+        // After UI is ready, resize window to fit initial content
+        // Small delay to ensure UI has fully initialized
+        setTimeout(function() {
+          if (typeof window.resizeWindowToFit === 'function') {
+            window.resizeWindowToFit();
+          }
+        }, 50);
+      } catch (_) {}
       return;
     }
     if (attempts > 0) setTimeout(function(){ trySend(attempts - 1); }, 20);

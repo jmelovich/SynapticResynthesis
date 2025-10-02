@@ -318,6 +318,8 @@
         brainBtn.classList.remove('active');
         dspBtn.classList.add('active');
       }
+      // Resize window to fit new content after tab switch
+      resizeWindowToFit();
     }
     function SendTestBinaryData() {
       let uint8 = new Uint8Array([0, 0, 0, 0]);
@@ -337,6 +339,15 @@
       // Handle overlap checkbox (paramIdx=7)
       if (param == 7) {
         const checkbox = document.getElementById('enableOverlap');
+        if (checkbox) {
+          checkbox.checked = value > 0.5;
+        }
+        return;
+      }
+
+      // Handle AGC checkbox (paramIdx=9)
+      if (param == 9) {
+        const checkbox = document.getElementById('enableAGC');
         if (checkbox) {
           checkbox.checked = value > 0.5;
         }
@@ -497,6 +508,10 @@
     <div class="input-group">
       <label for="enableOverlap">Enable Overlap-Add Windowing</label>
       <input type="checkbox" id="enableOverlap" checked />
+    </div>
+    <div class="input-group">
+      <label for="enableAGC">AGC (Auto Gain Control)</label>
+      <input type="checkbox" id="enableAGC" />
     </div>
     <div class="input-group">
       <label for="algorithm">Transformer</label>
@@ -704,7 +719,18 @@
       enableOverlapCheckbox.addEventListener('change', (e) => {
         const isChecked = e.target.checked;
         if (typeof window['SPVFUI'] === 'function') {
-          window['SPVFUI'](7, isChecked ? 1.0 : 0.0); // paramIdx=7 for EnableOverlap (kNumParams+6)
+          window['SPVFUI'](7, isChecked ? 1.0 : 0.0); // paramIdx=7 for EnableOverlap
+        }
+      });
+    }
+
+    // Enable AGC checkbox
+    const enableAGCCheckbox = document.getElementById('enableAGC');
+    if (enableAGCCheckbox) {
+      enableAGCCheckbox.addEventListener('change', (e) => {
+        const isChecked = e.target.checked;
+        if (typeof window['SPVFUI'] === 'function') {
+          window['SPVFUI'](9, isChecked ? 1.0 : 0.0); // paramIdx=9 for AGC
         }
       });
     }
@@ -728,6 +754,44 @@
       if (typeof window['SAMFUI'] === 'function') {
         window['SAMFUI'](102, -1, b64);
       }
+    }
+
+    function resizeWindowToFit() {
+      // Use requestAnimationFrame to ensure DOM has settled and measurements are accurate
+      requestAnimationFrame(() => {
+        const body = document.body;
+
+        // Find all top-level children of body and calculate the bottommost point
+        let maxBottom = 0;
+        const children = body.children;
+        for (let i = 0; i < children.length; i++) {
+          const child = children[i];
+          // Skip hidden elements and the global overlay
+          if (child.style.display === 'none' || child.classList.contains('global')) {
+            continue;
+          }
+          const rect = child.getBoundingClientRect();
+          const bottom = rect.bottom;
+          if (bottom > maxBottom) {
+            maxBottom = bottom;
+          }
+        }
+
+        // Add a small margin for safety (accounts for any body padding)
+        const contentHeight = Math.ceil(maxBottom) + 10;
+
+        // Get current width (preserve it)
+        const currentWidth = window.innerWidth || 1024;
+
+        // Send resize message to C++ - use measured content height
+        const obj = { width: currentWidth, height: contentHeight };
+        const enc = new TextEncoder();
+        const bytes = enc.encode(JSON.stringify(obj));
+        const b64 = uint8ToBase64(bytes);
+        if (typeof window['SAMFUI'] === 'function') {
+          window['SAMFUI'](108, -1, b64);
+        }
+      });
     }
 
     function renderTransformerParams(params) {
@@ -808,6 +872,10 @@
 
         container.appendChild(row);
       });
+
+      // After rendering params, resize window to fit
+      // requestAnimationFrame inside resizeWindowToFit ensures DOM has updated
+      resizeWindowToFit();
     }
 
     // Brain drop handling

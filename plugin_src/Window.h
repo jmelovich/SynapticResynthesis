@@ -115,6 +115,32 @@ namespace synaptic
       }
     }
 
+    // Utility: convert integer mode to window type
+    static Type IntToType(int mode)
+    {
+      switch (mode)
+      {
+        case 1: return Type::Hann;
+        case 2: return Type::Hamming;
+        case 3: return Type::Blackman;
+        case 4: return Type::Rectangular;
+        default: return Type::Hann;
+      }
+    }
+
+    // Utility: convert window type to integer mode
+    static int TypeToInt(Type type)
+    {
+      switch (type)
+      {
+        case Type::Hann: return 1;
+        case Type::Hamming: return 2;
+        case Type::Blackman: return 3;
+        case Type::Rectangular: return 4;
+        default: return 1;
+      }
+    }
+
   private:
     Type mType = Type::Hann;
     int mSize = 0;

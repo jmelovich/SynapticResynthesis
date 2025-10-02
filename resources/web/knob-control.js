@@ -1,7 +1,7 @@
 class KnobControl extends HTMLElement {
   constructor() {
     super();
-    
+
     this.paramId = 0;
     this.controlTag = '';
     this.defaultValue = 0.0;
@@ -21,7 +21,7 @@ class KnobControl extends HTMLElement {
     const valueArcColor = this.getAttribute('value-arc-color') || '#f00';
     const valueArcWidth = parseFloat(this.getAttribute('value-arc-width')) || 3;
     const trackBgColor = this.getAttribute('track-bg-color') || '#999';
-    
+
     this.attachShadow({ mode: 'open' });
     this.shadowRoot.innerHTML = `
     <style>
@@ -63,11 +63,11 @@ class KnobControl extends HTMLElement {
     <div class="value">0 ${units}</div>
     </div>
     `;
-    
+
     const pointer = this.shadowRoot.querySelector('.pointer');
     const valueElement = this.shadowRoot.querySelector('.value');
     let currentValue = this.defaultValue;
-    
+
     const valueArc = this.shadowRoot.querySelector('.value-arc');
     const trackBg = this.shadowRoot.querySelector('.track-bg');
 
@@ -78,43 +78,43 @@ class KnobControl extends HTMLElement {
         y: centerY + (radius * Math.sin(angleInRadians))
       };
     };
-    
+
     const createTrackBg = () => {
       const arcRadius = 48;
       const start = polarToCartesian(50, 50, arcRadius, minAngle);
       const end = polarToCartesian(50, 50, arcRadius, maxAngle);
-      
+
       const largeArcFlag = maxAngle - minAngle <= 180 ? 0 : 1;
-      
+
       const d = [
         'M', start.x, start.y,
         'A', arcRadius, arcRadius, 0, largeArcFlag, 1, end.x, end.y
       ].join(' ');
-      
+
       trackBg.setAttribute('d', d);
     };
-    
+
     createTrackBg();
-    
+
     const updateValueArc = (angle) => {
       const startAngle = minAngle;
       const endAngle = angle;
       const arcRadius = 48;
-      
+
       const start = polarToCartesian(50, 50, arcRadius, startAngle);
       const end = polarToCartesian(50, 50, arcRadius, endAngle);
-      
+
       const largeArcFlag = endAngle - startAngle <= 180 ? 0 : 1;
-      
+
       const d = [
         'M', start.x, start.y,
         'A', arcRadius, arcRadius, 0, largeArcFlag, 1, end.x, end.y
       ].join(' ');
-      
+
       valueArc.setAttribute('d', d);
     };
-    
-    const updateValue = (value, normalized = false) => {
+
+    const updateValue = (value, normalized = false, fromHost = false) => {
       let finalValue;
       if (normalized) {
         // If we receive a normalized value (0-1), convert it to our range
@@ -122,33 +122,34 @@ class KnobControl extends HTMLElement {
       } else {
         finalValue = value;
       }
-      
+
       currentValue = finalValue;
       valueElement.textContent = `${finalValue.toFixed(1)} ${units}`;
       const normValue = ((finalValue - this.minValue) / (this.maxValue - this.minValue));
       const angle = minAngle + normValue * (maxAngle - minAngle);
       pointer.setAttribute('transform', `rotate(${angle}, 50, 50)`);
       updateValueArc(angle);
-      
-      if (typeof window['SPVFUI'] === 'function') {
+
+      // Only send to C++ if this is a user interaction, not a host update
+      if (!fromHost && typeof window['SPVFUI'] === 'function') {
         window['SPVFUI'](this.paramId, normValue);
       }
     };
-    
+
     const startDrag = (e) => {
-      
+
       if (e.button == 2) return; // right click (context menu
-      
+
       if (typeof window['BPCFUI'] === 'function') {
         window['BPCFUI'](this.paramId);
       }
-      
+
       e.preventDefault();
       const svg = e.currentTarget.parentElement;
-      
+
       let initialY = ('touches' in e) ? e.touches[0].clientY : e.clientY;
       let initialValue = currentValue;
-      
+
       const onMove = (e) => {
         const clientY = ('touches' in e) ? e.touches[0].clientY : e.clientY;
         const deltaY = initialY - clientY;
@@ -156,7 +157,7 @@ class KnobControl extends HTMLElement {
         const value = Math.min(Math.max(initialValue + valueChange, this.minValue), this.maxValue);
         updateValue(value);
       };
-      
+
       const onEnd = () => {
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onEnd);
@@ -164,12 +165,12 @@ class KnobControl extends HTMLElement {
         document.removeEventListener('touchend', onEnd);
         document.body.classList.remove('hidden-cursor');
         document.body.style.cursor = '';
-        
+
         if (typeof window['EPCFUI'] === 'function') {
           window['EPCFUI'](this.paramId);
         }
       };
-      
+
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onEnd);
       document.addEventListener('touchmove', onMove, { passive: false });
@@ -177,7 +178,7 @@ class KnobControl extends HTMLElement {
       document.body.classList.add('hidden-cursor');
       document.body.style.cursor = 'none';
     };
-    
+
     const onWheel = (e) => {
       e.preventDefault();
       const delta = e.deltaY < 0 ? 1 : -1;
@@ -185,19 +186,19 @@ class KnobControl extends HTMLElement {
       const value = Math.min(Math.max(currentValue + valueChange, this.minValue), this.maxValue);
       updateValue(value);
     };
-    
+
     this.shadowRoot.querySelector('circle').addEventListener('mousedown', startDrag);
     this.shadowRoot.querySelector('circle').addEventListener('touchstart', startDrag, { passive: false });
     this.shadowRoot.querySelector('circle').addEventListener('wheel', onWheel);
-    
+
 //    updateValue(currentValue);
-    
+
     this.shadowRoot.querySelector('.container').__updateValue = updateValue;
-    
+
     // Expose updateValue method with a different name to avoid conflicts
-    this.updateValueFromHost = (normalizedValue) => updateValue(normalizedValue, true);
+    this.updateValueFromHost = (normalizedValue) => updateValue(normalizedValue, true, true);
   }
-  
+
   connectedCallback() {
     // Set the parameter ID, control tag, and initial value
     this.paramId = this.getAttribute('param-id') || -1;
@@ -224,7 +225,7 @@ class KnobControl extends HTMLElement {
   static get observedAttributes() {
     return ['param-id', 'default-value', 'control-tag', 'label', 'min', 'max'/*, 'value'*/];
   }
-  
+
   // Getter and setter for value
   get value() {
     return this.getAttribute('value');
