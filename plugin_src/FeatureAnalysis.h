@@ -1,14 +1,15 @@
 #pragma once
 
-#include "IPlug_include_in_plug_hdr.h"
-#include "SynapticResynthesis.h"
 #include <cfloat>
 #include <cmath>
 #include <utility>
+#include <vector>
 
-class FeatureAnalysis
+namespace synaptic
 {
-public:
+  class FeatureAnalysis
+  {
+  public:
   static std::pair<float, float> FundamentalFrequency(const float* input, int inputSize, float sampleRate, int nHarmonics = 6)
   {
     if (!input || inputSize < 4) // need at least DC, Nyquist, and 1 complex bin
@@ -162,7 +163,7 @@ private:
   static float Monotony(std::vector<std::pair<float, float>> peaks, std::pair<float, float> fund)
   {
     float monotony = 0;
-    
+
     for (auto peak = peaks.begin(); peak < peaks.end() - 1; peak++)
     {
       float a_slope = (*(peak + 1)).second - (*peak).second;
@@ -261,5 +262,8 @@ private:
 
       prev = mag;
     }
+
+    return peaks;
   }
-};
+  };
+}

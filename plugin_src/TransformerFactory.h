@@ -6,6 +6,8 @@
 #include <functional>
 
 #include "ChunkBufferTransformer.h"
+#include "transformers/SimpleSampleBrainTransformer.h"
+#include "transformers/ExpandedSimpleSampleBrainTransformer.h"
 
 namespace synaptic
 {
@@ -34,6 +36,7 @@ namespace synaptic
         { "passthrough", "Passthrough", []{ return std::make_unique<PassthroughTransformer>(); }, true },
         { "sinematch", "Simple Sine Match", []{ return std::make_unique<SineMatchTransformer>(); }, true },
         { "samplebrain", "Simple SampleBrain", []{ return std::make_unique<SimpleSampleBrainTransformer>(); }, true },
+        { "expandedsamplebrain", "Expanded SampleBrain", []{ return std::make_unique<ExpandedSimpleSampleBrainTransformer>(); }, true },
       };
       return kAll;
     }

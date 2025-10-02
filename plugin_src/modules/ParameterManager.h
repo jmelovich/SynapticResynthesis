@@ -2,6 +2,7 @@
 
 #include "IPlug_include_in_plug_hdr.h"
 #include "plugin_src/ChunkBufferTransformer.h"
+#include "plugin_src/transformers/ExpandedSimpleSampleBrainTransformer.h"
 #include "DSPConfig.h"
 #include <vector>
 #include <string>
@@ -94,7 +95,7 @@ namespace synaptic
       }
 
       // Wire brain if needed
-      if (auto sb = dynamic_cast<synaptic::SimpleSampleBrainTransformer*>(newTransformer.get()))
+      if (auto sb = dynamic_cast<synaptic::BaseSampleBrainTransformer*>(newTransformer.get()))
         sb->SetBrain(&brain);
 
       // Reset transformer

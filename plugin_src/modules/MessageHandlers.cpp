@@ -134,29 +134,33 @@ bool SynapticResynthesis::HandleSetAlgorithmMsg(int algorithmId)
   {
     SetParameterFromUI(paramIdx, (double)mDSPConfig.algorithmId);
   }
-  mTransformer = synaptic::TransformerFactory::CreateByUiIndex(mDSPConfig.algorithmId);
-  if (!mTransformer)
+
+  // Create new transformer in pending slot for thread-safe swap
+  auto newTransformer = synaptic::TransformerFactory::CreateByUiIndex(mDSPConfig.algorithmId);
+  if (!newTransformer)
   {
     // Fallback to first available
     mDSPConfig.algorithmId = 0;
-    mTransformer = synaptic::TransformerFactory::CreateByUiIndex(mDSPConfig.algorithmId);
+    newTransformer = synaptic::TransformerFactory::CreateByUiIndex(mDSPConfig.algorithmId);
   }
-  if (auto sb = dynamic_cast<synaptic::SimpleSampleBrainTransformer*>(mTransformer.get()))
+  if (auto sb = dynamic_cast<synaptic::BaseSampleBrainTransformer*>(newTransformer.get()))
     sb->SetBrain(&mBrain);
 
-  if (mTransformer)
-    mTransformer->OnReset(GetSampleRate(), mDSPConfig.chunkSize, mDSPConfig.bufferWindowSize, NInChansConnected());
+  if (newTransformer)
+    newTransformer->OnReset(GetSampleRate(), mDSPConfig.chunkSize, mDSPConfig.bufferWindowSize, NInChansConnected());
+
+  // Reapply persisted IParam values to the new transformer instance using ParameterManager
+  mParamManager.ApplyBindingsToTransformer(this, newTransformer.get());
+
+  // Store for thread-safe swap in ProcessBlock
+  mPendingTransformer = std::move(newTransformer);
 
   UpdateChunkerWindowing();
 
-  // Reapply persisted IParam values to the new transformer instance using ParameterManager
-  mParamManager.ApplyBindingsToTransformer(this, mTransformer.get());
-
-  SetLatency(ComputeLatencySamples());
-
-  // Send transformer params and DSP config to UI
-  mUIBridge.SendTransformerParams(mTransformer.get());
+  // Send transformer params and DSP config to UI (use pending transformer since swap hasn't happened yet)
+  mUIBridge.SendTransformerParams(mPendingTransformer.get());
   SyncAndSendDSPConfig();
+  // Note: SetLatency will be called in ProcessBlock after swap
   return true;
 }
 

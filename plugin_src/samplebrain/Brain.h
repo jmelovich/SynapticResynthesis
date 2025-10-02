@@ -36,6 +36,9 @@ namespace synaptic
     float avgRms = 0.0f;
     double avgFreqHz = 0.0;
     double avgFftDominantHz = 0.0;
+    // Extended feature analysis (per channel)
+    std::vector<std::vector<float>> extendedFeaturesPerChannel; // 7 features per channel: [f0, affinity, sharpness, harmonicity, monotony, meanAffinity, meanContrast]
+    std::vector<float> avgExtendedFeatures; // averaged across channels
   };
 
   struct BrainFile

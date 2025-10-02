@@ -68,7 +68,7 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
 
   // Default transformer = first UI-visible entry
   mTransformer = synaptic::TransformerFactory::CreateByUiIndex(mDSPConfig.algorithmId);
-  if (auto sb = dynamic_cast<synaptic::SimpleSampleBrainTransformer*>(mTransformer.get()))
+  if (auto sb = dynamic_cast<synaptic::BaseSampleBrainTransformer*>(mTransformer.get()))
     sb->SetBrain(&mBrain);
 
   // Initialize analysis window with default Hann window
@@ -133,6 +133,15 @@ void SynapticResynthesis::DrainUiQueueOnMainThread()
 
 void SynapticResynthesis::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
 {
+  // Thread-safe transformer swap: check if there's a pending transformer and swap it on audio thread
+  if (mPendingTransformer)
+  {
+    mTransformer = std::move(mPendingTransformer);
+    mPendingTransformer.reset();
+    // Update latency after swap
+    SetLatency(ComputeLatencySamples());
+  }
+
   const double inGain = GetParam(kInGain)->DBToAmp();
   const double outGain = GetParam(kOutGain)->DBToAmp();
   const double agcEnabled = GetParam(kAGC)->Bool();
@@ -295,10 +304,11 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
   // Handle algorithm change (coordinated by ParameterManager)
   if (paramIdx == mParamManager.GetAlgorithmParamIdx())
   {
-    mTransformer = mParamManager.HandleAlgorithmChange(paramIdx, GetParam(paramIdx), mDSPConfig,
-                                                       this, mBrain, GetSampleRate(), NInChansConnected());
+    // Store new transformer in pending slot for thread-safe swap in ProcessBlock
+    mPendingTransformer = mParamManager.HandleAlgorithmChange(paramIdx, GetParam(paramIdx), mDSPConfig,
+                                                               this, mBrain, GetSampleRate(), NInChansConnected());
     UpdateChunkerWindowing();
-    SetLatency(ComputeLatencySamples());
+    // Note: SetLatency will be called in ProcessBlock after swap
     return;
   }
 
