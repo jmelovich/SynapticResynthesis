@@ -105,12 +105,9 @@ namespace synaptic
 
               // Get extended features from FeatureAnalysis
               auto features = FeatureAnalysis::GetFeatures(outAligned, Nfft, (float)mSampleRate);
-              if (features.size() >= 7)
-              {
-                inFeatures[ch] = features;
-                for (int f = 0; f < 7; ++f)
-                  inFeaturesAvg[f] += features[f];
-              }
+              inFeatures[ch] = features;
+              for (int f = 0; f < 7; ++f)
+                inFeaturesAvg[f] += features[f];
             }
 
             // Average features across channels

@@ -120,7 +120,7 @@ private:
 
   // === DSP Components ===
   LogParamSmooth<sample, 1> mInGainSmoother;
-  LogParamSmooth<sample, 1> mOutGainSmoother;
+  LogParamSmooth<sample, 2> mOutGainSmoother;
   synaptic::AudioStreamChunker mChunker {2};
   std::shared_ptr<synaptic::IChunkBufferTransformer> mTransformer;
   std::shared_ptr<synaptic::IChunkBufferTransformer> mPendingTransformer; // For thread-safe swapping
