@@ -158,11 +158,12 @@ void SynapticResynthesis::ProcessBlock(sample** inputs, sample** outputs, int nF
     return;
   }
 
-  for (int ch = 0; ch < outChans; ch++)
+  for (int s = 0; s < nFrames; s++)
   {
-    for (int s = 0; s < nFrames; s++)
+    const double smoothedInGain = mInGainSmoother.Process(inGain);
+    for (int ch = 0; ch < outChans; ch++)
     {
-      inputs[ch][s] *= inGain;
+      inputs[ch][s] *= smoothedInGain;
     }
   }
 
@@ -183,16 +184,17 @@ void SynapticResynthesis::ProcessBlock(sample** inputs, sample** outputs, int nF
   // Apply gain
   for (int s = 0; s < nFrames; s++)
   {
-    const double smoothedGain = mGainSmoother.Process(outGain);
+    const double smoothedOutGain = mOutGainSmoother.Process(outGain);
     for (int ch = 0; ch < outChans; ++ch)
-      outputs[ch][s] *= smoothedGain;
+      outputs[ch][s] *= smoothedOutGain;
   }
 }
 
 void SynapticResynthesis::OnReset()
 {
   auto sr = GetSampleRate();
-  mGainSmoother.SetSmoothTime(20., sr);
+  mInGainSmoother.SetSmoothTime(20., sr);
+  mOutGainSmoother.SetSmoothTime(20., sr);
 
   // Pull current values from IParams into DSPConfig using ParameterManager
   const int chunkSizeIdx = mParamManager.GetChunkSizeParamIdx();
