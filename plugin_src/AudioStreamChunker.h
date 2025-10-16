@@ -417,16 +417,7 @@ namespace synaptic
 
           if (e.chunk.numFrames > 0)
           {
-            float agc = 1.0f;
-            if (agcEnabled)
-            {
-              // AGC: match output RMS to input RMS
-              const AudioChunk* sourceChunk = GetSourceChunkForOutput(idx);
-              if (sourceChunk && e.chunk.rms > 0.0)
-              {
-                agc = (float)(sourceChunk->rms / e.chunk.rms);
-              }
-            }
+            const float agc = ComputeAGC(idx, agcEnabled);
 
             if (mOutputWindow.Size() != e.chunk.numFrames)
               mOutputWindow.Set(mOutputWindow.GetType(), e.chunk.numFrames);
@@ -541,6 +532,8 @@ namespace synaptic
             // }
             if (mOutputFrontFrameIndex < e.chunk.numFrames)
             {
+                const float agc = ComputeAGC(idx, agcEnabled);
+
                 // Apply individual chunk windowing if window type has overlap > 0
                 float windowCoeff = 1.0f;
                 if (mOutputWindow.GetOverlap() > 0.0f && mOutputFrontFrameIndex < mOutputWindow.Size())
@@ -554,7 +547,7 @@ namespace synaptic
                 if (outputs[ch] && ch < (int)e.chunk.channelSamples.size() &&
                     mOutputFrontFrameIndex < (int)e.chunk.channelSamples[ch].size())
                   {
-                    outputs[ch][s] = e.chunk.channelSamples[ch][mOutputFrontFrameIndex] * windowCoeff;
+                    outputs[ch][s] = e.chunk.channelSamples[ch][mOutputFrontFrameIndex] * windowCoeff * agc;
                   }
                 }
             }
@@ -676,6 +669,23 @@ namespace synaptic
 
       // Release output chunk
       DecRefAndMaybeFree(idx);
+    }
+
+    float ComputeAGC(int outputIdx, bool agcEnabled) const
+    {
+      if (!agcEnabled) return 1.0f;
+
+      if (outputIdx < 0 || outputIdx >= mPoolCapacity) return 1.0f;
+
+      const AudioChunk* sourceChunk = GetSourceChunkForOutput(outputIdx);
+      const PoolEntry& e = mPool[outputIdx];
+
+      if (sourceChunk && e.chunk.rms > 1e-9) // avoid divide by zero
+      {
+        return (float)(sourceChunk->rms / e.chunk.rms);
+      }
+
+      return 1.0f;
     }
 
   private:
