@@ -119,7 +119,7 @@ namespace synaptic
           out->channelSamples[ch][i] = 0.0;
       }
 
-      chunker.CommitWritableChunkIndex(outIdx, framesToWrite, in->inRMS);
+      chunker.CommitWritableChunkIndex(outIdx, framesToWrite, inIdx);
       return true;
     }
   };
@@ -210,7 +210,7 @@ namespace synaptic
 
           freqs[ch] = freq;
           // Use pre-calculated input RMS from chunker, convert to peak amplitude
-          amps[ch] = std::min(1.0, in->inRMS * 1.41421356237); // RMS to peak
+          amps[ch] = std::min(1.0, in->rms * 1.41421356237); // RMS to peak
         }
 
         // 2. Allocate and synthesize
@@ -249,7 +249,7 @@ namespace synaptic
           }
         }
 
-        chunker.CommitWritableChunkIndex(outIdx, framesToWrite, in->inRMS);
+        chunker.CommitWritableChunkIndex(outIdx, framesToWrite, inIdx);
       }
     }
 

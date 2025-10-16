@@ -128,7 +128,7 @@ namespace synaptic
                 const double br = (bch < (int) bc->rmsPerChannel.size()) ? (double) bc->rmsPerChannel[bch] : (double) bc->avgRms;
                 const double inFeatureF = mUseFftFreq ? inFftFreq[ch] : inFreq[ch];
                 double df = std::abs(inFeatureF - bf) / nyquist;
-                double da = std::abs(in->inRMS - br);
+                double da = std::abs(in->rms - br);
                 if (da > 1.0) da = 1.0;
                 double score = mWeightFreq * df + mWeightAmp * da;
                 if (score < bestScore)
@@ -160,15 +160,8 @@ namespace synaptic
             }
           }
 
-          // If brain was completely empty, just output silence
-          if (!foundAnyMatch && total == 0)
-          {
-            chunker.CommitWritableChunkIndex(outIdx, chunkSize, 0.0);
-          }
-          else
-          {
-            chunker.CommitWritableChunkIndex(outIdx, chunkSize, in->inRMS);
-          }
+          // Commit output chunk (RMS calculated automatically)
+          chunker.CommitWritableChunkIndex(outIdx, chunkSize, inIdx);
         }
         else
         {
@@ -188,7 +181,7 @@ namespace synaptic
             const double br = (double) bc->avgRms;
             const double inFeatureAvg = mUseFftFreq ? inFftAvg : inFreqAvg;
             double df = std::abs(inFeatureAvg - bf) / nyquist;
-            double da = std::abs(in->inRMS - br);
+            double da = std::abs(in->rms - br);
             if (da > 1.0) da = 1.0;
             double score = mWeightFreq * df + mWeightAmp * da;
             if (score < bestScore)
@@ -222,7 +215,7 @@ namespace synaptic
               out->channelSamples[ch][i] = 0.0;
           }
 
-          chunker.CommitWritableChunkIndex(outIdx, framesToWrite, in->inRMS);
+          chunker.CommitWritableChunkIndex(outIdx, framesToWrite, inIdx);
         }
       }
     }

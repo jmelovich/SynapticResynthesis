@@ -184,7 +184,7 @@ namespace synaptic
 
                 // Amplitude (use RMS)
                 const double br = (bch < (int) bc->rmsPerChannel.size()) ? (double) bc->rmsPerChannel[bch] : (double) bc->avgRms;
-                double da = std::abs(in->inRMS - br);
+                double da = std::abs(in->rms - br);
                 if (da > 1.0) da = 1.0;
                 score += mWeightAmplitude * da;
 
@@ -230,15 +230,8 @@ namespace synaptic
             }
           }
 
-          // If brain was completely empty, just output silence
-          if (!foundAnyMatch && total == 0)
-          {
-            chunker.CommitWritableChunkIndex(outIdx, chunkSize, 0.0);
-          }
-          else
-          {
-            chunker.CommitWritableChunkIndex(outIdx, chunkSize, in->inRMS);
-          }
+          // Commit output chunk (RMS calculated automatically)
+          chunker.CommitWritableChunkIndex(outIdx, chunkSize, inIdx);
         }
         else
         {
@@ -267,7 +260,7 @@ namespace synaptic
             score += mWeightFundFrequency * df0;
 
             // Amplitude
-            double da = std::abs(in->inRMS - (double)bc->avgRms);
+            double da = std::abs(in->rms - (double)bc->avgRms);
             if (da > 1.0) da = 1.0;
             score += mWeightAmplitude * da;
 
@@ -314,7 +307,7 @@ namespace synaptic
               out->channelSamples[ch][i] = 0.0;
           }
 
-          chunker.CommitWritableChunkIndex(outIdx, framesToWrite, in->inRMS);
+          chunker.CommitWritableChunkIndex(outIdx, framesToWrite, inIdx);
         }
       }
     }
