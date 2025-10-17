@@ -7,6 +7,8 @@
 #include "IPlug_include_in_plug_hdr.h"
 #include "Window.h"
 
+#include "Morph.h"
+
 namespace synaptic
 {
   using namespace iplug;
@@ -701,6 +703,8 @@ namespace synaptic
     // Accumulation scratch (per-channel, size chunkSize)
     std::vector<std::vector<sample>> mAccumulation;
     int mAccumulatedFrames = 0;
+
+    Morph mMorph;
 
     // Pool and rings
     std::vector<PoolEntry> mPool;
