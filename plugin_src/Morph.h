@@ -11,6 +11,7 @@ class Morph
 public:
   enum class Type
   {
+    None,            // Passthrough
     CrossSynthesis,  // Cross-synthesis between two audio streams
     SpectralVocoder, // Apply input spectral envelope onto output
     CepstralMorph,   // Morph between cepstra
@@ -56,6 +57,8 @@ public:
   {
     switch (mType)
     {
+    case Type::None:
+      break;
     case Type::CrossSynthesis:
       ProcessCrossSynthesis(chunk, numSamples, params);
       break;
@@ -89,6 +92,8 @@ public:
   {
     switch (type)
     {
+    case Type::None:
+      return "None";
     case Type::CrossSynthesis:
       return "Cross Synthesis";
     case Type::SpectralVocoder:
@@ -111,17 +116,19 @@ public:
     switch (mode)
     {
     case 0:
-      return Type::CrossSynthesis;
+      return Type::None;
     case 1:
-      return Type::SpectralVocoder;
+      return Type::CrossSynthesis;
     case 2:
-      return Type::CepstralMorph;
+      return Type::SpectralVocoder;
     case 3:
-      return Type::HarmonicMorph;
+      return Type::CepstralMorph;
     case 4:
+      return Type::HarmonicMorph;
+    case 5:
       return Type::SpectralMasking;
     default:
-      return Type::CrossSynthesis;
+      return Type::None;
     }
   }
 
@@ -130,16 +137,18 @@ public:
   {
     switch (type)
     {
-    case Type::CrossSynthesis:
+    case Type::None:
       return 0;
-    case Type::SpectralVocoder:
+    case Type::CrossSynthesis:
       return 1;
-    case Type::CepstralMorph:
+    case Type::SpectralVocoder:
       return 2;
-    case Type::HarmonicMorph:
+    case Type::CepstralMorph:
       return 3;
-    case Type::SpectralMasking:
+    case Type::HarmonicMorph:
       return 4;
+    case Type::SpectralMasking:
+      return 5;
     default:
       return 0;
     }
