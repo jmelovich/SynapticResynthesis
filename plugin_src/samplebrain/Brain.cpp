@@ -146,7 +146,8 @@ namespace synaptic
           }
 
           // Apply windowing before FFT
-          (*mWindow)(inAligned);
+          const Window& window = *mWindow;
+          window(inAligned);
 
           // Ordered forward transform to get canonical interleaved output
           pffft_transform_ordered(setup, inAligned, outAligned, nullptr, PFFFT_FORWARD);
@@ -378,13 +379,12 @@ namespace synaptic
     std::vector<BrainFile> filesSnapshot;
     std::vector<BrainChunk> chunksSnapshot;
     int oldChunkSize = 0;
-    const Window* analysisWindow = nullptr;
+    const Window& window = *mWindow;
     {
       std::unique_lock<std::mutex> lock(mutex_);
       filesSnapshot = files_;
       chunksSnapshot = chunks_;
       oldChunkSize = (mChunkSize > 0) ? mChunkSize : newChunkSizeSamples;
-      analysisWindow = mWindow;
     }
 
     // Rebuild each file by concatenating its chunks' valid frames, then rechunk
@@ -479,12 +479,9 @@ namespace synaptic
         }
 
         // Analyze metrics for this chunk over valid frames (use captured window pointer)
-        if (analysisWindow)
-        {
           // Temporarily set the analysis window pointer (thread-local) by calling member that reads mWindow.
           // Since AnalyzeChunk only reads mWindow, this is safe as we captured the pointer value.
           AnalyzeChunk(out, framesInChunk, (double) targetSampleRate);
-        }
 
         const int globalIdx = (int) newChunks.size();
         newChunks.push_back(std::move(out));
