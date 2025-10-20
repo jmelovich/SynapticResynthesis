@@ -299,56 +299,36 @@ void SynapticResynthesis::OnRestoreState()
 
 void SynapticResynthesis::OnParamChange(int paramIdx)
 {
-  if (paramIdx == kInGain)
-  {
-    DBGMSG("input gain %f\n", GetParam(paramIdx)->Value());
-    return;
-  }
-
-  if (paramIdx == kOutGain)
-  {
-    DBGMSG("output gain %f\n", GetParam(paramIdx)->Value());
-    return;
-  }
-
   // Handle chunk size parameter (coordinated by ParameterManager)
   if (paramIdx == mParamManager.GetChunkSizeParamIdx())
   {
     mParamManager.HandleChunkSizeChange(paramIdx, GetParam(paramIdx), mDSPConfig, this, mChunker, mAnalysisWindow);
     UpdateChunkerWindowing();
     SetLatency(ComputeLatencySamples());
-    return;
   }
-
   // Handle buffer window parameter
-  if (paramIdx == mParamManager.GetBufferWindowParamIdx())
+  else if (paramIdx == mParamManager.GetBufferWindowParamIdx())
   {
     mParamManager.HandleCoreParameterChange(paramIdx, GetParam(paramIdx), mDSPConfig);
     mChunker.SetBufferWindowSize(mDSPConfig.bufferWindowSize);
-    return;
   }
-
   // Handle algorithm change (coordinated by ParameterManager)
-  if (paramIdx == mParamManager.GetAlgorithmParamIdx())
+  else if (paramIdx == mParamManager.GetAlgorithmParamIdx())
   {
     // Store new transformer in pending slot for thread-safe swap in ProcessBlock
     mPendingTransformer = mParamManager.HandleAlgorithmChange(paramIdx, GetParam(paramIdx), mDSPConfig,
                                                                this, mBrain, GetSampleRate(), NInChansConnected());
     UpdateChunkerWindowing();
     // Note: SetLatency will be called in ProcessBlock after swap
-    return;
   }
-
   // Handle output window
-  if (paramIdx == mParamManager.GetOutputWindowParamIdx())
+  else if (paramIdx == mParamManager.GetOutputWindowParamIdx())
   {
     mParamManager.HandleCoreParameterChange(paramIdx, GetParam(paramIdx), mDSPConfig);
     UpdateChunkerWindowing();
-    return;
   }
-
   // Handle analysis window (coordinated by ParameterManager, with background reanalysis)
-  if (paramIdx == mParamManager.GetAnalysisWindowParamIdx())
+  else if (paramIdx == mParamManager.GetAnalysisWindowParamIdx())
   {
     mParamManager.HandleCoreParameterChange(paramIdx, GetParam(paramIdx), mDSPConfig);
     UpdateBrainAnalysisWindow();
@@ -363,23 +343,22 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
       });
     }
     mPendingSendDSPConfig = true;
-    return;
   }
-
   // Handle overlap enable
-  if (paramIdx == mParamManager.GetEnableOverlapParamIdx())
+  else if (paramIdx == mParamManager.GetEnableOverlapParamIdx())
   {
     mParamManager.HandleCoreParameterChange(paramIdx, GetParam(paramIdx), mDSPConfig);
     UpdateChunkerWindowing();
-    return;
   }
-
   // Handle transformer parameters using ParameterManager
-  if (mParamManager.HandleTransformerParameterChange(paramIdx, GetParam(paramIdx), mTransformer.get()))
+  else if (mParamManager.HandleTransformerParameterChange(paramIdx, GetParam(paramIdx), mTransformer.get()))
   {
     // Parameter was handled by ParameterManager
-    return;
   }
+
+  // For all parameters (including kAGC, kInGain, kOutGain, and any others),
+  // the base Plugin class will notify parameter-bound controls automatically.
+  // By not returning early, we let the default notification mechanism work.
 }
 
 void SynapticResynthesis::ProcessMidiMsg(const IMidiMsg& msg)

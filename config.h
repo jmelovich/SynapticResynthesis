@@ -52,3 +52,4 @@
 #define APP_SIGNAL_VECTOR_SIZE 64
 
 #define ROBOTO_FN "fonts/Roboto-Regular.ttf"
+#define FORK_AWESOME_FN "fonts/forkawesome-webfont.ttf"

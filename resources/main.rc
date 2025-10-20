@@ -234,6 +234,7 @@ END
 //
 #include "..\config.h"
 ROBOTO_FN TTF ROBOTO_FN
+FORK_AWESOME_FN TTF FORK_AWESOME_FN
 /////////////////////////////////////////////////////////////////////////////
 #endif    // not APSTUDIO_INVOKED
 
