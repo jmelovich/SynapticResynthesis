@@ -64,29 +64,29 @@ public:
   }
 
   // Main processing function - applies morphing to input audio
-  void Process(const Chunk& a, Chunk& b, Chunk& output)
+  void Process(const Chunk& a, Chunk& b)
   {
     switch (mType)
     {
     case Type::None:
       break;
     case Type::Test:
-      ProcessTest(a, b, output);
+      ProcessTest(a, b);
       break;
     case Type::CrossSynthesis:
-      ProcessCrossSynthesis(a, b, output);
+      ProcessCrossSynthesis(a, b);
       break;
     case Type::SpectralVocoder:
-      ProcessSpectralVocoder(a, b, output);
+      ProcessSpectralVocoder(a, b);
       break;
     case Type::CepstralMorph:
-      ProcessCepstralMorph(a, b, output);
+      ProcessCepstralMorph(a, b);
       break;
     case Type::HarmonicMorph:
-      ProcessHarmonicMorph(a, b, output);
+      ProcessHarmonicMorph(a, b);
       break;
     case Type::SpectralMasking:
-      ProcessSpectralMasking(a, b, output);
+      ProcessSpectralMasking(a, b);
       break;
     }
   }
@@ -168,7 +168,7 @@ public:
 
 private:
   // Morphing algorithm implementations (declarations only)
-  void ProcessTest(const Chunk& a, Chunk& b, Chunk& output)
+  void ProcessTest(const Chunk& a, Chunk& b)
   {
     const int numChannels = a.size();
     const int numSamples = a[0].size();
@@ -177,20 +177,19 @@ private:
     {
       const sample* __restrict aptr = a[c].data();
       sample* __restrict bptr = b[c].data();
-      sample* __restrict outptr = output[c].data();
 
       for (int s = 0; s < numSamples; s++)
       {
-        outptr[s] = aptr[s] * bptr[s];
+        bptr[s] *= aptr[s];
       }
     }
   }
 
-  void ProcessCrossSynthesis(const Chunk& a, Chunk& b, Chunk& output) {}
-  void ProcessSpectralVocoder(const Chunk& a, Chunk& b, Chunk& output) {}
-  void ProcessCepstralMorph(const Chunk& a, Chunk& b, Chunk& output) {}
-  void ProcessHarmonicMorph(const Chunk& a, Chunk& b, Chunk& output) {}
-  void ProcessSpectralMasking(const Chunk& a, Chunk& b, Chunk& output) {}
+  void ProcessCrossSynthesis(const Chunk& a, Chunk& b) {}
+  void ProcessSpectralVocoder(const Chunk& a, Chunk& b) {}
+  void ProcessCepstralMorph(const Chunk& a, Chunk& b) {}
+  void ProcessHarmonicMorph(const Chunk& a, Chunk& b) {}
+  void ProcessSpectralMasking(const Chunk& a, Chunk& b) {}
 
   // Member variables
   Type mType = Type::CrossSynthesis;

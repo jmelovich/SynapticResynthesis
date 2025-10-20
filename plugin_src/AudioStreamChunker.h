@@ -397,7 +397,7 @@ namespace synaptic
             // This modifies the output chunk in-place, blending with co-located input
             const AudioChunk* sourceChunk = GetSourceChunkForOutput(idx);
             if (sourceChunk) {
-              mMorph.Process(sourceChunk->channelSamples, e.outputChunk.channelSamples, e.outputChunk.channelSamples);
+              mMorph.Process(sourceChunk->channelSamples, e.outputChunk.channelSamples);
             }
 
             if (mOutputWindow.Size() != e.outputChunk.numFrames)
