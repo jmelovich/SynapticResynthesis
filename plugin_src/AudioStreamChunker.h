@@ -18,14 +18,15 @@ namespace synaptic
     std::vector<std::vector<sample>> channelSamples; // [channel][frame]
     int numFrames = 0;
     double rms = 0.0;  // RMS of this chunk's audio
-    int sourceInputPoolIdx = -1;  // references the original input chunk
     int64_t startSample = -1;     // timeline position for alignment (could be useful)
+    // NOTE: sourceInputPoolIdx removed - no longer needed with dual-chunk pool entries
   };
 
   struct PoolEntry
   {
-    AudioChunk chunk;
-    int refCount = 0; // references held by window/pending/output
+    AudioChunk inputChunk;   // Original input audio from stream
+    AudioChunk outputChunk;  // Transformer-generated output
+    int refCount = 0;        // references held by window/pending/output
   };
 
   // Fixed-size ring buffer of indices (no allocations at runtime)
@@ -78,7 +79,7 @@ namespace synaptic
       : mNumChannels(numChannels)
     {
       Configure(mNumChannels, mChunkSize, mBufferWindowSize);
-      
+
     }
 
     void Configure(int numChannels, int chunkSize, int windowSize)
@@ -98,7 +99,7 @@ namespace synaptic
       mBufferWindowSize = newBufferWindowSize;
       mPoolCapacity = newPoolCapacity;
 
-      mMorph.Configure(Morph::Type::Test, mChunkSize);
+      mMorph.Configure(Morph::Type::None, mChunkSize);  // Disabled for now
 
       if (needsReallocation)
       {
@@ -111,8 +112,11 @@ namespace synaptic
       {
         auto& e = mPool[i];
         e.refCount = 0;
-        e.chunk.numFrames = mChunkSize;
-        e.chunk.channelSamples.assign(mNumChannels, std::vector<sample>(mChunkSize, 0.0));
+        // Initialize both input and output chunks
+        e.inputChunk.numFrames = mChunkSize;
+        e.inputChunk.channelSamples.assign(mNumChannels, std::vector<sample>(mChunkSize, 0.0));
+        e.outputChunk.numFrames = mChunkSize;
+        e.outputChunk.channelSamples.assign(mNumChannels, std::vector<sample>(mChunkSize, 0.0));
       }
 
         // Overlap-add buffer
@@ -235,28 +239,28 @@ namespace synaptic
           }
 
           PoolEntry& entry = mPool[poolIdx];
-          // Copy scratch into pool chunk
+          // Copy scratch into pool input chunk
           for (int ch = 0; ch < mNumChannels; ++ch)
           {
-            std::memcpy(entry.chunk.channelSamples[ch].data(), mAccumulation[ch].data(), sizeof(sample) * mChunkSize);
+            std::memcpy(entry.inputChunk.channelSamples[ch].data(), mAccumulation[ch].data(), sizeof(sample) * mChunkSize);
           }
-          entry.chunk.numFrames = mChunkSize;
+          entry.inputChunk.numFrames = mChunkSize;
 
           // Set timeline position for this input chunk
-          entry.chunk.startSample = mTotalInputSamplesPushed - mAccumulatedFrames;
+          entry.inputChunk.startSample = mTotalInputSamplesPushed - mAccumulatedFrames;
 
           // Calculate RMS for this input chunk
           float chunkRMS = 0;
           for (int ch = 0; ch < mNumChannels; ch++)
           {
-            sample* __restrict chunk = entry.chunk.channelSamples[ch].data();
-            for (int i = 0; i < entry.chunk.numFrames; i++)
+            sample* __restrict chunk = entry.inputChunk.channelSamples[ch].data();
+            for (int i = 0; i < entry.inputChunk.numFrames; i++)
             {
               chunkRMS += chunk[i] * chunk[i]; // gather Sum of Squares
             }
           }
-          chunkRMS = sqrt(chunkRMS / (entry.chunk.numFrames * mNumChannels)); // get Root Mean Square
-          entry.chunk.rms = chunkRMS;
+          chunkRMS = sqrt(chunkRMS / (entry.inputChunk.numFrames * mNumChannels)); // get Root Mean Square
+          entry.inputChunk.rms = chunkRMS;
 
           // Insert into lookahead window
           if (mWindow.Full())
@@ -304,55 +308,35 @@ namespace synaptic
       return true;
     }
 
-    void EnqueueOutputChunkIndex(int idx)
-    {
-      // add output ref
-      ++mPool[idx].refCount;
-      mOutput.Push(idx);
-    }
-
-    // Allocate a fresh, writable chunk for synthesized output. Returns false if no pool entries are free.
-    bool AllocateWritableChunkIndex(int& outIdx)
-    {
-      if (!mFree.Pop(outIdx))
-        return false;
-      PoolEntry& e = mPool[outIdx];
-      e.refCount = 0; // no refs yet
-      e.chunk.numFrames = mChunkSize;
-      // leave channelSamples as-is (pre-sized); caller will write
-      return true;
-    }
-
-    // Get a writable pointer for a chunk index obtained via AllocateWritableChunkIndex().
-    AudioChunk* GetWritableChunkByIndex(int idx)
+    // NEW API: Get input chunk for reading (const access)
+    const AudioChunk* GetInputChunk(int idx) const
     {
       if (idx < 0 || idx >= mPoolCapacity) return nullptr;
-      return &mPool[idx].chunk;
+      return &mPool[idx].inputChunk;
     }
 
-    // Commit a synthesized chunk to output. numFrames will be clamped to [0, mChunkSize].
-    // The RMS of the output chunk will be calculated automatically.
-    void CommitWritableChunkIndex(int idx, int numFrames)
+    // NEW API: Get output chunk for writing (mutable access)
+    AudioChunk* GetOutputChunk(int idx)
     {
-      CommitWritableChunkIndex(idx, numFrames, -1);
+      if (idx < 0 || idx >= mPoolCapacity) return nullptr;
+      return &mPool[idx].outputChunk;
     }
 
-    // Commit with source tracking.
-    // sourceInputIdx: the pool index of the original input chunk (if applicable).
-    // If valid, the source chunk is retained until this output chunk is consumed.
-    void CommitWritableChunkIndex(int idx, int numFrames, int sourceInputIdx)
+    // NEW API: Commit output chunk (simplified - no separate source tracking needed)
+    // Input and output are in the same entry, so source is implicitly tracked.
+    void CommitOutputChunk(int idx, int numFrames)
     {
       if (idx < 0 || idx >= mPoolCapacity) return;
       PoolEntry& e = mPool[idx];
       if (numFrames < 0) numFrames = 0;
       if (numFrames > mChunkSize) numFrames = mChunkSize;
-      e.chunk.numFrames = numFrames;
+      e.outputChunk.numFrames = numFrames;
 
       // Calculate RMS for this output chunk
       double chunkRMS = 0.0;
-      for (int ch = 0; ch < mNumChannels && ch < (int)e.chunk.channelSamples.size(); ch++)
+      for (int ch = 0; ch < mNumChannels && ch < (int)e.outputChunk.channelSamples.size(); ch++)
       {
-        const auto& channelData = e.chunk.channelSamples[ch];
+        const auto& channelData = e.outputChunk.channelSamples[ch];
         for (int i = 0; i < numFrames && i < (int)channelData.size(); i++)
         {
           chunkRMS += channelData[i] * channelData[i];
@@ -360,34 +344,24 @@ namespace synaptic
       }
       if (numFrames > 0 && mNumChannels > 0)
         chunkRMS = sqrt(chunkRMS / (numFrames * mNumChannels));
-      e.chunk.rms = chunkRMS;
+      e.outputChunk.rms = chunkRMS;
 
-      // Store source reference and retain it if valid
-      e.chunk.sourceInputPoolIdx = (sourceInputIdx >= 0 &&
-                                    sourceInputIdx < mPoolCapacity &&
-                                    sourceInputIdx != idx)
-                                   ? sourceInputIdx
-                                   : -1;
-
-      if (e.chunk.sourceInputPoolIdx == -1)
-        DBGMSG("Source Index in Pool could not be found");
-
-      if (e.chunk.sourceInputPoolIdx >= 0)
-        ++mPool[e.chunk.sourceInputPoolIdx].refCount; // hold input alive until output is consumed
+      // No separate source tracking needed - input and output are co-located!
+      // The entry is already referenced by window, which keeps input alive.
 
       // add output ref and enqueue
       ++e.refCount;
       mOutput.Push(idx);
     }
 
-    // Optional helper to clear a writable chunk to a value (default 0).
-    void ClearWritableChunkIndex(int idx, sample value = 0.0)
+    // Helper to clear output chunk to a value (default 0).
+    void ClearOutputChunk(int idx, sample value = 0.0)
     {
       if (idx < 0 || idx >= mPoolCapacity) return;
       PoolEntry& e = mPool[idx];
-      for (int ch = 0; ch < (int)e.chunk.channelSamples.size(); ++ch)
+      for (int ch = 0; ch < (int)e.outputChunk.channelSamples.size(); ++ch)
       {
-        std::fill(e.chunk.channelSamples[ch].begin(), e.chunk.channelSamples[ch].end(), value);
+        std::fill(e.outputChunk.channelSamples[ch].begin(), e.outputChunk.channelSamples[ch].end(), value);
       }
     }
 
@@ -414,22 +388,23 @@ namespace synaptic
           mOutput.Pop(idx);
           PoolEntry& e = mPool[idx];
 
-          // Access the corresponding input chunk for this output chunk (if available)
-          const AudioChunk* sourceChunk = GetSourceChunkForOutput(idx);
-
-          if (sourceChunk) {
-            mMorph.Process(sourceChunk->channelSamples, e.chunk.channelSamples);
-          }
-
-          if (e.chunk.numFrames > 0)
+          if (e.outputChunk.numFrames > 0)
           {
+            // Compute AGC first (uses original output chunk RMS)
             const float agc = ComputeAGC(idx, agcEnabled);
 
-            if (mOutputWindow.Size() != e.chunk.numFrames)
-              mOutputWindow.Set(mOutputWindow.GetType(), e.chunk.numFrames);
+            // Apply morph processing AFTER AGC but BEFORE windowing/OLA
+            // This modifies the output chunk in-place, blending with co-located input
+            const AudioChunk* sourceChunk = GetSourceChunkForOutput(idx);
+            if (sourceChunk) {
+              mMorph.Process(sourceChunk->channelSamples, e.outputChunk.channelSamples);
+            }
+
+            if (mOutputWindow.Size() != e.outputChunk.numFrames)
+              mOutputWindow.Set(mOutputWindow.GetType(), e.outputChunk.numFrames);
 
             const auto& coeffs = mOutputWindow.Coeffs();
-            const int frames = e.chunk.numFrames;
+            const int frames = e.outputChunk.numFrames;
             const int addPos = (mOutputOverlapValidSamples >= hopSize) ? (mOutputOverlapValidSamples - hopSize) : 0;
             const int requiredSize = addPos + frames;
 
@@ -441,13 +416,13 @@ namespace synaptic
 
             for (int ch = 0; ch < std::min(mNumChannels, (int)mOutputOverlapBuffer.size()); ++ch)
             {
-              if (ch < (int)e.chunk.channelSamples.size())
+              if (ch < (int)e.outputChunk.channelSamples.size())
               {
                 for (int i = 0; i < frames; ++i)
                 {
                   if (addPos + i < (int)mOutputOverlapBuffer[ch].size() && i < (int)coeffs.size())
                   {
-                    mOutputOverlapBuffer[ch][addPos + i] += e.chunk.channelSamples[ch][i] * coeffs[i] * agc;
+                    mOutputOverlapBuffer[ch][addPos + i] += e.outputChunk.channelSamples[ch][i] * coeffs[i] * agc;
                   }
                 }
               }
@@ -455,7 +430,8 @@ namespace synaptic
             mOutputOverlapValidSamples = requiredSize;
           }
 
-          ReleaseSourceAndOutputChunk(idx);
+          // Release the pool entry (input and output are co-located)
+          DecRefAndMaybeFree(idx);
         }
 
         // Now, copy from our buffer to the output
@@ -526,17 +502,7 @@ namespace synaptic
           {
             PoolEntry& e = mPool[idx];
 
-            // Access the corresponding input chunk for this output chunk (if available)
-            // const AudioChunk* sourceChunk = GetSourceChunkForOutput(idx);
-            // if (sourceChunk && mOutputFrontFrameIndex < sourceChunk->numFrames)
-            // {
-            //   // sourceChunk->channelSamples[ch][mOutputFrontFrameIndex] = input sample
-            //   // sourceChunk->rms = input chunk RMS
-            //   // e.chunk.channelSamples[ch][mOutputFrontFrameIndex] = output sample
-            //   // e.chunk.rms = output chunk RMS
-            //   // You can blend/morph them here before writing to outputs[ch][s]
-            // }
-            if (mOutputFrontFrameIndex < e.chunk.numFrames)
+            if (mOutputFrontFrameIndex < e.outputChunk.numFrames)
             {
                 const float agc = ComputeAGC(idx, agcEnabled);
 
@@ -550,10 +516,10 @@ namespace synaptic
 
               for (int ch = 0; ch < chansToWrite; ++ch)
               {
-                if (outputs[ch] && ch < (int)e.chunk.channelSamples.size() &&
-                    mOutputFrontFrameIndex < (int)e.chunk.channelSamples[ch].size())
+                if (outputs[ch] && ch < (int)e.outputChunk.channelSamples.size() &&
+                    mOutputFrontFrameIndex < (int)e.outputChunk.channelSamples[ch].size())
                   {
-                    outputs[ch][s] = e.chunk.channelSamples[ch][mOutputFrontFrameIndex] * windowCoeff * agc;
+                    outputs[ch][s] = e.outputChunk.channelSamples[ch][mOutputFrontFrameIndex] * windowCoeff * agc;
                   }
                 }
             }
@@ -561,12 +527,12 @@ namespace synaptic
             ++mOutputFrontFrameIndex;
             ++mTotalOutputSamplesRendered;  // Track output for latency control
 
-            if (mOutputFrontFrameIndex >= e.chunk.numFrames)
+            if (mOutputFrontFrameIndex >= e.outputChunk.numFrames)
             {
               // finished this chunk
               int finished;
               mOutput.Pop(finished);
-              ReleaseSourceAndOutputChunk(finished);
+              DecRefAndMaybeFree(finished);
               mOutputFrontFrameIndex = 0;
               }
             }
@@ -612,20 +578,6 @@ namespace synaptic
       return mOutput.data[pos];
     }
 
-    // Map a pool index to a read-only chunk pointer (nullptr if invalid)
-    const AudioChunk* GetChunkConstByIndex(int idx) const
-    {
-      if (idx < 0 || idx >= mPoolCapacity) return nullptr;
-      return &mPool[idx].chunk;
-    }
-
-    // Map a pool index to a writable chunk pointer (nullptr if invalid)
-    AudioChunk* GetMutableChunkByIndex(int idx)
-    {
-      if (idx < 0 || idx >= mPoolCapacity) return nullptr;
-      return &mPool[idx].chunk;
-    }
-
     // Current output head (if any) and its frame index
     bool PeekCurrentOutput(int& outPoolIdx, int& outFrameIndex) const
     {
@@ -638,19 +590,15 @@ namespace synaptic
     int GetNumChannels() const { return mNumChannels; }
 
     // Get the source input chunk for a given output chunk index.
-    // Returns nullptr if no source is tracked.
+    // SIMPLIFIED: Input and output are co-located, so just return inputChunk from same entry.
     const AudioChunk* GetSourceChunkForOutput(int outputPoolIdx) const
     {
       if (outputPoolIdx < 0 || outputPoolIdx >= mPoolCapacity)
       {
         return nullptr;
       }
-      const int srcIdx = mPool[outputPoolIdx].chunk.sourceInputPoolIdx;
-      if (srcIdx < 0 || srcIdx >= mPoolCapacity)
-      {
-        return nullptr;
-      }
-      return &mPool[srcIdx].chunk;
+      // Input and output are in the same pool entry!
+      return &mPool[outputPoolIdx].inputChunk;
     }
 
   private:
@@ -666,23 +614,6 @@ namespace synaptic
       }
     }
 
-    void ReleaseSourceAndOutputChunk(int idx)
-    {
-      if (idx < 0 || idx >= mPoolCapacity) return;
-
-      // Release source reference if this output chunk had a tracked input
-      PoolEntry& e = mPool[idx];
-      const int srcIdx = e.chunk.sourceInputPoolIdx;
-      if (srcIdx >= 0 && srcIdx < mPoolCapacity)
-      {
-        e.chunk.sourceInputPoolIdx = -1; // clear reference
-        DecRefAndMaybeFree(srcIdx);      // release source chunk
-      }
-
-      // Release output chunk
-      DecRefAndMaybeFree(idx);
-    }
-
     float ComputeAGC(int outputIdx, bool agcEnabled) const
     {
       if (!agcEnabled) return 1.0f;
@@ -692,9 +623,9 @@ namespace synaptic
       const AudioChunk* sourceChunk = GetSourceChunkForOutput(outputIdx);
       const PoolEntry& e = mPool[outputIdx];
 
-      if (sourceChunk && e.chunk.rms > 1e-9) // avoid divide by zero
+      if (sourceChunk && e.outputChunk.rms > 1e-9) // avoid divide by zero
       {
-        return (float)(sourceChunk->rms / e.chunk.rms);
+        return (float)(sourceChunk->rms / e.outputChunk.rms);
       }
 
       return 1.0f;

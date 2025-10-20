@@ -83,45 +83,8 @@ namespace synaptic
     virtual bool SetParamFromString(const std::string& /*id*/, const std::string& /*v*/) { return false; }
 
   protected:
-    // Helper function to copy input chunk to output chunk (common pattern)
-    static bool CopyInputToOutput(AudioStreamChunker& chunker, int inIdx)
-    {
-      int outIdx;
-      if (!chunker.AllocateWritableChunkIndex(outIdx))
-      {
-        chunker.EnqueueOutputChunkIndex(inIdx);
-        return false;
-      }
-
-      AudioChunk* out = chunker.GetWritableChunkByIndex(outIdx);
-      const AudioChunk* in = chunker.GetChunkConstByIndex(inIdx);
-      if (!out || !in)
-      {
-        chunker.EnqueueOutputChunkIndex(inIdx);
-        return false;
-      }
-
-      const int numChannels = (int) in->channelSamples.size();
-      const int outChunkSize = chunker.GetChunkSize();
-      const int framesToWrite = std::min(outChunkSize, std::max(0, in->numFrames));
-
-      if ((int) out->channelSamples.size() != numChannels)
-        out->channelSamples.assign(numChannels, std::vector<iplug::sample>(outChunkSize, 0.0));
-
-      for (int ch = 0; ch < numChannels; ++ch)
-      {
-        if ((int) out->channelSamples[ch].size() < outChunkSize)
-          out->channelSamples[ch].assign(outChunkSize, 0.0);
-        const int copyN = std::min(framesToWrite, (int) in->channelSamples[ch].size());
-        if (copyN > 0)
-          std::memcpy(out->channelSamples[ch].data(), in->channelSamples[ch].data(), sizeof(iplug::sample) * copyN);
-        for (int i = copyN; i < outChunkSize; ++i)
-          out->channelSamples[ch][i] = 0.0;
-      }
-
-      chunker.CommitWritableChunkIndex(outIdx, framesToWrite, inIdx);
-      return true;
-    }
+    // NOTE: CopyInputToOutput helper removed - no longer needed with dual-chunk pool entries.
+    // Use GetInputChunk() / GetOutputChunk() / CommitOutputChunk() instead.
   };
 
   // Simple passthrough transformer: no additional latency and no lookahead.
@@ -132,10 +95,40 @@ namespace synaptic
 
     void Process(AudioStreamChunker& chunker) override
     {
-      int inIdx;
-      while (chunker.PopPendingInputChunkIndex(inIdx))
+      int idx;
+      while (chunker.PopPendingInputChunkIndex(idx))
       {
-        CopyInputToOutput(chunker, inIdx);
+        // NEW API: Input and output are in the same pool entry
+        const AudioChunk* in = chunker.GetInputChunk(idx);
+        AudioChunk* out = chunker.GetOutputChunk(idx);
+
+        if (!in || !out) continue;
+
+        const int numChannels = (int)in->channelSamples.size();
+        const int chunkSize = chunker.GetChunkSize();
+        const int framesToWrite = std::min(chunkSize, in->numFrames);
+
+        // Ensure output is properly sized
+        if ((int)out->channelSamples.size() != numChannels)
+          out->channelSamples.assign(numChannels, std::vector<iplug::sample>(chunkSize, 0.0));
+
+        // Copy input to output
+        for (int ch = 0; ch < numChannels; ++ch)
+        {
+          if ((int)out->channelSamples[ch].size() < chunkSize)
+            out->channelSamples[ch].assign(chunkSize, 0.0);
+
+          const int copyN = std::min(framesToWrite, (int)in->channelSamples[ch].size());
+          if (copyN > 0)
+            std::memcpy(out->channelSamples[ch].data(), in->channelSamples[ch].data(),
+                       sizeof(iplug::sample) * copyN);
+
+          // Zero-fill remainder
+          for (int i = copyN; i < chunkSize; ++i)
+            out->channelSamples[ch][i] = 0.0;
+        }
+
+        chunker.CommitOutputChunk(idx, framesToWrite);
       }
     }
 
@@ -165,11 +158,14 @@ namespace synaptic
       const int chunkSize = chunker.GetChunkSize();
       const int numChannels = chunker.GetNumChannels();
 
-      int inIdx;
-      while (chunker.PopPendingInputChunkIndex(inIdx))
+      int idx;
+      while (chunker.PopPendingInputChunkIndex(idx))
       {
-        const AudioChunk* in = chunker.GetChunkConstByIndex(inIdx);
-        if (!in || in->numFrames <= 0)
+        // NEW API: Access input and output from same entry
+        const AudioChunk* in = chunker.GetInputChunk(idx);
+        AudioChunk* out = chunker.GetOutputChunk(idx);
+
+        if (!in || !out || in->numFrames <= 0)
           continue;
 
         const int N = in->numFrames;
@@ -213,20 +209,13 @@ namespace synaptic
           amps[ch] = std::min(1.0, in->rms * 1.41421356237); // RMS to peak
         }
 
-        // 2. Allocate and synthesize
-        int outIdx;
-        if (!chunker.AllocateWritableChunkIndex(outIdx))
-          continue;
-        AudioChunk* out = chunker.GetWritableChunkByIndex(outIdx);
-        if (!out)
-          continue;
-
+        // 2. Synthesize to output chunk
         // Ensure channels sized
-        if ((int) out->channelSamples.size() != numChannels)
+        if ((int)out->channelSamples.size() != numChannels)
           out->channelSamples.assign(numChannels, std::vector<sample>(chunkSize, 0.0));
         for (int ch = 0; ch < numChannels; ++ch)
         {
-          if ((int) out->channelSamples[ch].size() < chunkSize)
+          if ((int)out->channelSamples[ch].size() < chunkSize)
             out->channelSamples[ch].assign(chunkSize, 0.0);
         }
 
@@ -239,7 +228,7 @@ namespace synaptic
 
           for (int i = 0; i < framesToWrite; ++i)
           {
-            out->channelSamples[ch][i] = (sample) (amps[ch] * std::sin(phase));
+            out->channelSamples[ch][i] = (sample)(amps[ch] * std::sin(phase));
             phase += dphase;
           }
           // Zero-fill remainder if any
@@ -249,7 +238,7 @@ namespace synaptic
           }
         }
 
-        chunker.CommitWritableChunkIndex(outIdx, framesToWrite, inIdx);
+        chunker.CommitOutputChunk(idx, framesToWrite);
       }
     }
 
