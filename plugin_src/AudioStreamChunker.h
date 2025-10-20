@@ -78,6 +78,7 @@ namespace synaptic
       : mNumChannels(numChannels)
     {
       Configure(mNumChannels, mChunkSize, mBufferWindowSize);
+      
     }
 
     void Configure(int numChannels, int chunkSize, int windowSize)
@@ -96,6 +97,8 @@ namespace synaptic
       mChunkSize = newChunkSize;
       mBufferWindowSize = newBufferWindowSize;
       mPoolCapacity = newPoolCapacity;
+
+      mMorph.Configure(Morph::Type::None, mChunkSize);
 
       if (needsReallocation)
       {

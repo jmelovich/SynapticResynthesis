@@ -9,7 +9,7 @@ struct AudioChunk;
 class Morph
 {
 public:
-  enum class Type
+  enum Type
   {
     None,            // Passthrough
     CrossSynthesis,  // Cross-synthesis between two audio streams
@@ -29,13 +29,12 @@ public:
 
   Morph() = default;
 
-  Morph(Type type, int fftSize, float sampleRate) { Set(type, fftSize, sampleRate); }
+  Morph(Type type, int fftSize) { Configure(type, fftSize); }
 
-  void Set(Type type, int fftSize, float sampleRate)
+  void Configure(Type type, int fftSize)
   {
     mType = type;
     mFFTSize = fftSize;
-    mSampleRate = sampleRate;
 
     // Initialize internal buffers
     mInputBuffer.resize(fftSize, 0.0f);
@@ -80,8 +79,6 @@ public:
   // Accessor methods
   Type GetType() const { return mType; }
   int GetFFTSize() const { return mFFTSize; }
-  float GetSampleRate() const { return mSampleRate; }
-  int GetHopSize() const { return mHopSize; }
   const Parameters& GetParameters() const { return mParams; }
 
   // Set morphing parameters
@@ -169,8 +166,6 @@ private:
   // Member variables
   Type mType = Type::CrossSynthesis;
   int mFFTSize = 1024;
-  float mSampleRate = 48000.0f;
-  int mHopSize = 256;
   Parameters mParams;
 
   // FFT setup and buffers
@@ -182,10 +177,4 @@ private:
   std::vector<float> mInputPhaseSpectrum;
   std::vector<float> mOutputPhaseSpectrum;
   std::vector<float> mTargetAudioBuffer;
-
-  // Analysis buffers
-  std::vector<int> mHarmonicBins;
-  std::vector<int> mFormantBins;
-  float mSpectralCentroid = 0.0f;
-  float mSpectralRolloff = 0.0f;
 };
