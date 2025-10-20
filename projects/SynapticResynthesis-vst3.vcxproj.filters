@@ -329,6 +329,12 @@
     <ClInclude Include="..\plugin_src\Morph.h">
       <Filter>plugin_src</Filter>
     </ClInclude>
+    <ClInclude Include="..\plugin_src\transformers\ExpandedSimpleSampleBrainTransformer.h">
+      <Filter>plugin_src\transformers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\transformers\SimpleSampleBrainTransformer.h">
+      <Filter>plugin_src\transformers</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="resources">
@@ -393,6 +399,9 @@
     </Filter>
     <Filter Include="exdeps">
       <UniqueIdentifier>{c1d2e3f4-a5b6-c7d8-e9f0-a1b2c3d4e5f6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="plugin_src\transformers">
+      <UniqueIdentifier>{5a553ad8-b65d-423d-bc08-83ab78b3affa}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

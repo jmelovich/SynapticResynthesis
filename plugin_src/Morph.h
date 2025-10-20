@@ -6,17 +6,35 @@
 
 struct AudioChunk;
 
+using sample = iplug::sample;
+using Chunk = std::vector<std::vector<sample>>;
+
 class Morph
 {
 public:
-  enum class Type
+  enum Type
   {
     None,            // Passthrough
-    CrossSynthesis,  // Cross-synthesis between two audio streams
+    Test,
+    CrossSynthesis,  // Cross-synthesis between two audio streams (log magnitude, geometric mean, other modes?)
     SpectralVocoder, // Apply input spectral envelope onto output
     CepstralMorph,   // Morph between cepstra
     HarmonicMorph,   // Morph between harmonic structures
     SpectralMasking, // Apply spectral masking effects
+
+    // Proposed: (btw i have no idea what most of these mean theyre just what chatgpt recommended we check out)
+    // Geometric Mean Magnitude Morph
+    // Envelope Cross-Deformation (spectral energy of output with formant curvature of input)
+    // Spectral Warping Morph (map formant shifts and warp smoothly)
+    // Morph that emphasizes phase coherence, really blending two signals
+    // Distribution Morph (magnitudes are probability distributions, interpolate via Earth Mover's Distance)
+    // Noise-Tone Decomposition Morph (morph tonal and residual components separately)
+    // Spectral Contrast Morph (extract "contrast" and interpolate contrast instead of magnitudes)
+    // Iterative Projection Morph (project into shared manifold, nmf or pca, and interpolate in that space)
+    //    Spectral Topology Morph (get each partial's features and morph on shortest path between manifolds)
+    //    Optimal Transport Morph (treat magnitudes as mass distributions, wasserstein barycenter to morph)
+    //    Laplacian Morph (construct graph laplacians and interpolate)
+    // Spectral Entropy Morph (low entropy bins emphasize one, high entropy bins emphasize another, morph adapts to signal character)
   };
 
   // Morphing parameters structure
@@ -29,13 +47,12 @@ public:
 
   Morph() = default;
 
-  Morph(Type type, int fftSize, float sampleRate) { Set(type, fftSize, sampleRate); }
+  Morph(Type type, int fftSize) { Configure(type, fftSize); }
 
-  void Set(Type type, int fftSize, float sampleRate)
+  void Configure(Type type, int fftSize)
   {
     mType = type;
     mFFTSize = fftSize;
-    mSampleRate = sampleRate;
 
     // Initialize internal buffers
     mInputBuffer.resize(fftSize, 0.0f);
@@ -44,35 +61,32 @@ public:
     mInputPhaseSpectrum.resize(fftSize / 2 + 1, 0.0f);
     mOutputMagnitudeSpectrum.resize(fftSize / 2 + 1, 0.0f);
     mOutputPhaseSpectrum.resize(fftSize / 2 + 1, 0.0f);
-
-    // Initialize FFT setup
-    InitializeFFT();
-
-    // Set default parameters based on morph type
-    SetDefaultParameters();
   }
 
   // Main processing function - applies morphing to input audio
-  void Process(AudioChunk& chunk, int numSamples, const Parameters& params)
+  void Process(const Chunk& input, Chunk& output)
   {
     switch (mType)
     {
     case Type::None:
       break;
+    case Type::Test:
+      ProcessTest(input, output);
+      break;
     case Type::CrossSynthesis:
-      ProcessCrossSynthesis(chunk, numSamples, params);
+      ProcessCrossSynthesis(input, output);
       break;
     case Type::SpectralVocoder:
-      ProcessSpectralVocoder(chunk, numSamples, params);
+      ProcessSpectralVocoder(input, output);
       break;
     case Type::CepstralMorph:
-      ProcessCepstralMorph(chunk, numSamples, params);
+      ProcessCepstralMorph(input, output);
       break;
     case Type::HarmonicMorph:
-      ProcessHarmonicMorph(chunk, numSamples, params);
+      ProcessHarmonicMorph(input, output);
       break;
     case Type::SpectralMasking:
-      ProcessSpectralMasking(chunk, numSamples, params);
+      ProcessSpectralMasking(input, output);
       break;
     }
   }
@@ -80,8 +94,6 @@ public:
   // Accessor methods
   Type GetType() const { return mType; }
   int GetFFTSize() const { return mFFTSize; }
-  float GetSampleRate() const { return mSampleRate; }
-  int GetHopSize() const { return mHopSize; }
   const Parameters& GetParameters() const { return mParams; }
 
   // Set morphing parameters
@@ -156,21 +168,32 @@ public:
 
 private:
   // Morphing algorithm implementations (declarations only)
-  void ProcessCrossSynthesis(AudioChunk& chunk, int numSamples, const Parameters& params);
-  void ProcessSpectralVocoder(AudioChunk& chunk, int numSamples, const Parameters& params);
-  void ProcessCepstralMorph(AudioChunk& chunk, int numSamples, const Parameters& params);
-  void ProcessHarmonicMorph(AudioChunk& chunk, int numSamples, const Parameters& params);
-  void ProcessSpectralMasking(AudioChunk& chunk, int numSamples, const Parameters& params);
+  void ProcessTest(const Chunk& input, Chunk& output)
+  {
+    const int numChannels = input.size();
+    const int numSamples = input[0].size();
 
-  // Helper functions
-  void InitializeFFT();
-  void SetDefaultParameters();
+    for (int c = 0; c < numChannels; c++)
+    {
+      const sample* __restrict in = input[c].data();
+      sample* __restrict out = output[c].data();
+
+      for (int s = 0; s < numSamples; s++)
+      {
+        out[s] *= in[s];
+      }
+    }
+  }
+
+  void ProcessCrossSynthesis(const Chunk& input, Chunk& output) {}
+  void ProcessSpectralVocoder(const Chunk& input, Chunk& output) {}
+  void ProcessCepstralMorph(const Chunk& input, Chunk& output) {}
+  void ProcessHarmonicMorph(const Chunk& input, Chunk& output) {}
+  void ProcessSpectralMasking(const Chunk& input, Chunk& output) {}
 
   // Member variables
   Type mType = Type::CrossSynthesis;
   int mFFTSize = 1024;
-  float mSampleRate = 48000.0f;
-  int mHopSize = 256;
   Parameters mParams;
 
   // FFT setup and buffers
@@ -182,10 +205,4 @@ private:
   std::vector<float> mInputPhaseSpectrum;
   std::vector<float> mOutputPhaseSpectrum;
   std::vector<float> mTargetAudioBuffer;
-
-  // Analysis buffers
-  std::vector<int> mHarmonicBins;
-  std::vector<int> mFormantBins;
-  float mSpectralCentroid = 0.0f;
-  float mSpectralRolloff = 0.0f;
 };

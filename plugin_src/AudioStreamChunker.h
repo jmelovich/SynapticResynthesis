@@ -78,6 +78,7 @@ namespace synaptic
       : mNumChannels(numChannels)
     {
       Configure(mNumChannels, mChunkSize, mBufferWindowSize);
+      
     }
 
     void Configure(int numChannels, int chunkSize, int windowSize)
@@ -96,6 +97,8 @@ namespace synaptic
       mChunkSize = newChunkSize;
       mBufferWindowSize = newBufferWindowSize;
       mPoolCapacity = newPoolCapacity;
+
+      mMorph.Configure(Morph::Type::Test, mChunkSize);
 
       if (needsReallocation)
       {
@@ -365,6 +368,10 @@ namespace synaptic
                                     sourceInputIdx != idx)
                                    ? sourceInputIdx
                                    : -1;
+
+      if (e.chunk.sourceInputPoolIdx == -1)
+        DBGMSG("Source Index in Pool could not be found");
+
       if (e.chunk.sourceInputPoolIdx >= 0)
         ++mPool[e.chunk.sourceInputPoolIdx].refCount; // hold input alive until output is consumed
 
@@ -408,14 +415,11 @@ namespace synaptic
           PoolEntry& e = mPool[idx];
 
           // Access the corresponding input chunk for this output chunk (if available)
-          // const AudioChunk* sourceChunk = GetSourceChunkForOutput(idx);
-          // if (sourceChunk)
-          // {
-          //   // sourceChunk->channelSamples[ch] = original input audio
-          //   // sourceChunk->rms = input chunk RMS
-          //   // e.chunk.channelSamples[ch] = transformed output audio
-          //   // e.chunk.rms = output chunk RMS
-          // }
+          const AudioChunk* sourceChunk = GetSourceChunkForOutput(idx);
+
+          if (sourceChunk) {
+            mMorph.Process(sourceChunk->channelSamples, e.chunk.channelSamples);
+          }
 
           if (e.chunk.numFrames > 0)
           {
@@ -637,9 +641,15 @@ namespace synaptic
     // Returns nullptr if no source is tracked.
     const AudioChunk* GetSourceChunkForOutput(int outputPoolIdx) const
     {
-      if (outputPoolIdx < 0 || outputPoolIdx >= mPoolCapacity) return nullptr;
+      if (outputPoolIdx < 0 || outputPoolIdx >= mPoolCapacity)
+      {
+        return nullptr;
+      }
       const int srcIdx = mPool[outputPoolIdx].chunk.sourceInputPoolIdx;
-      if (srcIdx < 0 || srcIdx >= mPoolCapacity) return nullptr;
+      if (srcIdx < 0 || srcIdx >= mPoolCapacity)
+      {
+        return nullptr;
+      }
       return &mPool[srcIdx].chunk;
     }
 
