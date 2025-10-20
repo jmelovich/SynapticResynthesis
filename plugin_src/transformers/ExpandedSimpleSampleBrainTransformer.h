@@ -18,22 +18,39 @@ namespace synaptic
         int idx;
         while (chunker.PopPendingInputChunkIndex(idx))
         {
-          CopyInputToOutput(chunker, idx);
+          // Simple passthrough when no brain
+          const AudioChunk* in = chunker.GetInputChunk(idx);
+          AudioChunk* out = chunker.GetOutputChunk(idx);
+          if (in && out)
+          {
+            const int numChannels = (int)in->channelSamples.size();
+            const int chunkSize = chunker.GetChunkSize();
+            if ((int)out->channelSamples.size() != numChannels)
+              out->channelSamples.assign(numChannels, std::vector<iplug::sample>(chunkSize, 0.0));
+            for (int ch = 0; ch < numChannels; ++ch)
+            {
+              const int copyN = std::min((int)in->channelSamples[ch].size(), chunkSize);
+              if (copyN > 0)
+                std::memcpy(out->channelSamples[ch].data(), in->channelSamples[ch].data(),
+                           sizeof(iplug::sample) * copyN);
+            }
+            chunker.CommitOutputChunk(idx, in->numFrames);
+          }
         }
         return;
       }
 
       const int numChannels = chunker.GetNumChannels();
 
-      int inIdx;
-      while (chunker.PopPendingInputChunkIndex(inIdx))
+      int idx;
+      while (chunker.PopPendingInputChunkIndex(idx))
       {
-        const AudioChunk* in = chunker.GetChunkConstByIndex(inIdx);
-        if (!in || in->numFrames <= 0)
-        {
-          chunker.EnqueueOutputChunkIndex(inIdx);
+        // NEW API: Access input and output from same entry
+        const AudioChunk* in = chunker.GetInputChunk(idx);
+        AudioChunk* out = chunker.GetOutputChunk(idx);
+
+        if (!in || !out || in->numFrames <= 0)
           continue;
-        }
 
         const int N = in->numFrames;
         const double nyquist = 0.5 * mSampleRate;
@@ -120,25 +137,12 @@ namespace synaptic
           pffft_destroy_setup(setup);
         }
 
-        // Allocate output chunk
-        int outIdx;
-        if (!chunker.AllocateWritableChunkIndex(outIdx))
-        {
-          chunker.EnqueueOutputChunkIndex(inIdx);
-          continue;
-        }
-        AudioChunk* out = chunker.GetWritableChunkByIndex(outIdx);
-        if (!out)
-        {
-          chunker.EnqueueOutputChunkIndex(inIdx);
-          continue;
-        }
-
+        // Prepare output chunk (already allocated in same entry as input)
         const int chunkSize = chunker.GetChunkSize();
-        if ((int) out->channelSamples.size() != numChannels)
+        if ((int)out->channelSamples.size() != numChannels)
           out->channelSamples.assign(numChannels, std::vector<iplug::sample>(chunkSize, 0.0));
         for (int ch = 0; ch < numChannels; ++ch)
-          if ((int) out->channelSamples[ch].size() < chunkSize)
+          if ((int)out->channelSamples[ch].size() < chunkSize)
             out->channelSamples[ch].assign(chunkSize, 0.0);
 
         if (mChannelIndependent)
@@ -231,7 +235,7 @@ namespace synaptic
           }
 
           // Commit output chunk (RMS calculated automatically)
-          chunker.CommitWritableChunkIndex(outIdx, chunkSize, inIdx);
+          chunker.CommitOutputChunk(idx, chunkSize);
         }
         else
         {
@@ -285,14 +289,22 @@ namespace synaptic
 
           if (bestIdx < 0)
           {
-            chunker.EnqueueOutputChunkIndex(inIdx);
+            // No match found - output silence
+            for (int ch = 0; ch < numChannels; ++ch)
+              for (int i = 0; i < chunkSize; ++i)
+                out->channelSamples[ch][i] = 0.0;
+            chunker.CommitOutputChunk(idx, chunkSize);
             continue;
           }
 
           const BrainChunk* match = mBrain->GetChunkByGlobalIndex(bestIdx);
           if (!match)
           {
-            chunker.EnqueueOutputChunkIndex(inIdx);
+            // No match found - output silence
+            for (int ch = 0; ch < numChannels; ++ch)
+              for (int i = 0; i < chunkSize; ++i)
+                out->channelSamples[ch][i] = 0.0;
+            chunker.CommitOutputChunk(idx, chunkSize);
             continue;
           }
 
@@ -307,7 +319,7 @@ namespace synaptic
               out->channelSamples[ch][i] = 0.0;
           }
 
-          chunker.CommitWritableChunkIndex(outIdx, framesToWrite, inIdx);
+          chunker.CommitOutputChunk(idx, framesToWrite);
         }
       }
     }
