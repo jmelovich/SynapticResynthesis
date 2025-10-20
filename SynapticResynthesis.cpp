@@ -2,7 +2,11 @@
 #include "IPlug_include_in_plug_src.h"
 #include "IPlugPaths.h"
 #include "json.hpp"
+#if SR_USE_WEB_UI
 #include "Extras/WebView/IPlugWebViewEditorDelegate.h"
+#else
+#include "plugin_src/ui/IGraphicsUI.h"
+#endif
 #include "plugin_src/TransformerFactory.h"
 #include "plugin_src/PlatformFileDialogs.h"
 #include <thread>
@@ -56,11 +60,26 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
   SetEnableDevTools(true);
 #endif
 
-  mEditorInitFunc = [&]()
-  {
-    LoadIndexHtml(__FILE__, GetBundleID());
-    EnableScroll(false);
+#if SR_USE_WEB_UI
+static std::atomic<bool> inited { false };
+mEditorInitFunc = [this]() {
+  bool expected = false;
+  if (!inited.compare_exchange_strong(expected, true)) return;
+  LoadIndexHtml(__FILE__, GetBundleID());
+  EnableScroll(false);
+};
+#else
+  #if IPLUG_EDITOR
+  // IGraphics UI setup
+  mMakeGraphicsFunc = [&]() {
+    return igraphics::MakeGraphics(*this, PLUG_WIDTH, PLUG_HEIGHT, PLUG_FPS, GetScaleForScreen(PLUG_WIDTH, PLUG_HEIGHT));
   };
+
+  mLayoutFunc = [&](igraphics::IGraphics* pGraphics) {
+    synaptic::BuildIGraphicsLayout(pGraphics);
+  };
+  #endif
+#endif
 
   MakePreset("One", -70.);
   MakePreset("Two", -30.);
@@ -88,10 +107,16 @@ void SynapticResynthesis::DrainUiQueueOnMainThread()
 {
   // Coalesce structured resend flags first
   if (mPendingSendBrainSummary.exchange(false))
+  {
+#if SR_USE_WEB_UI
     mUIBridge.SendBrainSummary(mBrain);
+#endif
+  }
   if (mPendingSendDSPConfig.exchange(false))
   {
+#if SR_USE_WEB_UI
     SyncAndSendDSPConfig();
+#endif
   }
   if (mPendingMarkDirty.exchange(false))
     MarkHostStateDirty();
@@ -249,11 +274,11 @@ void SynapticResynthesis::OnUIOpen()
 {
   // Ensure UI gets current values when window opens
   Plugin::OnUIOpen();
+#if SR_USE_WEB_UI
   mUIBridge.SendTransformerParams(mTransformer);
-
   SyncAndSendDSPConfig();
-
   mUIBridge.SendBrainSummary(mBrain);
+#endif
 }
 
 void SynapticResynthesis::OnIdle()
@@ -265,11 +290,11 @@ void SynapticResynthesis::OnIdle()
 void SynapticResynthesis::OnRestoreState()
 {
   Plugin::OnRestoreState();
+#if SR_USE_WEB_UI
   mUIBridge.SendTransformerParams(mTransformer);
-
   SyncAndSendDSPConfig();
-
   mUIBridge.SendBrainSummary(mBrain);
+#endif
 }
 
 void SynapticResynthesis::OnParamChange(int paramIdx)

@@ -5,6 +5,12 @@
 		},
 		{
 			"path": "../../IPlug"
+		},
+		{
+			"path": "../../IGraphics"
+		},
+		{
+			"path": "../IPlugControls"
 		}
 	],
 	"settings": {

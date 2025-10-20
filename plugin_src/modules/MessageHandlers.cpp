@@ -301,6 +301,7 @@ bool SynapticResynthesis::HandleBrainDetachMsg()
 
 bool SynapticResynthesis::HandleResizeToFitMsg(int dataSize, const void* pData)
 {
+#if SR_USE_WEB_UI
   if (!pData || dataSize <= 0)
     return false;
 
@@ -323,5 +324,10 @@ bool SynapticResynthesis::HandleResizeToFitMsg(int dataSize, const void* pData)
   {
     return false;
   }
+#else
+  (void)dataSize;
+  (void)pData;
+  return false;
+#endif
 }
 
