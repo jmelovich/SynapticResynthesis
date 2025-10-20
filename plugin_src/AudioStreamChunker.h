@@ -418,7 +418,8 @@ namespace synaptic
           const AudioChunk* sourceChunk = GetSourceChunkForOutput(idx);
 
           if (sourceChunk) {
-            mMorph.Process(sourceChunk->channelSamples, e.chunk.channelSamples);
+            mMorph.Process(sourceChunk->channelSamples, e.chunk.channelSamples, e.chunk.channelSamples);
+            // TODO: update output vector
           }
 
           if (e.chunk.numFrames > 0)
@@ -443,6 +444,7 @@ namespace synaptic
             {
               if (ch < (int)e.chunk.channelSamples.size())
               {
+
                 for (int i = 0; i < frames; ++i)
                 {
                   if (addPos + i < (int)mOutputOverlapBuffer[ch].size() && i < (int)coeffs.size())
