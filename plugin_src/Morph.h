@@ -15,7 +15,6 @@ public:
   enum Type
   {
     None,            // Passthrough
-    Test,
     CrossSynthesis,  // Cross-synthesis between two audio streams (log magnitude, geometric mean, other modes?)
     SpectralVocoder, // Apply input spectral envelope onto output
     CepstralMorph,   // Morph between cepstra
@@ -40,8 +39,8 @@ public:
   // Morphing parameters structure
   struct Parameters
   {
-    float morphAmount = 1.0f;        // 0.0 = input only, 1.0 = output only
-    float phaseMorphAmount = 1.0f;   // 0.0 = input only, 1.0 = output only
+    float morphAmount = 1.0f;        // 0.0 = a only, 1.0 = b only
+    float phaseMorphAmount = 1.0f;   // 0.0 = a only, 1.0 = b only
     float vocoderSensitivity = 1.0f; // 0.0 = broad envelope, 1.0 = precise envelope
   };
 
@@ -51,16 +50,19 @@ public:
 
   void Configure(Type type, int fftSize)
   {
-    mType = type;
+    if (mType != type)
+    {
+      mType = type;
+      morphScratch.clear();
+      switch (type)
+      {
+      case (None):
+        break;
+      case (CrossSynthesis):
+        break;
+      }
+    }
     mFFTSize = fftSize;
-
-    // Initialize internal buffers
-    mInputBuffer.resize(fftSize, 0.0f);
-    mOutputBuffer.resize(fftSize, 0.0f);
-    mInputMagnitudeSpectrum.resize(fftSize / 2 + 1, 0.0f);
-    mInputPhaseSpectrum.resize(fftSize / 2 + 1, 0.0f);
-    mOutputMagnitudeSpectrum.resize(fftSize / 2 + 1, 0.0f);
-    mOutputPhaseSpectrum.resize(fftSize / 2 + 1, 0.0f);
   }
 
   // Main processing function - applies morphing to input audio
@@ -69,9 +71,6 @@ public:
     switch (mType)
     {
     case Type::None:
-      break;
-    case Type::Test:
-      ProcessTest(a, b);
       break;
     case Type::CrossSynthesis:
       ProcessCrossSynthesis(a, b);
@@ -167,25 +166,68 @@ public:
   }
 
 private:
-  // Morphing algorithm implementations (declarations only)
-  void ProcessTest(const Chunk& a, Chunk& b)
-  {
-    const int numChannels = a.size();
-    const int numSamples = a[0].size();
+
+  // EXAMPLE MORPH ALGORITHM
+  //void ProcessTest(const Chunk& a, Chunk& b)
+  //{
+  //  const int numChannels = a.size();
+  //  const int numSamples = a[0].size();
+
+  //  for (int c = 0; c < numChannels; c++)
+  //  {
+  //    const sample* __restrict aptr = a[c].data();
+  //    sample* __restrict bptr = b[c].data();
+
+  //    for (int s = 0; s < numSamples; s++)
+  //    {
+  //      bptr[s] *= aptr[s];
+  //    }
+  //  }
+  //}
+
+  void ProcessCrossSynthesis(const Chunk& a, Chunk& b) {
+    const int numChannels = std::min(a.size(), b.size());
+
+    const float magAmt = mParams.morphAmount;
+    const float phaseAmt = mParams.phaseMorphAmount;
+    const float oneMinusMagAmt = 1.0 - mParams.morphAmount;
+    const float oneMinusPhaseAmt = 1.0 - mParams.phaseMorphAmount;
 
     for (int c = 0; c < numChannels; c++)
     {
       const sample* __restrict aptr = a[c].data();
       sample* __restrict bptr = b[c].data();
 
-      for (int s = 0; s < numSamples; s++)
+      bptr[0] = bptr[0] * magAmt + aptr[0] * oneMinusMagAmt; // dc
+      bptr[1] = bptr[1] * magAmt + aptr[1] * oneMinusMagAmt; // nyquist
+
+      for (int i = 2; i < mFFTSize; i += 2)
       {
-        bptr[s] *= aptr[s];
+        const float ma = sqrtf(aptr[i] * aptr[i] + aptr[i + 1] * aptr[i + 1]);
+        const float mb = sqrtf(bptr[i] * bptr[i] + bptr[i + 1] * bptr[i + 1]);
+
+        const float m = magAmt * ma + oneMinusMagAmt * mb;
+
+        const float inv_ma = ma > 1e-12f ? 1.0f / ma : 0.0f;
+        const float inv_mb = mb > 1e-12f ? 1.0f / mb : 0.0f;
+
+        const float ua_r = aptr[i    ] * inv_ma;
+        const float ua_i = aptr[i + 1] * inv_ma;
+        const float ub_r = bptr[i    ] * inv_mb;
+        const float ub_i = bptr[i + 1] * inv_mb;
+
+        float u_r = phaseAmt * ua_r + oneMinusPhaseAmt * ub_r;
+        float u_i = phaseAmt * ua_i + oneMinusPhaseAmt * ub_i;
+
+        const float norm = 1.0/sqrtf(u_r * u_r + u_i * u_i + 1e-20f);
+        u_r *= norm;
+        u_i *= norm;
+
+        bptr[i    ] = m * u_r;
+        bptr[i + 1] = m * u_i;
       }
     }
   }
-
-  void ProcessCrossSynthesis(const Chunk& a, Chunk& b) {}
   void ProcessSpectralVocoder(const Chunk& a, Chunk& b) {}
   void ProcessCepstralMorph(const Chunk& a, Chunk& b) {}
   void ProcessHarmonicMorph(const Chunk& a, Chunk& b) {}
@@ -196,13 +238,5 @@ private:
   int mFFTSize = 1024;
   Parameters mParams;
 
-  // FFT setup and buffers
-  // PFFFT_Setup* mFFTSetup = nullptr;
-  std::vector<float> mInputBuffer;
-  std::vector<float> mOutputBuffer;
-  std::vector<float> mInputMagnitudeSpectrum;
-  std::vector<float> mOutputMagnitudeSpectrum;
-  std::vector<float> mInputPhaseSpectrum;
-  std::vector<float> mOutputPhaseSpectrum;
-  std::vector<float> mTargetAudioBuffer;
+  std::map<std::string, Chunk> morphScratch;
 };
