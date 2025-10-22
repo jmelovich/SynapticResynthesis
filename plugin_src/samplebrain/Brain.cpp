@@ -116,7 +116,8 @@ namespace synaptic
     chunk.avgRms = (chCount > 0) ? (float) (rmsSum / (double) chCount) : 0.0f;
     chunk.avgFreqHz = (chCount > 0) ? (freqSum / (double) chCount) : 0.0;
 
-    const int framesForFft = std::max(1, validFrames);
+    // Use the chunk's nominal size for FFT (we zero-pad anyway) to match the chunker
+    const int framesForFft = std::max(1, chunk.audio.numFrames);
     const int Nfft = Window::NextValidFFTSize(framesForFft);
     chunk.fftSize = Nfft;
     chunk.fftMagnitudePerChannel.assign(chCount, std::vector<float>(Nfft/2 + 1, 0.0f));
