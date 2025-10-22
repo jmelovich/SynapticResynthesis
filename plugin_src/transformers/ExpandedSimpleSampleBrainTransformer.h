@@ -2,6 +2,7 @@
 
 #include "../ChunkBufferTransformer.h"
 #include "../FeatureAnalysis.h"
+#include "../FFT.h"
 
 namespace synaptic
 {
@@ -55,86 +56,36 @@ namespace synaptic
         const int N = in->numFrames;
         const double nyquist = 0.5 * mSampleRate;
 
-        // Analyze input chunk using FFT and FeatureAnalysis
+        // Analyze input chunk using precomputed spectra and FeatureAnalysis
         std::vector<std::vector<float>> inFeatures(numChannels, std::vector<float>(7, 0.0f));
         std::vector<float> inFeaturesAvg(7, 0.0f);
         std::vector<double> inFftDominantHz(numChannels, 0.0);
         double inFftDominantHzAvg = 0.0;
 
-        // Compute features for each channel
-        const int Nfft = Window::NextValidFFTSize(N);
-        PFFFT_Setup* setup = pffft_new_setup(Nfft, PFFFT_REAL);
-        if (setup)
+        if (in->fftSize > 0)
         {
-          float* inAligned = (float*) pffft_aligned_malloc(sizeof(float) * Nfft);
-          float* outAligned = (float*) pffft_aligned_malloc(sizeof(float) * Nfft);
-          if (inAligned && outAligned)
+          for (int ch = 0; ch < numChannels; ++ch)
           {
-            EnsureInputWindowBuilt(N);
-            const auto& w = mInputWindow.Coeffs();
-            const int W = (int) w.size();
-            const int M = std::min(N, W);
+            if (ch >= (int)in->complexSpectrum.size() || in->complexSpectrum[ch].empty())
+              continue;
 
-            for (int ch = 0; ch < numChannels; ++ch)
-            {
-              if (ch >= (int) in->channelSamples.size() || in->channelSamples[ch].empty())
-                continue;
+            const float* ordered = in->complexSpectrum[ch].data();
+            // Dominant freq
+            double domHz = FFTProcessor::DominantFreqHzFromOrderedSpectrum(ordered, in->fftSize, mSampleRate);
+            if (domHz < 20.0) domHz = 20.0;
+            if (domHz > nyquist - 20.0) domHz = nyquist - 20.0;
+            inFftDominantHz[ch] = domHz;
+            inFftDominantHzAvg += domHz;
 
-              const auto& buf = in->channelSamples[ch];
-
-              // Copy and window
-              for (int i = 0; i < Nfft; ++i)
-              {
-                float x = 0.0f;
-                if (i < N && i < (int)buf.size())
-                {
-                  const float wi = (i < M) ? w[i] : 1.0f;
-                  x = (float)(buf[i] * wi);
-                }
-                inAligned[i] = x;
-              }
-
-              // FFT
-              pffft_transform_ordered(setup, inAligned, outAligned, nullptr, PFFFT_FORWARD);
-
-              // Compute FFT dominant frequency (same as Brain.cpp)
-              int bestK = 0;
-              float bestMag = -1e9f;
-              // DC
-              float mag0 = std::abs(outAligned[0]);
-              if (mag0 > bestMag) { bestMag = mag0; bestK = 0; }
-              // Nyquist
-              float magNy = std::abs(outAligned[1]);
-              if (magNy > bestMag) { bestMag = magNy; bestK = Nfft/2; }
-              // Other bins
-              for (int k = 1; k < Nfft/2; ++k)
-              {
-                float re = outAligned[2*k + 0];
-                float im = outAligned[2*k + 1];
-                float mag = std::sqrt(re*re + im*im);
-                if (mag > bestMag) { bestMag = mag; bestK = k; }
-              }
-              double domHz = (double)bestK * mSampleRate / (double)Nfft;
-              if (domHz < 20.0) domHz = 20.0;
-              if (domHz > nyquist - 20.0) domHz = nyquist - 20.0;
-              inFftDominantHz[ch] = domHz;
-              inFftDominantHzAvg += domHz;
-
-              // Get extended features from FeatureAnalysis
-              auto features = FeatureAnalysis::GetFeatures(outAligned, Nfft, (float)mSampleRate);
-              inFeatures[ch] = features;
-              for (int f = 0; f < 7; ++f)
-                inFeaturesAvg[f] += features[f];
-            }
-
-            // Average features across channels
+            // Extended features from ordered spectrum
+            auto features = FeatureAnalysis::GetFeatures((float*)ordered, in->fftSize, (int)mSampleRate);
+            inFeatures[ch] = features;
             for (int f = 0; f < 7; ++f)
-              inFeaturesAvg[f] /= (numChannels > 0) ? (float)numChannels : 1.0f;
-            inFftDominantHzAvg /= (numChannels > 0) ? (double)numChannels : 1.0;
+              inFeaturesAvg[f] += features[f];
           }
-          if (inAligned) pffft_aligned_free(inAligned);
-          if (outAligned) pffft_aligned_free(outAligned);
-          pffft_destroy_setup(setup);
+          for (int f = 0; f < 7; ++f)
+            inFeaturesAvg[f] /= (numChannels > 0) ? (float)numChannels : 1.0f;
+          inFftDominantHzAvg /= (numChannels > 0) ? (double)numChannels : 1.0;
         }
 
         // Prepare output chunk (already allocated in same entry as input)
@@ -218,13 +169,9 @@ namespace synaptic
             {
               foundAnyMatch = true;
               const BrainChunk* match = mBrain->GetChunkByGlobalIndex(bestChunk);
-              const int framesToWrite = std::min(chunkSize, match ? match->audio.numFrames : chunkSize);
-              const int srcChans = match ? (int) match->audio.channelSamples.size() : 0;
-              const int sch = (bestSrcCh < srcChans) ? bestSrcCh : 0;
-              for (int i = 0; i < framesToWrite; ++i)
-                out->channelSamples[ch][i] = match->audio.channelSamples[sch][i];
-              for (int i = framesToWrite; i < chunkSize; ++i)
-                out->channelSamples[ch][i] = 0.0;
+              std::vector<int> src = { bestSrcCh };
+              std::vector<int> dst = { ch };
+              CopyBrainChannelsToOutput(match, chunkSize, numChannels, *out, src, dst);
             }
             else
             {
@@ -310,16 +257,8 @@ namespace synaptic
 
           const int framesToWrite = std::min(chunkSize, match->audio.numFrames);
           const int srcChans = (int) match->audio.channelSamples.size();
-          for (int ch = 0; ch < numChannels; ++ch)
-          {
-            const int sch = (ch < srcChans) ? ch : 0;
-            for (int i = 0; i < framesToWrite; ++i)
-              out->channelSamples[ch][i] = match->audio.channelSamples[sch][i];
-            for (int i = framesToWrite; i < chunkSize; ++i)
-              out->channelSamples[ch][i] = 0.0;
-          }
-
-          chunker.CommitOutputChunk(idx, framesToWrite);
+          CopyBrainChannelsToOutput(match, chunkSize, numChannels, *out);
+          chunker.CommitOutputChunk(idx, std::min(chunkSize, match->audio.numFrames));
         }
       }
     }

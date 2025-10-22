@@ -16,7 +16,7 @@ namespace synaptic
 {
   struct BrainChunk
   {
-    AudioChunk audio; // same format as realtime chunks
+    AudioChunk audio; // same format as realtime chunks (now includes complexSpectrum and fftSize)
     int fileId = -1;
     int chunkIndexInFile = -1;
     // Per-channel analysis

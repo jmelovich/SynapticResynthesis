@@ -11,6 +11,7 @@
 #include "../../exdeps/pffft/pffft.h"
 #include "../Window.h"
 #include "../FeatureAnalysis.h"
+#include "../FFT.h"
 
 namespace synaptic
 {
@@ -182,6 +183,17 @@ namespace synaptic
           if (domHz < 20.0) domHz = 20.0;
           if (domHz > ny - 20.0) domHz = ny - 20.0;
           chunk.fftDominantHzPerChannel[ch] = domHz;
+
+          // Store full ordered spectrum into chunk.audio
+          if (chunk.audio.fftSize != Nfft)
+          {
+            chunk.audio.fftSize = Nfft;
+            chunk.audio.complexSpectrum.assign(chCount, std::vector<float>(Nfft, 0.0f));
+          }
+          if (ch < (int)chunk.audio.complexSpectrum.size())
+          {
+            std::memcpy(chunk.audio.complexSpectrum[ch].data(), outAligned, sizeof(float) * Nfft);
+          }
 
           // Compute extended features using FeatureAnalysis (outAligned has ordered FFT output)
           auto features = FeatureAnalysis::GetFeatures(outAligned, Nfft, (float)sampleRate);

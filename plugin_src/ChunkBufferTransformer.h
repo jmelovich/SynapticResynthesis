@@ -2,7 +2,6 @@
 
 #include "AudioStreamChunker.h"
 #include "samplebrain/Brain.h"
-#include "Window.h"
 #include <cmath>
 #include <string>
 #include <vector>
@@ -10,8 +9,7 @@
 #include <numeric>
 #include <cstring>
 
-// FFT support for on-the-fly input analysis
-#include "../exdeps/pffft/pffft.h"
+// No direct FFT here; transformers consume precomputed spectra from the chunker/brain
 
 namespace synaptic
 {
@@ -268,7 +266,6 @@ namespace synaptic
     void OnReset(double sampleRate, int /*chunkSize*/, int /*bufferWindowSize*/, int /*numChannels*/) override
     {
       mSampleRate = (sampleRate > 0.0) ? sampleRate : 48000.0;
-      mLastChunkSize = 0; // force window rebuild on next use
     }
 
     void SetBrain(const Brain* brain) { mBrain = brain; }
@@ -292,7 +289,6 @@ namespace synaptic
 
     bool GetParamAsString(const std::string& id, std::string& out) const override
     {
-      if (id == "inputWindow") { out = InputWindowModeToString(mInputWinMode); return true; }
       return GetDerivedParamAsString(id, out);
     }
 
@@ -304,12 +300,6 @@ namespace synaptic
 
     bool SetParamFromString(const std::string& id, const std::string& v) override
     {
-      if (id == "inputWindow")
-      {
-        mInputWinMode = StringToInputWindowMode(v);
-        mLastChunkSize = 0; // rebuild at next use
-        return true;
-      }
       return SetDerivedParamFromString(id, v);
     }
 
@@ -323,20 +313,6 @@ namespace synaptic
     // Helper to add common parameter descriptors
     void AddCommonParamDescs(std::vector<ExposedParamDesc>& out) const
     {
-      ExposedParamDesc p0;
-      p0.id = "inputWindow";
-      p0.label = "Input Analysis Window";
-      p0.type = ParamType::Enum;
-      p0.control = ControlType::Select;
-      p0.options = {
-        { "hann", "Hann" },
-        { "hamming", "Hamming" },
-        { "blackman", "Blackman" },
-        { "rectangular", "Rectangular" }
-      };
-      p0.defaultString = "hann";
-      out.push_back(p0);
-
       ExposedParamDesc p1;
       p1.id = "channelIndependent";
       p1.label = "Channel Independent";
@@ -346,13 +322,75 @@ namespace synaptic
       out.push_back(p1);
     }
 
-    void EnsureInputWindowBuilt(int size)
+    // Centralized copy helper for matched brain chunks across arbitrary channel mappings.
+    // If both vectors are empty, copies all channels 0..numOutChannels-1 from matching brain channels.
+    void CopyBrainChannelsToOutput(const BrainChunk* match,
+                                   int chunkSize,
+                                   int numOutChannels,
+                                   AudioChunk& out,
+                                   const std::vector<int>& brainSrcChans = std::vector<int>(),
+                                   const std::vector<int>& outChans = std::vector<int>()) const
     {
-      if (size <= 0) return;
-      if (mLastChunkSize != size)
+      if (!match || chunkSize <= 0 || numOutChannels <= 0) return;
+
+      const int framesToWrite = std::min(chunkSize, match->audio.numFrames);
+      const int srcChans = (int) match->audio.channelSamples.size();
+
+      // Ensure output buffers sized
+      if ((int) out.channelSamples.size() != numOutChannels)
+        out.channelSamples.assign(numOutChannels, std::vector<iplug::sample>(chunkSize, 0.0));
+      for (int ch = 0; ch < numOutChannels; ++ch)
+        if ((int) out.channelSamples[ch].size() < chunkSize)
+          out.channelSamples[ch].assign(chunkSize, 0.0);
+
+      auto doPair = [&](int sch, int och)
       {
-        mInputWindow.Set(InputWindowModeToWindowType(mInputWinMode), size);
-        mLastChunkSize = size;
+        if (och < 0 || och >= numOutChannels) return;
+        const int srcIdx = (sch >= 0 && sch < srcChans) ? sch : 0;
+        for (int i = 0; i < framesToWrite; ++i)
+          out.channelSamples[och][i] = match->audio.channelSamples[srcIdx][i];
+        for (int i = framesToWrite; i < chunkSize; ++i)
+          out.channelSamples[och][i] = 0.0;
+      };
+
+      if (brainSrcChans.empty() && outChans.empty())
+      {
+        for (int och = 0; och < numOutChannels; ++och)
+          doPair(och, och);
+      }
+      else
+      {
+        const int pairs = (int) std::min(brainSrcChans.size(), outChans.size());
+        for (int i = 0; i < pairs; ++i)
+          doPair(brainSrcChans[i], outChans[i]);
+      }
+
+      // Copy spectra if available
+      if (match->audio.fftSize > 0)
+      {
+        out.fftSize = match->audio.fftSize;
+        if ((int) out.complexSpectrum.size() != numOutChannels)
+          out.complexSpectrum.assign(numOutChannels, std::vector<float>(out.fftSize, 0.0f));
+
+        auto doPairSpec = [&](int sch, int och)
+        {
+          if (och < 0 || och >= numOutChannels) return;
+          const int srcIdx = (sch >= 0 && sch < (int)match->audio.complexSpectrum.size()) ? sch : 0;
+          if (och < (int) out.complexSpectrum.size() && srcIdx < (int) match->audio.complexSpectrum.size())
+            out.complexSpectrum[och] = match->audio.complexSpectrum[srcIdx];
+        };
+
+        if (brainSrcChans.empty() && outChans.empty())
+        {
+          for (int och = 0; och < numOutChannels; ++och)
+            doPairSpec(och, och);
+        }
+        else
+        {
+          const int pairs = (int) std::min(brainSrcChans.size(), outChans.size());
+          for (int i = 0; i < pairs; ++i)
+            doPairSpec(brainSrcChans[i], outChans[i]);
+        }
       }
     }
 
@@ -360,45 +398,7 @@ namespace synaptic
     const Brain* mBrain = nullptr;
     double mSampleRate = 48000.0;
     bool mChannelIndependent = false;
-    Window mInputWindow;
-    int mLastChunkSize = 0;
 
-  private:
-    enum class InputWindowMode { Hann, Hamming, Blackman, Rectangular };
-    InputWindowMode mInputWinMode = InputWindowMode::Hann;
-
-    static std::string InputWindowModeToString(InputWindowMode m)
-    {
-      switch (m)
-      {
-        case InputWindowMode::Hann: return "hann";
-        case InputWindowMode::Hamming: return "hamming";
-        case InputWindowMode::Blackman: return "blackman";
-        case InputWindowMode::Rectangular: return "rectangular";
-        default: return "hann";
-      }
-    }
-
-    static InputWindowMode StringToInputWindowMode(const std::string& s)
-    {
-      if (s == "hann") return InputWindowMode::Hann;
-      if (s == "hamming") return InputWindowMode::Hamming;
-      if (s == "blackman") return InputWindowMode::Blackman;
-      if (s == "rectangular") return InputWindowMode::Rectangular;
-      return InputWindowMode::Hann;
-    }
-
-    static Window::Type InputWindowModeToWindowType(InputWindowMode m)
-    {
-      switch (m)
-      {
-        case InputWindowMode::Hann: return Window::Type::Hann;
-        case InputWindowMode::Hamming: return Window::Type::Hamming;
-        case InputWindowMode::Blackman: return Window::Type::Blackman;
-        case InputWindowMode::Rectangular: return Window::Type::Rectangular;
-        default: return Window::Type::Hann;
-      }
-    }
   };
 
   // Simple Samplebrain transformer moved to transformers/SimpleSampleBrainTransformer.h

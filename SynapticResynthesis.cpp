@@ -389,6 +389,9 @@ void SynapticResynthesis::UpdateChunkerWindowing()
   mChunker.EnableOverlap(shouldUseOverlap);
   mChunker.SetOutputWindow(mOutputWindow);
 
+  // Keep the chunker's input analysis window aligned with Brain analysis window
+  mChunker.SetInputAnalysisWindow(mAnalysisWindow);
+
   DBGMSG("Window config: type=%d, userEnabled=%s, shouldUseOverlap=%s, chunkSize=%d\n",
          mDSPConfig.outputWindowMode, mDSPConfig.enableOverlapAdd ? "true" : "false", shouldUseOverlap ? "true" : "false", mDSPConfig.chunkSize);
 }

@@ -8,19 +8,14 @@
 #include "Window.h"
 
 #include "Morph.h"
+#include "FFT.h"
+#include "Structs.h"
 
 namespace synaptic
 {
   using namespace iplug;
 
-  struct AudioChunk
-  {
-    std::vector<std::vector<sample>> channelSamples; // [channel][frame]
-    int numFrames = 0;
-    double rms = 0.0;  // RMS of this chunk's audio
-    int64_t startSample = -1;     // timeline position for alignment (could be useful)
-    // NOTE: sourceInputPoolIdx removed - no longer needed with dual-chunk pool entries
-  };
+  // Audio Chunk is now defined in Structs.h
 
   struct PoolEntry
   {
@@ -115,8 +110,12 @@ namespace synaptic
         // Initialize both input and output chunks
         e.inputChunk.numFrames = mChunkSize;
         e.inputChunk.channelSamples.assign(mNumChannels, std::vector<sample>(mChunkSize, 0.0));
+        e.inputChunk.fftSize = 0;
+        e.inputChunk.complexSpectrum.clear();
         e.outputChunk.numFrames = mChunkSize;
         e.outputChunk.channelSamples.assign(mNumChannels, std::vector<sample>(mChunkSize, 0.0));
+        e.outputChunk.fftSize = 0;
+        e.outputChunk.complexSpectrum.clear();
       }
 
         // Overlap-add buffer
@@ -139,6 +138,13 @@ namespace synaptic
       // All indices free initially
       for (int i = 0; i < mPoolCapacity; ++i)
         mFree.Push(i);
+
+      // Configure FFT size
+      mFFTSize = Window::NextValidFFTSize(mChunkSize);
+      mFFT.Configure(mFFTSize);
+
+      // Keep input analysis window size in sync with chunk size
+      mInputAnalysisWindow.Set(mInputAnalysisWindow.GetType(), mChunkSize);
     }
 
     void SetChunkSize(int chunkSize)
@@ -173,6 +179,16 @@ namespace synaptic
         ResetOverlapBuffer();
       }
       mOutputWindow = w;
+    }
+
+    // Called by plugin to keep input analysis window in sync with Brain
+    void SetInputAnalysisWindow(const synaptic::Window& w)
+    {
+      // If type changed, just copy config (size should match chunk size already)
+      if (mInputAnalysisWindow.GetType() != w.GetType() || mInputAnalysisWindow.Size() != w.Size())
+      {
+        mInputAnalysisWindow = w;
+      }
     }
 
     void ResetOverlapBuffer()
@@ -283,6 +299,12 @@ namespace synaptic
           }
           ++entry.refCount; // pending ref
 
+          // Compute input spectrum for transformer consumption (match Brain analysis window)
+          if (mFFTSize > 0)
+          {
+            mFFT.ComputeChunkSpectrum(entry.inputChunk, mInputAnalysisWindow);
+          }
+
           // Shift accumulation buffer by consistent hop size
           mAccumulatedFrames -= inputHopSize;
           if (mAccumulatedFrames > 0)
@@ -390,6 +412,8 @@ namespace synaptic
 
           if (e.outputChunk.numFrames > 0)
           {
+            // Ensure spectral processing before windowing/OLA
+            SpectralProcessing(idx);
             // Compute AGC first (uses original output chunk RMS)
             const float agc = ComputeAGC(idx, agcEnabled);
 
@@ -503,6 +527,9 @@ namespace synaptic
           {
             PoolEntry& e = mPool[idx];
 
+            // Ensure spectral processing before sequential playback
+            SpectralProcessing(idx);
+
             // Access the corresponding input chunk for this output chunk (if available)
             // const AudioChunk* sourceChunk = GetSourceChunkForOutput(idx);
             // if (sourceChunk && mOutputFrontFrameIndex < sourceChunk->numFrames)
@@ -612,7 +639,44 @@ namespace synaptic
       return &mPool[outputPoolIdx].inputChunk;
     }
 
+    // Spectral-domain hook: ensure output spectrum, run spectral ops, IFFT back to samples
+    void SpectralProcessing(int poolIdx)
+    {
+      if (poolIdx < 0 || poolIdx >= mPoolCapacity) return;
+      if (mFFTSize <= 0) return;
+      PoolEntry& e = mPool[poolIdx];
+
+      bool needsSpectrumProcessing = false;
+
+      // check if any spectral processing is needed
+      // (such as checking if morph is enabled)
+      // if so, then set needsSpectrumProcessing to true
+
+      if(!needsSpectrumProcessing){
+        return; // avoid unnecessary spectrum processing
+      }
+
+
+      // If transformer didn't provide spectrum, build it from current samples
+      EnsureChunkSpectrum(e.outputChunk);
+
+      // TODO: Future spectral processing here (e.g., morph acting on spectra only)
+
+      // Synthesize back to time domain for rendering
+      mFFT.ComputeChunkIFFT(e.outputChunk);
+    }
+
   private:
+    void EnsureChunkSpectrum(AudioChunk& chunk)
+    {
+      if (mFFTSize <= 0) return;
+      if (chunk.fftSize != mFFTSize || (int)chunk.complexSpectrum.size() != (int)chunk.channelSamples.size())
+      {
+        chunk.fftSize = 0; // signal to helper to size
+      }
+      mFFT.ComputeChunkSpectrum(chunk, mInputAnalysisWindow);
+    }
+
     void DecRefAndMaybeFree(int idx)
     {
       if (idx < 0) return;
@@ -657,6 +721,8 @@ namespace synaptic
     int mAccumulatedFrames = 0;
 
     Morph mMorph;
+    int mFFTSize = 0;
+    FFTProcessor mFFT;
 
     // Pool and rings
     std::vector<PoolEntry> mPool;
@@ -669,6 +735,7 @@ namespace synaptic
     int mOutputFrontFrameIndex = 0;
     // Overlap-add state
     synaptic::Window mOutputWindow;
+    synaptic::Window mInputAnalysisWindow;
     std::vector<std::vector<sample>> mOutputOverlapBuffer;
     int mOutputOverlapValidSamples = 0;
   };
