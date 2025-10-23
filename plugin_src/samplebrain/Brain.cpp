@@ -120,7 +120,7 @@ namespace synaptic
     const int framesForFft = std::max(1, chunk.audio.numFrames);
     const int Nfft = Window::NextValidFFTSize(framesForFft);
     chunk.fftSize = Nfft;
-    chunk.fftMagnitudePerChannel.assign(chCount, std::vector<float>(Nfft/2 + 1, 0.0f));
+    chunk.complexSpectrum.assign(chCount, std::vector<float>(Nfft/2 + 1, 0.0f));
     chunk.fftDominantHzPerChannel.assign(chCount, 0.0);
 
     // Initialize extended features
@@ -155,7 +155,7 @@ namespace synaptic
           pffft_transform_ordered(setup, inAligned, outAligned, nullptr, PFFFT_FORWARD);
 
           // Extract magnitudes for bins 0..N/2
-          auto& mags = chunk.fftMagnitudePerChannel[ch];
+          auto& mags = chunk.complexSpectrum[ch];
           if ((int) mags.size() != (Nfft/2 + 1)) mags.assign(Nfft/2 + 1, 0.0f);
           // DC and Nyquist packed in first complex slot: out[0]=F0(real), out[1]=F(N/2)(real)
           mags[0] = std::abs(outAligned[0]);
@@ -637,13 +637,14 @@ namespace synaptic
       int32_t fzc = (int32_t) c.freqHzPerChannel.size(); out.Put(&fzc);
       for (int i = 0; i < fzc; ++i) out.Put(&c.freqHzPerChannel[i]);
       int32_t fftSize = c.fftSize; out.Put(&fftSize);
-      int32_t fftc = (int32_t) c.fftMagnitudePerChannel.size(); out.Put(&fftc);
+      int32_t fftc = (int32_t)c.complexSpectrum.size();
+      out.Put(&fftc);
       for (int ch = 0; ch < fftc; ++ch)
       {
-        int32_t bins = (int32_t) c.fftMagnitudePerChannel[ch].size();
+        int32_t bins = (int32_t)c.complexSpectrum[ch].size();
         out.Put(&bins);
         if (bins > 0)
-          out.PutBytes(c.fftMagnitudePerChannel[ch].data(), (int) (sizeof(float) * bins));
+          out.PutBytes(c.complexSpectrum[ch].data(), (int)(sizeof(float) * bins));
       }
       int32_t domc = (int32_t) c.fftDominantHzPerChannel.size(); out.Put(&domc);
       for (int i = 0; i < domc; ++i) out.Put(&c.fftDominantHzPerChannel[i]);
@@ -741,14 +742,14 @@ namespace synaptic
       c.freqHzPerChannel.resize(fzc); for (int k = 0; k < fzc; ++k) pos = in.Get(&c.freqHzPerChannel[k], pos);
       int32_t fftSize = 0; pos = in.Get(&fftSize, pos); c.fftSize = fftSize; if (pos < 0) return -1;
       int32_t fftc = 0; pos = in.Get(&fftc, pos); if (pos < 0 || fftc < 0) return -1;
-      c.fftMagnitudePerChannel.resize(fftc);
+      c.complexSpectrum.resize(fftc);
       for (int ch = 0; ch < fftc; ++ch)
       {
         int32_t bins = 0; pos = in.Get(&bins, pos); if (pos < 0 || bins < 0) return -1;
-        c.fftMagnitudePerChannel[ch].resize(bins);
+        c.complexSpectrum[ch].resize(bins);
         if (bins > 0)
         {
-          pos = in.GetBytes(c.fftMagnitudePerChannel[ch].data(), (int) (sizeof(float) * bins), pos);
+          pos = in.GetBytes(c.complexSpectrum[ch].data(), (int)(sizeof(float) * bins), pos);
           if (pos < 0) return -1;
         }
       }

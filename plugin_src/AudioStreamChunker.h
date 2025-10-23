@@ -420,9 +420,7 @@ namespace synaptic
             // Apply morph processing AFTER AGC but BEFORE windowing/OLA
             // This modifies the output chunk in-place, blending with co-located input
             const AudioChunk* sourceChunk = GetSourceChunkForOutput(idx);
-            if (sourceChunk) {
-              mMorph.Process(sourceChunk->channelSamples, e.outputChunk.channelSamples);
-            }
+            mMorph.Process(sourceChunk->complexSpectrum, e.outputChunk.complexSpectrum);
 
             if (mOutputWindow.Size() != e.outputChunk.numFrames)
               mOutputWindow.Set(mOutputWindow.GetType(), e.outputChunk.numFrames);

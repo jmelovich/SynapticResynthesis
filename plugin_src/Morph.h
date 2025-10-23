@@ -7,7 +7,7 @@
 struct AudioChunk;
 
 using sample = iplug::sample;
-using Chunk = std::vector<std::vector<sample>>;
+using Chunk = std::vector<std::vector<float>>;
 
 class Morph
 {
@@ -71,7 +71,7 @@ public:
     switch (mType)
     {
     case Type::None:
-      break;
+      return;
     case Type::CrossSynthesis:
       ProcessCrossSynthesis(a, b);
       break;
@@ -195,13 +195,13 @@ private:
 
     for (int c = 0; c < numChannels; c++)
     {
-      const sample* __restrict aptr = a[c].data();
-      sample* __restrict bptr = b[c].data();
+      const float* __restrict aptr = a[c].data();
+      float* __restrict bptr = b[c].data();
 
       bptr[0] = bptr[0] * magAmt + aptr[0] * oneMinusMagAmt; // dc
       bptr[1] = bptr[1] * magAmt + aptr[1] * oneMinusMagAmt; // nyquist
 
-      for (int i = 2; i < mFFTSize; i += 2)
+      for (int i = 2; i < mFFTSize; i += 2) // for interleaved real and imaginary
       {
         const float ma = sqrtf(aptr[i] * aptr[i] + aptr[i + 1] * aptr[i + 1]);
         const float mb = sqrtf(bptr[i] * bptr[i] + bptr[i + 1] * bptr[i + 1]);

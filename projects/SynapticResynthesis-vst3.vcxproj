@@ -306,6 +306,7 @@
     <ClInclude Include="..\plugin_src\FeatureAnalysis.h" />
     <ClInclude Include="..\plugin_src\Morph.h" />
     <ClInclude Include="..\plugin_src\PlatformFileDialogs.h" />
+    <ClInclude Include="..\plugin_src\Structs.h" />
     <ClInclude Include="..\plugin_src\TransformerFactory.h" />
     <ClInclude Include="..\plugin_src\modules\BrainManager.h" />
     <ClInclude Include="..\plugin_src\modules\DSPConfig.h" />
