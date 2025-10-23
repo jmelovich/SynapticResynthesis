@@ -168,6 +168,11 @@
       gap: 10px;
       margin-top: 8px;
     }
+
+    .input-group .param-list {
+      margin-top: 8px;
+      margin-bottom: 0;
+    }
     .reanalysis-box {
       border: 2px dashed #f59e0b;
       background: #fffbeb;
@@ -567,6 +572,7 @@
         <option value="1">Simple Sine Match</option>
         <option value="2">Simple SampleBrain</option>
       </select>
+      <div id="transformer-params" class="param-list"></div>
     </div>
     <div class="input-group">
       <label for="morphMode">Morph Mode</label>
@@ -578,9 +584,8 @@
         <option value="4">Harmonic Morph</option>
         <option value="5">Spectral Masking</option>
       </select>
+      <div id="morph-params" class="param-list"></div>
     </div>
-    <div id="morph-params" class="param-list"></div>
-    <div id="transformer-params" class="param-list"></div>
   </div>
 
 
