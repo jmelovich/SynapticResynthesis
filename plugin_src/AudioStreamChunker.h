@@ -14,7 +14,7 @@
 namespace synaptic
 {
   using namespace iplug;
-  
+
   // Audio Chunk is now defined in Structs.h
 
   struct PoolEntry
@@ -416,15 +416,10 @@ namespace synaptic
           if (e.outputChunk.numFrames > 0)
           {
             // Ensure spectral processing before windowing/OLA
+            // This function is where morph is applied
             SpectralProcessing(idx);
             // Compute AGC first (uses original output chunk RMS)
             const float agc = ComputeAGC(idx, agcEnabled);
-
-            // Apply morph processing AFTER AGC but BEFORE windowing/OLA
-            // This modifies the output chunk in-place, blending with co-located input
-            //const AudioChunk* sourceChunk = GetSourceChunkForOutput(idx);
-            mMorph.Process(e.inputChunk, e.outputChunk, mFFT);
-            //mMorph.ResynthesizeMorph(e.outputChunk);
 
             if (mOutputWindow.Size() != e.outputChunk.numFrames)
               mOutputWindow.Set(mOutputWindow.GetType(), e.outputChunk.numFrames);
@@ -529,19 +524,12 @@ namespace synaptic
           {
             PoolEntry& e = mPool[idx];
 
-            // Ensure spectral processing before sequential playback
-            SpectralProcessing(idx);
+            // Ensure spectral processing once at the start of each chunk
+            if (mOutputFrontFrameIndex == 0 && e.outputChunk.numFrames > 0)
+            {
+              SpectralProcessing(idx);
+            }
 
-            // Access the corresponding input chunk for this output chunk (if available)
-            // const AudioChunk* sourceChunk = GetSourceChunkForOutput(idx);
-            // if (sourceChunk && mOutputFrontFrameIndex < sourceChunk->numFrames)
-            // {
-            //   // sourceChunk->channelSamples[ch][mOutputFrontFrameIndex] = input sample
-            //   // sourceChunk->rms = input chunk RMS
-            //   // e.chunk.channelSamples[ch][mOutputFrontFrameIndex] = output sample
-            //   // e.chunk.rms = output chunk RMS
-            //   // You can blend/morph them here before writing to outputs[ch][s]
-            // }
             if (mOutputFrontFrameIndex < e.outputChunk.numFrames)
             {
                 const float agc = ComputeAGC(idx, agcEnabled);
@@ -653,16 +641,19 @@ namespace synaptic
       // check if any spectral processing is needed
       // (such as checking if morph is enabled)
       // if so, then set needsSpectrumProcessing to true
+      if(mMorph.GetType() != Morph::Type::None){
+        needsSpectrumProcessing = true;
+      }
 
       if(!needsSpectrumProcessing){
         return; // avoid unnecessary spectrum processing
       }
 
-
       // If transformer didn't provide spectrum, build it from current samples
       EnsureChunkSpectrum(e.outputChunk);
 
       // TODO: Future spectral processing here (e.g., morph acting on spectra only)
+      mMorph.Process(e.inputChunk, e.outputChunk, mFFT);
 
       // Synthesize back to time domain for rendering
       mFFT.ComputeChunkIFFT(e.outputChunk);

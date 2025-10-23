@@ -114,6 +114,8 @@ namespace synaptic
       const int chans = (int) chunk.channelSamples.size();
       if (chans <= 0 || mFFTSize <= 0) return;
 
+      double sumSquares = 0.0;
+      int totalCount = 0;
       for (int ch = 0; ch < chans; ++ch)
       {
         const float* spec = (ch < (int)chunk.complexSpectrum.size())
@@ -125,8 +127,14 @@ namespace synaptic
         auto& out = chunk.channelSamples[ch];
         const int N = std::min((int)out.size(), chunk.numFrames);
         for (int i = 0; i < N; ++i)
-          out[i] = (iplug::sample) tmp[i];
+        {
+          const float v = tmp[i];
+          out[i] = (iplug::sample) v;
+          sumSquares += (double) v * (double) v;
+        }
+        totalCount += N;
       }
+      chunk.rms = (totalCount > 0) ? std::sqrt(sumSquares / (double) totalCount) : 0.0;
     }
 
     static double DominantFreqHzFromOrderedSpectrum(const float* ordered, int Nfft, double sampleRate)
