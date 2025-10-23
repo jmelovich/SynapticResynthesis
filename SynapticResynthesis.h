@@ -7,6 +7,7 @@
 #include "plugin_src/ChunkBufferTransformer.h"
 #include "plugin_src/samplebrain/Brain.h"
 #include "plugin_src/Window.h"
+#include "plugin_src/Morph.h"
 #include "plugin_src/modules/DSPConfig.h"
 #include "plugin_src/modules/UIBridge.h"
 #include "plugin_src/modules/ParameterManager.h"
@@ -32,6 +33,10 @@ enum EParams
   kEnableOverlap,
   kOutGain,
   kAGC,
+  kMorphMode,
+  kMorphAmount,
+  kPhaseMorphAmount,
+  kVocoderSensitivity,
   // Dynamic transformer parameters are indexed after this sentinel
   kNumParams
 };

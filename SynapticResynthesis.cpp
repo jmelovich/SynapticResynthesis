@@ -101,6 +101,10 @@ mEditorInitFunc = [this]() {
   // Initialize parameters using ParameterManager
   mParamManager.InitializeCoreParameters(this, mDSPConfig);
   mParamManager.InitializeTransformerParameters(this);
+
+  
+  // Initialize morph with default settings (using chunker's morph instance)
+  mChunker.GetMorph().Configure(synaptic::Morph::Type::None, mDSPConfig.chunkSize);
 }
 
 void SynapticResynthesis::DrainUiQueueOnMainThread()
@@ -255,6 +259,25 @@ void SynapticResynthesis::OnReset()
   // After reset, apply IParam values to transformer implementation using ParameterManager
   mParamManager.ApplyBindingsToTransformer(this, mTransformer.get());
 
+  // Apply morph parameters
+  const int morphModeIdx = mParamManager.GetMorphModeParamIdx();
+  const int morphAmountIdx = mParamManager.GetMorphAmountParamIdx();
+  const int phaseMorphAmountIdx = mParamManager.GetPhaseMorphAmountParamIdx();
+  const int vocoderSensitivityIdx = mParamManager.GetVocoderSensitivityParamIdx();
+
+  if (morphModeIdx >= 0) {
+    const int mode = GetParam(morphModeIdx)->Int();
+    mChunker.GetMorph().Configure(synaptic::Morph::IntToType(mode), mDSPConfig.chunkSize);
+  }
+
+  if (morphAmountIdx >= 0 || phaseMorphAmountIdx >= 0 || vocoderSensitivityIdx >= 0) {
+    auto params = mChunker.GetMorph().GetParameters();
+    if (morphAmountIdx >= 0) params.morphAmount = GetParam(morphAmountIdx)->Value();
+    if (phaseMorphAmountIdx >= 0) params.phaseMorphAmount = GetParam(phaseMorphAmountIdx)->Value();
+    if (vocoderSensitivityIdx >= 0) params.vocoderSensitivity = GetParam(vocoderSensitivityIdx)->Value();
+    mChunker.GetMorph().SetParameters(params);
+  }
+
   // When audio engine resets, leave brain state intact; just resend summary to UI
   mUIBridge.SendBrainSummary(mBrain);
   mUIBridge.SendTransformerParams(mTransformer);
@@ -349,6 +372,30 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
   {
     mParamManager.HandleCoreParameterChange(paramIdx, GetParam(paramIdx), mDSPConfig);
     UpdateChunkerWindowing();
+  }
+  // Handle morph parameters
+  else if (paramIdx == mParamManager.GetMorphModeParamIdx())
+  {
+    const int mode = GetParam(paramIdx)->Int();
+    mChunker.GetMorph().Configure(synaptic::Morph::IntToType(mode), mDSPConfig.chunkSize);
+  }
+  else if (paramIdx == mParamManager.GetMorphAmountParamIdx())
+  {
+    auto params = mChunker.GetMorph().GetParameters();
+    params.morphAmount = GetParam(paramIdx)->Value();
+    mChunker.GetMorph().SetParameters(params);
+  }
+  else if (paramIdx == mParamManager.GetPhaseMorphAmountParamIdx())
+  {
+    auto params = mChunker.GetMorph().GetParameters();
+    params.phaseMorphAmount = GetParam(paramIdx)->Value();
+    mChunker.GetMorph().SetParameters(params);
+  }
+  else if (paramIdx == mParamManager.GetVocoderSensitivityParamIdx())
+  {
+    auto params = mChunker.GetMorph().GetParameters();
+    params.vocoderSensitivity = GetParam(paramIdx)->Value();
+    mChunker.GetMorph().SetParameters(params);
   }
   // Handle transformer parameters using ParameterManager
   else if (mParamManager.HandleTransformerParameterChange(paramIdx, GetParam(paramIdx), mTransformer.get()))

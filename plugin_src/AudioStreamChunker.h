@@ -7,14 +7,14 @@
 #include "IPlug_include_in_plug_hdr.h"
 #include "Window.h"
 
-#include "Morph.h"
 #include "FFT.h"
 #include "Structs.h"
+#include "Morph.h"
 
 namespace synaptic
 {
   using namespace iplug;
-
+  
   // Audio Chunk is now defined in Structs.h
 
   struct PoolEntry
@@ -206,6 +206,9 @@ namespace synaptic
     }
 
     int GetChunkSize() const { return mChunkSize; }
+
+    // Access to morph instance for configuration
+    Morph& GetMorph() { return mMorph; }
 
     void PushAudio(sample** inputs, int nFrames)
     {
@@ -419,8 +422,9 @@ namespace synaptic
 
             // Apply morph processing AFTER AGC but BEFORE windowing/OLA
             // This modifies the output chunk in-place, blending with co-located input
-            const AudioChunk* sourceChunk = GetSourceChunkForOutput(idx);
-            mMorph.Process(sourceChunk->complexSpectrum, e.outputChunk.complexSpectrum);
+            //const AudioChunk* sourceChunk = GetSourceChunkForOutput(idx);
+            mMorph.Process(e.inputChunk, e.outputChunk, mFFT);
+            //mMorph.ResynthesizeMorph(e.outputChunk);
 
             if (mOutputWindow.Size() != e.outputChunk.numFrames)
               mOutputWindow.Set(mOutputWindow.GetType(), e.outputChunk.numFrames);

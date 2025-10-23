@@ -347,6 +347,9 @@
     <ClInclude Include="..\plugin_src\Structs.h">
       <Filter>plugin_src</Filter>
     </ClInclude>
+    <ClInclude Include="..\plugin_src\FFT.h">
+      <Filter>plugin_src</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="resources">

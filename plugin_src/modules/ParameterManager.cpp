@@ -72,6 +72,25 @@ namespace synaptic
     // Enable overlap-add processing
     mParamIdxEnableOverlap = ::kEnableOverlap;
     plugin->GetParam(mParamIdxEnableOverlap)->InitBool("Enable Overlap-Add", config.enableOverlapAdd);
+
+    // Morph mode parameters
+    mParamIdxMorphMode = ::kMorphMode;
+    plugin->GetParam(mParamIdxMorphMode)->InitEnum("Morph Mode", 0, 6, "");
+    plugin->GetParam(mParamIdxMorphMode)->SetDisplayText(0, "None");
+    plugin->GetParam(mParamIdxMorphMode)->SetDisplayText(1, "Cross Synthesis");
+    plugin->GetParam(mParamIdxMorphMode)->SetDisplayText(2, "Spectral Vocoder");
+    plugin->GetParam(mParamIdxMorphMode)->SetDisplayText(3, "Cepstral Morph");
+    plugin->GetParam(mParamIdxMorphMode)->SetDisplayText(4, "Harmonic Morph");
+    plugin->GetParam(mParamIdxMorphMode)->SetDisplayText(5, "Spectral Masking");
+
+    mParamIdxMorphAmount = ::kMorphAmount;
+    plugin->GetParam(mParamIdxMorphAmount)->InitDouble("Morph Amount", 1.0, 0.0, 1.0, 0.01);
+
+    mParamIdxPhaseMorphAmount = ::kPhaseMorphAmount;
+    plugin->GetParam(mParamIdxPhaseMorphAmount)->InitDouble("Phase Morph Amount", 1.0, 0.0, 1.0, 0.01);
+
+    mParamIdxVocoderSensitivity = ::kVocoderSensitivity;
+    plugin->GetParam(mParamIdxVocoderSensitivity)->InitDouble("Vocoder Sensitivity", 1.0, 0.0, 1.0, 0.01);
   }
 
   void ParameterManager::InitializeTransformerParameters(iplug::Plugin* plugin)
@@ -153,6 +172,26 @@ namespace synaptic
     else if (paramIdx == mParamIdxEnableOverlap)
     {
       config.enableOverlapAdd = param->Bool();
+      return true;
+    }
+    else if (paramIdx == mParamIdxMorphMode)
+    {
+      // Morph mode is handled by the plugin directly, not stored in DSPConfig
+      return true;
+    }
+    else if (paramIdx == mParamIdxMorphAmount)
+    {
+      // Morph amount is handled by the plugin directly, not stored in DSPConfig
+      return true;
+    }
+    else if (paramIdx == mParamIdxPhaseMorphAmount)
+    {
+      // Phase morph amount is handled by the plugin directly, not stored in DSPConfig
+      return true;
+    }
+    else if (paramIdx == mParamIdxVocoderSensitivity)
+    {
+      // Vocoder sensitivity is handled by the plugin directly, not stored in DSPConfig
       return true;
     }
 
@@ -241,7 +280,11 @@ namespace synaptic
             paramIdx == mParamIdxOutputWindow ||
             paramIdx == mParamIdxAnalysisWindow ||
             paramIdx == mParamIdxDirtyFlag ||
-            paramIdx == mParamIdxEnableOverlap);
+            paramIdx == mParamIdxEnableOverlap ||
+            paramIdx == mParamIdxMorphMode ||
+            paramIdx == mParamIdxMorphAmount ||
+            paramIdx == mParamIdxPhaseMorphAmount ||
+            paramIdx == mParamIdxVocoderSensitivity);
   }
 
   bool ParameterManager::IsTransformerParameter(int paramIdx) const

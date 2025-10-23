@@ -4,7 +4,8 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-struct AudioChunk;
+namespace synaptic
+{
 
 using sample = iplug::sample;
 using Chunk = std::vector<std::vector<float>>;
@@ -66,28 +67,30 @@ public:
   }
 
   // Main processing function - applies morphing to input audio
-  void Process(const Chunk& a, Chunk& b)
+  void Process(AudioChunk& a, AudioChunk& b, synaptic::FFTProcessor& fft)
   {
     switch (mType)
     {
     case Type::None:
-      return;
+      return; // skip resynthesis
     case Type::CrossSynthesis:
-      ProcessCrossSynthesis(a, b);
+      ProcessCrossSynthesis(a.complexSpectrum, b.complexSpectrum);
       break;
     case Type::SpectralVocoder:
-      ProcessSpectralVocoder(a, b);
+      ProcessSpectralVocoder(a.complexSpectrum, b.complexSpectrum);
       break;
     case Type::CepstralMorph:
-      ProcessCepstralMorph(a, b);
+      ProcessCepstralMorph(a.complexSpectrum, b.complexSpectrum);
       break;
     case Type::HarmonicMorph:
-      ProcessHarmonicMorph(a, b);
+      ProcessHarmonicMorph(a.complexSpectrum, b.complexSpectrum);
       break;
     case Type::SpectralMasking:
-      ProcessSpectralMasking(a, b);
+      ProcessSpectralMasking(a.complexSpectrum, b.complexSpectrum);
       break;
     }
+
+    //fft.ComputeChunkIFFT(b);
   }
 
   // Accessor methods
@@ -240,3 +243,4 @@ private:
 
   std::map<std::string, Chunk> morphScratch;
 };
+} // namespace synaptic
