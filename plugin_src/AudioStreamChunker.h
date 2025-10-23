@@ -145,6 +145,9 @@ namespace synaptic
 
       // Keep input analysis window size in sync with chunk size
       mInputAnalysisWindow.Set(mInputAnalysisWindow.GetType(), mChunkSize);
+
+      // Recompute spectral OLA rescale based on analysis window and current chunk size
+      mSpectralOLARescale = ComputeSpectralOLARescale(mInputAnalysisWindow, mChunkSize);
     }
 
     void SetChunkSize(int chunkSize)
@@ -188,6 +191,8 @@ namespace synaptic
       if (mInputAnalysisWindow.GetType() != w.GetType() || mInputAnalysisWindow.Size() != w.Size())
       {
         mInputAnalysisWindow = w;
+        // Update spectral rescale when analysis window changes
+        mSpectralOLARescale = ComputeSpectralOLARescale(mInputAnalysisWindow, mChunkSize);
       }
     }
 
@@ -236,8 +241,13 @@ namespace synaptic
         frameIndex += framesToCopy;
 
         // Use appropriate hop size for input processing
-        const int inputHopSize = (mEnableOverlap && mOutputWindow.GetOverlap() > 0.0f)
-          ? mChunkSize / 2  // 50% hop only when overlap-add is enabled
+        // When spectral processing is active, key overlap decision off the analysis window
+        const bool spectralActive = (mMorph.GetType() != Morph::Type::None);
+        const bool overlapActive = mEnableOverlap && (spectralActive
+          ? (mInputAnalysisWindow.GetOverlap() > 0.0f)
+          : (mOutputWindow.GetOverlap() > 0.0f));
+        const int inputHopSize = overlapActive
+          ? mChunkSize / 2  // 50% hop when overlap-add is enabled
           : mChunkSize;     // 100% hop when overlap-add is disabled or rectangular window
         while (mAccumulatedFrames >= mChunkSize)
         {
@@ -396,15 +406,21 @@ namespace synaptic
 
       const int chansToWrite = std::min(outChans, mNumChannels);
 
+      // Determine if spectral processing is active
+      const bool spectralActive = (mMorph.GetType() != Morph::Type::None);
+
       // Use overlap-add only when there's actual overlap (not rectangular window)
-      const bool useOverlapAdd = mEnableOverlap && (mOutputWindow.GetOverlap() > 0.0f);
+      // When spectral processing is active, decide based on the analysis window
+      const bool useOverlapAdd = mEnableOverlap && (spectralActive
+        ? (mInputAnalysisWindow.GetOverlap() > 0.0f)
+        : (mOutputWindow.GetOverlap() > 0.0f));
 
       if (useOverlapAdd)
       {
         // Use consistent hop size for all windows to maintain timing
         // Mathematical overlap properties are handled by coefficients and scaling only
         const int hopSize = mChunkSize / 2;  // Consistent 50% hop for all windows
-        const float rescale = mOutputWindow.GetOverlapRescale();
+        const float rescale = spectralActive ? mSpectralOLARescale : mOutputWindow.GetOverlapRescale();
 
         // First, process any queued chunks and overlap-add them to our buffer
         while (!mOutput.Empty())
@@ -420,9 +436,19 @@ namespace synaptic
             SpectralProcessing(idx);
             // Compute AGC first (uses original output chunk RMS)
             const float agc = ComputeAGC(idx, agcEnabled);
+            // Keep window size in sync only for non-spectral path; for spectral path we skip synthesis windowing
+            if (!spectralActive)
+            {
+              if (mOutputWindow.Size() != e.outputChunk.numFrames)
+                mOutputWindow.Set(mOutputWindow.GetType(), e.outputChunk.numFrames);
+            }
 
-            if (mOutputWindow.Size() != e.outputChunk.numFrames)
-              mOutputWindow.Set(mOutputWindow.GetType(), e.outputChunk.numFrames);
+            // Ensure output window type matches analysis when spectral is active (for consistency), though we won't use its coeffs
+            if (spectralActive)
+            {
+              if (mOutputWindow.GetType() != mInputAnalysisWindow.GetType() || mOutputWindow.Size() != e.outputChunk.numFrames)
+                mOutputWindow.Set(mInputAnalysisWindow.GetType(), e.outputChunk.numFrames);
+            }
 
             const auto& coeffs = mOutputWindow.Coeffs();
             const int frames = e.outputChunk.numFrames;
@@ -442,9 +468,10 @@ namespace synaptic
 
                 for (int i = 0; i < frames; ++i)
                 {
-                  if (addPos + i < (int)mOutputOverlapBuffer[ch].size() && i < (int)coeffs.size())
+                  if (addPos + i < (int)mOutputOverlapBuffer[ch].size())
                   {
-                    mOutputOverlapBuffer[ch][addPos + i] += e.outputChunk.channelSamples[ch][i] * coeffs[i] * agc;
+                    const float w = (!spectralActive && i < (int)coeffs.size()) ? coeffs[i] : 1.0f;
+                    mOutputOverlapBuffer[ch][addPos + i] += e.outputChunk.channelSamples[ch][i] * w * agc;
                   }
                 }
               }
@@ -534,9 +561,9 @@ namespace synaptic
             {
                 const float agc = ComputeAGC(idx, agcEnabled);
 
-                // Apply individual chunk windowing if window type has overlap > 0
+                // Apply individual chunk windowing if window type has overlap > 0 (skip when spectral is active to avoid double windowing)
                 float windowCoeff = 1.0f;
-                if (mOutputWindow.GetOverlap() > 0.0f && mOutputFrontFrameIndex < mOutputWindow.Size())
+                if (!spectralActive && mOutputWindow.GetOverlap() > 0.0f && mOutputFrontFrameIndex < mOutputWindow.Size())
                 {
                   const auto& coeffs = mOutputWindow.Coeffs();
                   windowCoeff = coeffs[mOutputFrontFrameIndex];
@@ -660,6 +687,27 @@ namespace synaptic
     }
 
   private:
+    // Approximate constant rescale for analysis-windowed OLA with hop = N/2
+    static float ComputeSpectralOLARescale(const synaptic::Window& w, int N)
+    {
+      const auto& a = w.Coeffs();
+      if (a.empty() || N <= 0) return 1.0f;
+      const int H = N / 2;
+      double sum = 0.0;
+      int count = 0;
+      for (int n = 0; n < N; ++n)
+      {
+        double s = 0.0;
+        if (n < (int)a.size()) s += a[n];
+        const int n2 = n - H;
+        if (n2 >= 0 && n2 < (int)a.size()) s += a[n2];
+        sum += s;
+        ++count;
+      }
+      const double mean = (count > 0) ? (sum / (double)count) : 1.0;
+      return (mean > 1e-9) ? (float)(1.0 / mean) : 1.0f;
+    }
+
     void EnsureChunkSpectrum(AudioChunk& chunk)
     {
       if (mFFTSize <= 0) return;
@@ -731,6 +779,7 @@ namespace synaptic
     synaptic::Window mInputAnalysisWindow;
     std::vector<std::vector<sample>> mOutputOverlapBuffer;
     int mOutputOverlapValidSamples = 0;
+    float mSpectralOLARescale = 1.0f;
   };
 }
 
