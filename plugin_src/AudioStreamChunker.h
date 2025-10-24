@@ -3,6 +3,7 @@
 #include <vector>
 #include <algorithm>
 #include <cstring>
+#include <cmath>
 
 #include "IPlug_include_in_plug_hdr.h"
 #include "Window.h"
@@ -739,9 +740,39 @@ namespace synaptic
       const AudioChunk* sourceChunk = GetSourceChunkForOutput(outputIdx);
       const PoolEntry& e = mPool[outputIdx];
 
-      if (sourceChunk && e.outputChunk.rms > 1e-9) // avoid divide by zero
+      // Determine processing mode
+      const bool spectralActive = (mMorph.GetType() != Morph::Type::None);
+      const bool overlapActive = mEnableOverlap && (spectralActive
+        ? (mInputAnalysisWindow.GetOverlap() > 0.0f)
+        : (mOutputWindow.GetOverlap() > 0.0f));
+
+      // Default numerator/denominator use RMS
+      double num = sourceChunk ? (double) sourceChunk->rms : 0.0;
+      double denom = (double) e.outputChunk.rms;
+
+      if (spectralActive && sourceChunk)
       {
-        return (float)(sourceChunk->rms / e.outputChunk.rms);
+        // Compare spectral magnitudes (Parseval-consistent up to a constant that cancels in ratio)
+        // Use sqrt of energy to get an RMS-like quantity for gain computation
+        const double Ein = FFTProcessor::ComputeChunkSpectralEnergy(*sourceChunk);
+        const double Eout = FFTProcessor::ComputeChunkSpectralEnergy(e.outputChunk);
+        num = std::sqrt(std::max(0.0, Ein));
+        denom = std::sqrt(std::max(0.0, Eout));
+      }
+
+      // Make AGC OLA-aware: predict gain introduced after AGC by OLA and final rescale
+      if (overlapActive)
+      {
+        // For spectral path we do not apply a synthesis window when writing into the OLA buffer,
+        // so with 50% hop two frames sum uniformly in steady state -> ~2x gain before final rescale.
+        const float olaGainBeforeRescale = spectralActive ? 2.0f : 1.0f;
+        const float finalRescale = spectralActive ? mSpectralOLARescale : mOutputWindow.GetOverlapRescale();
+        denom *= (double) (olaGainBeforeRescale * finalRescale);
+      }
+
+      if (denom > 1e-9)
+      {
+        return (float) (num / denom);
       }
 
       return 1.0f;
