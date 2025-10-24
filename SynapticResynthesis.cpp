@@ -2,7 +2,11 @@
 #include "IPlug_include_in_plug_src.h"
 #include "IPlugPaths.h"
 #include "json.hpp"
+#if SR_USE_WEB_UI
 #include "Extras/WebView/IPlugWebViewEditorDelegate.h"
+#else
+#include "plugin_src/ui/IGraphicsUI.h"
+#endif
 #include "plugin_src/TransformerFactory.h"
 #include "plugin_src/PlatformFileDialogs.h"
 #include <thread>
@@ -56,11 +60,26 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
   SetEnableDevTools(true);
 #endif
 
-  mEditorInitFunc = [&]()
-  {
-    LoadIndexHtml(__FILE__, GetBundleID());
-    EnableScroll(false);
+#if SR_USE_WEB_UI
+static std::atomic<bool> inited { false };
+mEditorInitFunc = [this]() {
+  bool expected = false;
+  if (!inited.compare_exchange_strong(expected, true)) return;
+  LoadIndexHtml(__FILE__, GetBundleID());
+  EnableScroll(false);
+};
+#else
+  #if IPLUG_EDITOR
+  // IGraphics UI setup
+  mMakeGraphicsFunc = [&]() {
+    return igraphics::MakeGraphics(*this, PLUG_WIDTH, PLUG_HEIGHT, PLUG_FPS, GetScaleForScreen(PLUG_WIDTH, PLUG_HEIGHT));
   };
+
+  mLayoutFunc = [&](igraphics::IGraphics* pGraphics) {
+    synaptic::BuildIGraphicsLayout(pGraphics);
+  };
+  #endif
+#endif
 
   MakePreset("One", -70.);
   MakePreset("Two", -30.);
@@ -82,16 +101,26 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
   // Initialize parameters using ParameterManager
   mParamManager.InitializeCoreParameters(this, mDSPConfig);
   mParamManager.InitializeTransformerParameters(this);
+
+  
+  // Initialize morph with default settings (using chunker's morph instance)
+  mChunker.GetMorph().Configure(synaptic::Morph::Type::None, mDSPConfig.chunkSize);
 }
 
 void SynapticResynthesis::DrainUiQueueOnMainThread()
 {
   // Coalesce structured resend flags first
   if (mPendingSendBrainSummary.exchange(false))
+  {
+#if SR_USE_WEB_UI
     mUIBridge.SendBrainSummary(mBrain);
+#endif
+  }
   if (mPendingSendDSPConfig.exchange(false))
   {
+#if SR_USE_WEB_UI
     SyncAndSendDSPConfig();
+#endif
   }
   if (mPendingMarkDirty.exchange(false))
     MarkHostStateDirty();
@@ -158,11 +187,12 @@ void SynapticResynthesis::ProcessBlock(sample** inputs, sample** outputs, int nF
     return;
   }
 
-  for (int ch = 0; ch < outChans; ch++)
+  for (int s = 0; s < nFrames; s++)
   {
-    for (int s = 0; s < nFrames; s++)
+    const double smoothedInGain = mInGainSmoother.Process(inGain);
+    for (int ch = 0; ch < outChans; ch++)
     {
-      inputs[ch][s] *= inGain;
+      inputs[ch][s] *= smoothedInGain;
     }
   }
 
@@ -183,16 +213,17 @@ void SynapticResynthesis::ProcessBlock(sample** inputs, sample** outputs, int nF
   // Apply gain
   for (int s = 0; s < nFrames; s++)
   {
-    const double smoothedGain = mGainSmoother.Process(outGain);
+    const double smoothedOutGain = mOutGainSmoother.Process(outGain);
     for (int ch = 0; ch < outChans; ++ch)
-      outputs[ch][s] *= smoothedGain;
+      outputs[ch][s] *= smoothedOutGain;
   }
 }
 
 void SynapticResynthesis::OnReset()
 {
   auto sr = GetSampleRate();
-  mGainSmoother.SetSmoothTime(20., sr);
+  mInGainSmoother.SetSmoothTime(20., sr);
+  mOutGainSmoother.SetSmoothTime(20., sr);
 
   // Pull current values from IParams into DSPConfig using ParameterManager
   const int chunkSizeIdx = mParamManager.GetChunkSizeParamIdx();
@@ -228,6 +259,25 @@ void SynapticResynthesis::OnReset()
   // After reset, apply IParam values to transformer implementation using ParameterManager
   mParamManager.ApplyBindingsToTransformer(this, mTransformer.get());
 
+  // Apply morph parameters
+  const int morphModeIdx = mParamManager.GetMorphModeParamIdx();
+  const int morphAmountIdx = mParamManager.GetMorphAmountParamIdx();
+  const int phaseMorphAmountIdx = mParamManager.GetPhaseMorphAmountParamIdx();
+  const int vocoderSensitivityIdx = mParamManager.GetVocoderSensitivityParamIdx();
+
+  if (morphModeIdx >= 0) {
+    const int mode = GetParam(morphModeIdx)->Int();
+    mChunker.GetMorph().Configure(synaptic::Morph::IntToType(mode), mDSPConfig.chunkSize);
+  }
+
+  if (morphAmountIdx >= 0 || phaseMorphAmountIdx >= 0 || vocoderSensitivityIdx >= 0) {
+    auto params = mChunker.GetMorph().GetParameters();
+    if (morphAmountIdx >= 0) params.morphAmount = GetParam(morphAmountIdx)->Value();
+    if (phaseMorphAmountIdx >= 0) params.phaseMorphAmount = GetParam(phaseMorphAmountIdx)->Value();
+    if (vocoderSensitivityIdx >= 0) params.vocoderSensitivity = GetParam(vocoderSensitivityIdx)->Value();
+    mChunker.GetMorph().SetParameters(params);
+  }
+
   // When audio engine resets, leave brain state intact; just resend summary to UI
   mUIBridge.SendBrainSummary(mBrain);
   mUIBridge.SendTransformerParams(mTransformer);
@@ -247,11 +297,11 @@ void SynapticResynthesis::OnUIOpen()
 {
   // Ensure UI gets current values when window opens
   Plugin::OnUIOpen();
+#if SR_USE_WEB_UI
   mUIBridge.SendTransformerParams(mTransformer);
-
   SyncAndSendDSPConfig();
-
   mUIBridge.SendBrainSummary(mBrain);
+#endif
 }
 
 void SynapticResynthesis::OnIdle()
@@ -263,65 +313,45 @@ void SynapticResynthesis::OnIdle()
 void SynapticResynthesis::OnRestoreState()
 {
   Plugin::OnRestoreState();
+#if SR_USE_WEB_UI
   mUIBridge.SendTransformerParams(mTransformer);
-
   SyncAndSendDSPConfig();
-
   mUIBridge.SendBrainSummary(mBrain);
+#endif
 }
 
 void SynapticResynthesis::OnParamChange(int paramIdx)
 {
-  if (paramIdx == kInGain)
-  {
-    DBGMSG("input gain %f\n", GetParam(paramIdx)->Value());
-    return;
-  }
-
-  if (paramIdx == kOutGain)
-  {
-    DBGMSG("output gain %f\n", GetParam(paramIdx)->Value());
-    return;
-  }
-
   // Handle chunk size parameter (coordinated by ParameterManager)
   if (paramIdx == mParamManager.GetChunkSizeParamIdx())
   {
     mParamManager.HandleChunkSizeChange(paramIdx, GetParam(paramIdx), mDSPConfig, this, mChunker, mAnalysisWindow);
     UpdateChunkerWindowing();
     SetLatency(ComputeLatencySamples());
-    return;
   }
-
   // Handle buffer window parameter
-  if (paramIdx == mParamManager.GetBufferWindowParamIdx())
+  else if (paramIdx == mParamManager.GetBufferWindowParamIdx())
   {
     mParamManager.HandleCoreParameterChange(paramIdx, GetParam(paramIdx), mDSPConfig);
     mChunker.SetBufferWindowSize(mDSPConfig.bufferWindowSize);
-    return;
   }
-
   // Handle algorithm change (coordinated by ParameterManager)
-  if (paramIdx == mParamManager.GetAlgorithmParamIdx())
+  else if (paramIdx == mParamManager.GetAlgorithmParamIdx())
   {
     // Store new transformer in pending slot for thread-safe swap in ProcessBlock
     mPendingTransformer = mParamManager.HandleAlgorithmChange(paramIdx, GetParam(paramIdx), mDSPConfig,
                                                                this, mBrain, GetSampleRate(), NInChansConnected());
     UpdateChunkerWindowing();
     // Note: SetLatency will be called in ProcessBlock after swap
-    return;
   }
-
   // Handle output window
-  if (paramIdx == mParamManager.GetOutputWindowParamIdx())
+  else if (paramIdx == mParamManager.GetOutputWindowParamIdx())
   {
     mParamManager.HandleCoreParameterChange(paramIdx, GetParam(paramIdx), mDSPConfig);
     UpdateChunkerWindowing();
-    return;
   }
-
   // Handle analysis window (coordinated by ParameterManager, with background reanalysis)
-  if (paramIdx == mParamManager.GetAnalysisWindowParamIdx())
+  else if (paramIdx == mParamManager.GetAnalysisWindowParamIdx())
   {
     mParamManager.HandleCoreParameterChange(paramIdx, GetParam(paramIdx), mDSPConfig);
     UpdateBrainAnalysisWindow();
@@ -336,23 +366,46 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
       });
     }
     mPendingSendDSPConfig = true;
-    return;
   }
-
   // Handle overlap enable
-  if (paramIdx == mParamManager.GetEnableOverlapParamIdx())
+  else if (paramIdx == mParamManager.GetEnableOverlapParamIdx())
   {
     mParamManager.HandleCoreParameterChange(paramIdx, GetParam(paramIdx), mDSPConfig);
     UpdateChunkerWindowing();
-    return;
   }
-
+  // Handle morph parameters
+  else if (paramIdx == mParamManager.GetMorphModeParamIdx())
+  {
+    const int mode = GetParam(paramIdx)->Int();
+    mChunker.GetMorph().Configure(synaptic::Morph::IntToType(mode), mDSPConfig.chunkSize);
+  }
+  else if (paramIdx == mParamManager.GetMorphAmountParamIdx())
+  {
+    auto params = mChunker.GetMorph().GetParameters();
+    params.morphAmount = GetParam(paramIdx)->Value();
+    mChunker.GetMorph().SetParameters(params);
+  }
+  else if (paramIdx == mParamManager.GetPhaseMorphAmountParamIdx())
+  {
+    auto params = mChunker.GetMorph().GetParameters();
+    params.phaseMorphAmount = GetParam(paramIdx)->Value();
+    mChunker.GetMorph().SetParameters(params);
+  }
+  else if (paramIdx == mParamManager.GetVocoderSensitivityParamIdx())
+  {
+    auto params = mChunker.GetMorph().GetParameters();
+    params.vocoderSensitivity = GetParam(paramIdx)->Value();
+    mChunker.GetMorph().SetParameters(params);
+  }
   // Handle transformer parameters using ParameterManager
-  if (mParamManager.HandleTransformerParameterChange(paramIdx, GetParam(paramIdx), mTransformer.get()))
+  else if (mParamManager.HandleTransformerParameterChange(paramIdx, GetParam(paramIdx), mTransformer.get()))
   {
     // Parameter was handled by ParameterManager
-    return;
   }
+
+  // For all parameters (including kAGC, kInGain, kOutGain, and any others),
+  // the base Plugin class will notify parameter-bound controls automatically.
+  // By not returning early, we let the default notification mechanism work.
 }
 
 void SynapticResynthesis::ProcessMidiMsg(const IMidiMsg& msg)
@@ -382,6 +435,9 @@ void SynapticResynthesis::UpdateChunkerWindowing()
 
   mChunker.EnableOverlap(shouldUseOverlap);
   mChunker.SetOutputWindow(mOutputWindow);
+
+  // Keep the chunker's input analysis window aligned with Brain analysis window
+  mChunker.SetInputAnalysisWindow(mAnalysisWindow);
 
   DBGMSG("Window config: type=%d, userEnabled=%s, shouldUseOverlap=%s, chunkSize=%d\n",
          mDSPConfig.outputWindowMode, mDSPConfig.enableOverlapAdd ? "true" : "false", shouldUseOverlap ? "true" : "false", mDSPConfig.chunkSize);

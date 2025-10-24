@@ -7,21 +7,21 @@
 #include "IPlug_include_in_plug_hdr.h"
 #include "Window.h"
 
+#include "FFT.h"
+#include "Structs.h"
+#include "Morph.h"
+
 namespace synaptic
 {
   using namespace iplug;
 
-  struct AudioChunk
-  {
-    std::vector<std::vector<sample>> channelSamples; // [channel][frame]
-    int numFrames = 0;
-    double inRMS = 0;
-  };
+  // Audio Chunk is now defined in Structs.h
 
   struct PoolEntry
   {
-    AudioChunk chunk;
-    int refCount = 0; // references held by window/pending/output
+    AudioChunk inputChunk;   // Original input audio from stream
+    AudioChunk outputChunk;  // Transformer-generated output
+    int refCount = 0;        // references held by window/pending/output
   };
 
   // Fixed-size ring buffer of indices (no allocations at runtime)
@@ -74,6 +74,7 @@ namespace synaptic
       : mNumChannels(numChannels)
     {
       Configure(mNumChannels, mChunkSize, mBufferWindowSize);
+
     }
 
     void Configure(int numChannels, int chunkSize, int windowSize)
@@ -93,6 +94,8 @@ namespace synaptic
       mBufferWindowSize = newBufferWindowSize;
       mPoolCapacity = newPoolCapacity;
 
+      mMorph.Configure(Morph::Type::None, mChunkSize);  // Disabled for now
+
       if (needsReallocation)
       {
       // Pre-size accumulation scratch
@@ -104,8 +107,15 @@ namespace synaptic
       {
         auto& e = mPool[i];
         e.refCount = 0;
-        e.chunk.numFrames = mChunkSize;
-        e.chunk.channelSamples.assign(mNumChannels, std::vector<sample>(mChunkSize, 0.0));
+        // Initialize both input and output chunks
+        e.inputChunk.numFrames = mChunkSize;
+        e.inputChunk.channelSamples.assign(mNumChannels, std::vector<sample>(mChunkSize, 0.0));
+        e.inputChunk.fftSize = 0;
+        e.inputChunk.complexSpectrum.clear();
+        e.outputChunk.numFrames = mChunkSize;
+        e.outputChunk.channelSamples.assign(mNumChannels, std::vector<sample>(mChunkSize, 0.0));
+        e.outputChunk.fftSize = 0;
+        e.outputChunk.complexSpectrum.clear();
       }
 
         // Overlap-add buffer
@@ -128,6 +138,16 @@ namespace synaptic
       // All indices free initially
       for (int i = 0; i < mPoolCapacity; ++i)
         mFree.Push(i);
+
+      // Configure FFT size
+      mFFTSize = Window::NextValidFFTSize(mChunkSize);
+      mFFT.Configure(mFFTSize);
+
+      // Keep input analysis window size in sync with chunk size
+      mInputAnalysisWindow.Set(mInputAnalysisWindow.GetType(), mChunkSize);
+
+      // Recompute spectral OLA rescale based on analysis window and current chunk size
+      mSpectralOLARescale = ComputeSpectralOLARescale(mInputAnalysisWindow, mChunkSize);
     }
 
     void SetChunkSize(int chunkSize)
@@ -164,6 +184,18 @@ namespace synaptic
       mOutputWindow = w;
     }
 
+    // Called by plugin to keep input analysis window in sync with Brain
+    void SetInputAnalysisWindow(const synaptic::Window& w)
+    {
+      // If type changed, just copy config (size should match chunk size already)
+      if (mInputAnalysisWindow.GetType() != w.GetType() || mInputAnalysisWindow.Size() != w.Size())
+      {
+        mInputAnalysisWindow = w;
+        // Update spectral rescale when analysis window changes
+        mSpectralOLARescale = ComputeSpectralOLARescale(mInputAnalysisWindow, mChunkSize);
+      }
+    }
+
     void ResetOverlapBuffer()
     {
       mOutputOverlapValidSamples = 0;
@@ -179,6 +211,9 @@ namespace synaptic
     }
 
     int GetChunkSize() const { return mChunkSize; }
+
+    // Access to morph instance for configuration
+    Morph& GetMorph() { return mMorph; }
 
     void PushAudio(sample** inputs, int nFrames)
     {
@@ -206,8 +241,13 @@ namespace synaptic
         frameIndex += framesToCopy;
 
         // Use appropriate hop size for input processing
-        const int inputHopSize = (mEnableOverlap && mOutputWindow.GetOverlap() > 0.0f)
-          ? mChunkSize / 2  // 50% hop only when overlap-add is enabled
+        // When spectral processing is active, key overlap decision off the analysis window
+        const bool spectralActive = (mMorph.GetType() != Morph::Type::None);
+        const bool overlapActive = mEnableOverlap && (spectralActive
+          ? (mInputAnalysisWindow.GetOverlap() > 0.0f)
+          : (mOutputWindow.GetOverlap() > 0.0f));
+        const int inputHopSize = overlapActive
+          ? mChunkSize / 2  // 50% hop when overlap-add is enabled
           : mChunkSize;     // 100% hop when overlap-add is disabled or rectangular window
         while (mAccumulatedFrames >= mChunkSize)
         {
@@ -228,25 +268,28 @@ namespace synaptic
           }
 
           PoolEntry& entry = mPool[poolIdx];
-          // Copy scratch into pool chunk
+          // Copy scratch into pool input chunk
           for (int ch = 0; ch < mNumChannels; ++ch)
           {
-            std::memcpy(entry.chunk.channelSamples[ch].data(), mAccumulation[ch].data(), sizeof(sample) * mChunkSize);
+            std::memcpy(entry.inputChunk.channelSamples[ch].data(), mAccumulation[ch].data(), sizeof(sample) * mChunkSize);
           }
-          entry.chunk.numFrames = mChunkSize;
+          entry.inputChunk.numFrames = mChunkSize;
 
-          // Get RMS of current frame and store in AudioChunk
-          float inChunkRMS = 0;
+          // Set timeline position for this input chunk
+          entry.inputChunk.startSample = mTotalInputSamplesPushed - mAccumulatedFrames;
+
+          // Calculate RMS for this input chunk
+          float chunkRMS = 0;
           for (int ch = 0; ch < mNumChannels; ch++)
           {
-            sample* __restrict chunk = entry.chunk.channelSamples[ch].data();
-            for (int i = 0; i < entry.chunk.numFrames; i++)
+            sample* __restrict chunk = entry.inputChunk.channelSamples[ch].data();
+            for (int i = 0; i < entry.inputChunk.numFrames; i++)
             {
-              inChunkRMS += chunk[i] * chunk[i]; // gather Sum of Squares
+              chunkRMS += chunk[i] * chunk[i]; // gather Sum of Squares
             }
           }
-          inChunkRMS = sqrt(inChunkRMS / entry.chunk.numFrames * 2); // get Root Mean Square (rms)
-          entry.chunk.inRMS = inChunkRMS;
+          chunkRMS = sqrt(chunkRMS / (entry.inputChunk.numFrames * mNumChannels)); // get Root Mean Square
+          entry.inputChunk.rms = chunkRMS;
 
           // Insert into lookahead window
           if (mWindow.Full())
@@ -268,6 +311,12 @@ namespace synaptic
             mPending.Push(poolIdx);
           }
           ++entry.refCount; // pending ref
+
+          // Compute input spectrum for transformer consumption (match Brain analysis window)
+          if (mFFTSize > 0)
+          {
+            mFFT.ComputeChunkSpectrum(entry.inputChunk, mInputAnalysisWindow);
+          }
 
           // Shift accumulation buffer by consistent hop size
           mAccumulatedFrames -= inputHopSize;
@@ -294,55 +343,60 @@ namespace synaptic
       return true;
     }
 
-    void EnqueueOutputChunkIndex(int idx)
-    {
-      // add output ref
-      ++mPool[idx].refCount;
-      mOutput.Push(idx);
-    }
-
-    // Allocate a fresh, writable chunk for synthesized output. Returns false if no pool entries are free.
-    bool AllocateWritableChunkIndex(int& outIdx)
-    {
-      if (!mFree.Pop(outIdx))
-        return false;
-      PoolEntry& e = mPool[outIdx];
-      e.refCount = 0; // no refs yet
-      e.chunk.numFrames = mChunkSize;
-      // leave channelSamples as-is (pre-sized); caller will write
-      return true;
-    }
-
-    // Get a writable pointer for a chunk index obtained via AllocateWritableChunkIndex().
-    AudioChunk* GetWritableChunkByIndex(int idx)
+    // NEW API: Get input chunk for reading (const access)
+    const AudioChunk* GetInputChunk(int idx) const
     {
       if (idx < 0 || idx >= mPoolCapacity) return nullptr;
-      return &mPool[idx].chunk;
+      return &mPool[idx].inputChunk;
     }
 
-    // Commit a synthesized chunk to output. numFrames will be clamped to [0, mChunkSize].
-    // inRMS should be the RMS of the corresponding input chunk for AGC to work correctly.
-    void CommitWritableChunkIndex(int idx, int numFrames, double inRMS = 0.0)
+    // NEW API: Get output chunk for writing (mutable access)
+    AudioChunk* GetOutputChunk(int idx)
+    {
+      if (idx < 0 || idx >= mPoolCapacity) return nullptr;
+      return &mPool[idx].outputChunk;
+    }
+
+    // NEW API: Commit output chunk (simplified - no separate source tracking needed)
+    // Input and output are in the same entry, so source is implicitly tracked.
+    void CommitOutputChunk(int idx, int numFrames)
     {
       if (idx < 0 || idx >= mPoolCapacity) return;
       PoolEntry& e = mPool[idx];
       if (numFrames < 0) numFrames = 0;
       if (numFrames > mChunkSize) numFrames = mChunkSize;
-      e.chunk.numFrames = numFrames;
-      e.chunk.inRMS = inRMS;  // Set input RMS for AGC
+      e.outputChunk.numFrames = numFrames;
+
+      // Calculate RMS for this output chunk
+      double chunkRMS = 0.0;
+      for (int ch = 0; ch < mNumChannels && ch < (int)e.outputChunk.channelSamples.size(); ch++)
+      {
+        const auto& channelData = e.outputChunk.channelSamples[ch];
+        for (int i = 0; i < numFrames && i < (int)channelData.size(); i++)
+        {
+          chunkRMS += channelData[i] * channelData[i];
+        }
+      }
+      if (numFrames > 0 && mNumChannels > 0)
+        chunkRMS = sqrt(chunkRMS / (numFrames * mNumChannels));
+      e.outputChunk.rms = chunkRMS;
+
+      // No separate source tracking needed - input and output are co-located!
+      // The entry is already referenced by window, which keeps input alive.
+
       // add output ref and enqueue
       ++e.refCount;
       mOutput.Push(idx);
     }
 
-    // Optional helper to clear a writable chunk to a value (default 0).
-    void ClearWritableChunkIndex(int idx, sample value = 0.0)
+    // Helper to clear output chunk to a value (default 0).
+    void ClearOutputChunk(int idx, sample value = 0.0)
     {
       if (idx < 0 || idx >= mPoolCapacity) return;
       PoolEntry& e = mPool[idx];
-      for (int ch = 0; ch < (int)e.chunk.channelSamples.size(); ++ch)
+      for (int ch = 0; ch < (int)e.outputChunk.channelSamples.size(); ++ch)
       {
-        std::fill(e.chunk.channelSamples[ch].begin(), e.chunk.channelSamples[ch].end(), value);
+        std::fill(e.outputChunk.channelSamples[ch].begin(), e.outputChunk.channelSamples[ch].end(), value);
       }
     }
 
@@ -352,15 +406,21 @@ namespace synaptic
 
       const int chansToWrite = std::min(outChans, mNumChannels);
 
+      // Determine if spectral processing is active
+      const bool spectralActive = (mMorph.GetType() != Morph::Type::None);
+
       // Use overlap-add only when there's actual overlap (not rectangular window)
-      const bool useOverlapAdd = mEnableOverlap && (mOutputWindow.GetOverlap() > 0.0f);
+      // When spectral processing is active, decide based on the analysis window
+      const bool useOverlapAdd = mEnableOverlap && (spectralActive
+        ? (mInputAnalysisWindow.GetOverlap() > 0.0f)
+        : (mOutputWindow.GetOverlap() > 0.0f));
 
       if (useOverlapAdd)
       {
         // Use consistent hop size for all windows to maintain timing
         // Mathematical overlap properties are handled by coefficients and scaling only
         const int hopSize = mChunkSize / 2;  // Consistent 50% hop for all windows
-        const float rescale = mOutputWindow.GetOverlapRescale();
+        const float rescale = spectralActive ? mSpectralOLARescale : mOutputWindow.GetOverlapRescale();
 
         // First, process any queued chunks and overlap-add them to our buffer
         while (!mOutput.Empty())
@@ -369,31 +429,29 @@ namespace synaptic
           mOutput.Pop(idx);
           PoolEntry& e = mPool[idx];
 
-          if (e.chunk.numFrames > 0)
+          if (e.outputChunk.numFrames > 0)
           {
-            float agc = 1.0f;
-            if (agcEnabled)
+            // Ensure spectral processing before windowing/OLA
+            // This function is where morph is applied
+            SpectralProcessing(idx);
+            // Compute AGC first (uses original output chunk RMS)
+            const float agc = ComputeAGC(idx, agcEnabled);
+            // Keep window size in sync only for non-spectral path; for spectral path we skip synthesis windowing
+            if (!spectralActive)
             {
-              // Get RMS of current frame and store in AudioChunk
-              float outChunkRMS = 0;
-              for (int ch = 0; ch < mNumChannels; ch++)
-              {
-                sample* __restrict chunk = e.chunk.channelSamples[ch].data();
-                for (int i = 0; i < e.chunk.numFrames; i++)
-                {
-                  outChunkRMS += chunk[i] * chunk[i]; // gather Sum of Squares
-                }
-              }
-              outChunkRMS = sqrt(outChunkRMS / e.chunk.numFrames * 2); // get Root Mean Square (rms)
-
-              agc = e.chunk.inRMS / outChunkRMS;
+              if (mOutputWindow.Size() != e.outputChunk.numFrames)
+                mOutputWindow.Set(mOutputWindow.GetType(), e.outputChunk.numFrames);
             }
 
-            if (mOutputWindow.Size() != e.chunk.numFrames)
-              mOutputWindow.Set(mOutputWindow.GetType(), e.chunk.numFrames);
+            // Ensure output window type matches analysis when spectral is active (for consistency), though we won't use its coeffs
+            if (spectralActive)
+            {
+              if (mOutputWindow.GetType() != mInputAnalysisWindow.GetType() || mOutputWindow.Size() != e.outputChunk.numFrames)
+                mOutputWindow.Set(mInputAnalysisWindow.GetType(), e.outputChunk.numFrames);
+            }
 
             const auto& coeffs = mOutputWindow.Coeffs();
-            const int frames = e.chunk.numFrames;
+            const int frames = e.outputChunk.numFrames;
             const int addPos = (mOutputOverlapValidSamples >= hopSize) ? (mOutputOverlapValidSamples - hopSize) : 0;
             const int requiredSize = addPos + frames;
 
@@ -405,19 +463,23 @@ namespace synaptic
 
             for (int ch = 0; ch < std::min(mNumChannels, (int)mOutputOverlapBuffer.size()); ++ch)
             {
-              if (ch < (int)e.chunk.channelSamples.size())
+              if (ch < (int)e.outputChunk.channelSamples.size())
               {
+
                 for (int i = 0; i < frames; ++i)
                 {
-                  if (addPos + i < (int)mOutputOverlapBuffer[ch].size() && i < (int)coeffs.size())
+                  if (addPos + i < (int)mOutputOverlapBuffer[ch].size())
                   {
-                    mOutputOverlapBuffer[ch][addPos + i] += e.chunk.channelSamples[ch][i] * coeffs[i] * agc;
+                    const float w = (!spectralActive && i < (int)coeffs.size()) ? coeffs[i] : 1.0f;
+                    mOutputOverlapBuffer[ch][addPos + i] += e.outputChunk.channelSamples[ch][i] * w * agc;
                   }
                 }
               }
             }
             mOutputOverlapValidSamples = requiredSize;
           }
+
+          // Release the pool entry (input and output are co-located)
           DecRefAndMaybeFree(idx);
         }
 
@@ -488,11 +550,20 @@ namespace synaptic
           if (idx >= 0 && idx < mPoolCapacity)
           {
             PoolEntry& e = mPool[idx];
-            if (mOutputFrontFrameIndex < e.chunk.numFrames)
+
+            // Ensure spectral processing once at the start of each chunk
+            if (mOutputFrontFrameIndex == 0 && e.outputChunk.numFrames > 0)
             {
-                // Apply individual chunk windowing if window type has overlap > 0
+              SpectralProcessing(idx);
+            }
+
+            if (mOutputFrontFrameIndex < e.outputChunk.numFrames)
+            {
+                const float agc = ComputeAGC(idx, agcEnabled);
+
+                // Apply individual chunk windowing if window type has overlap > 0 (skip when spectral is active to avoid double windowing)
                 float windowCoeff = 1.0f;
-                if (mOutputWindow.GetOverlap() > 0.0f && mOutputFrontFrameIndex < mOutputWindow.Size())
+                if (!spectralActive && mOutputWindow.GetOverlap() > 0.0f && mOutputFrontFrameIndex < mOutputWindow.Size())
                 {
                   const auto& coeffs = mOutputWindow.Coeffs();
                   windowCoeff = coeffs[mOutputFrontFrameIndex];
@@ -500,10 +571,10 @@ namespace synaptic
 
               for (int ch = 0; ch < chansToWrite; ++ch)
               {
-                if (outputs[ch] && ch < (int)e.chunk.channelSamples.size() &&
-                    mOutputFrontFrameIndex < (int)e.chunk.channelSamples[ch].size())
+                if (outputs[ch] && ch < (int)e.outputChunk.channelSamples.size() &&
+                    mOutputFrontFrameIndex < (int)e.outputChunk.channelSamples[ch].size())
                   {
-                    outputs[ch][s] = e.chunk.channelSamples[ch][mOutputFrontFrameIndex] * windowCoeff;
+                    outputs[ch][s] = e.outputChunk.channelSamples[ch][mOutputFrontFrameIndex] * windowCoeff * agc;
                   }
                 }
             }
@@ -511,12 +582,12 @@ namespace synaptic
             ++mOutputFrontFrameIndex;
             ++mTotalOutputSamplesRendered;  // Track output for latency control
 
-            if (mOutputFrontFrameIndex >= e.chunk.numFrames)
+            if (mOutputFrontFrameIndex >= e.outputChunk.numFrames)
             {
               // finished this chunk
               int finished;
               mOutput.Pop(finished);
-              DecRefAndMaybeFree(finished); // drop output ref
+              DecRefAndMaybeFree(finished);
               mOutputFrontFrameIndex = 0;
               }
             }
@@ -562,20 +633,6 @@ namespace synaptic
       return mOutput.data[pos];
     }
 
-    // Map a pool index to a read-only chunk pointer (nullptr if invalid)
-    const AudioChunk* GetChunkConstByIndex(int idx) const
-    {
-      if (idx < 0 || idx >= mPoolCapacity) return nullptr;
-      return &mPool[idx].chunk;
-    }
-
-    // Map a pool index to a writable chunk pointer (nullptr if invalid)
-    AudioChunk* GetMutableChunkByIndex(int idx)
-    {
-      if (idx < 0 || idx >= mPoolCapacity) return nullptr;
-      return &mPool[idx].chunk;
-    }
-
     // Current output head (if any) and its frame index
     bool PeekCurrentOutput(int& outPoolIdx, int& outFrameIndex) const
     {
@@ -587,7 +644,80 @@ namespace synaptic
 
     int GetNumChannels() const { return mNumChannels; }
 
+    // Get the source input chunk for a given output chunk index.
+    // SIMPLIFIED: Input and output are co-located, so just return inputChunk from same entry.
+    const AudioChunk* GetSourceChunkForOutput(int outputPoolIdx) const
+    {
+      if (outputPoolIdx < 0 || outputPoolIdx >= mPoolCapacity)
+      {
+        return nullptr;
+      }
+      // Input and output are in the same pool entry!
+      return &mPool[outputPoolIdx].inputChunk;
+    }
+
+    // Spectral-domain hook: ensure output spectrum, run spectral ops, IFFT back to samples
+    void SpectralProcessing(int poolIdx)
+    {
+      if (poolIdx < 0 || poolIdx >= mPoolCapacity) return;
+      if (mFFTSize <= 0) return;
+      PoolEntry& e = mPool[poolIdx];
+
+      bool needsSpectrumProcessing = false;
+
+      // check if any spectral processing is needed
+      // (such as checking if morph is enabled)
+      // if so, then set needsSpectrumProcessing to true
+      if(mMorph.GetType() != Morph::Type::None){
+        needsSpectrumProcessing = true;
+      }
+
+      if(!needsSpectrumProcessing){
+        return; // avoid unnecessary spectrum processing
+      }
+
+      // If transformer didn't provide spectrum, build it from current samples
+      EnsureChunkSpectrum(e.outputChunk);
+
+      // TODO: Future spectral processing here (e.g., morph acting on spectra only)
+      mMorph.Process(e.inputChunk, e.outputChunk, mFFT);
+
+      // Synthesize back to time domain for rendering
+      mFFT.ComputeChunkIFFT(e.outputChunk);
+    }
+
   private:
+    // Approximate constant rescale for analysis-windowed OLA with hop = N/2
+    static float ComputeSpectralOLARescale(const synaptic::Window& w, int N)
+    {
+      const auto& a = w.Coeffs();
+      if (a.empty() || N <= 0) return 1.0f;
+      const int H = N / 2;
+      double sum = 0.0;
+      int count = 0;
+      for (int n = 0; n < N; ++n)
+      {
+        double s = 0.0;
+        if (n < (int)a.size()) s += a[n];
+        const int n2 = n - H;
+        if (n2 >= 0 && n2 < (int)a.size()) s += a[n2];
+        sum += s;
+        ++count;
+      }
+      const double mean = (count > 0) ? (sum / (double)count) : 1.0;
+      return (mean > 1e-9) ? (float)(1.0 / mean) : 1.0f;
+    }
+
+    void EnsureChunkSpectrum(AudioChunk& chunk)
+    {
+      if (mFFTSize <= 0) return;
+      if (chunk.fftSize != mFFTSize || (int)chunk.complexSpectrum.size() != (int)chunk.channelSamples.size())
+      {
+        chunk.fftSize = 0; // signal to helper to size
+      }
+      mFFT.ComputeChunkSpectrum(chunk, mInputAnalysisWindow);
+    }
+
     void DecRefAndMaybeFree(int idx)
     {
       if (idx < 0) return;
@@ -598,6 +728,23 @@ namespace synaptic
         e.refCount = 0;
         mFree.Push(idx);
       }
+    }
+
+    float ComputeAGC(int outputIdx, bool agcEnabled) const
+    {
+      if (!agcEnabled) return 1.0f;
+
+      if (outputIdx < 0 || outputIdx >= mPoolCapacity) return 1.0f;
+
+      const AudioChunk* sourceChunk = GetSourceChunkForOutput(outputIdx);
+      const PoolEntry& e = mPool[outputIdx];
+
+      if (sourceChunk && e.outputChunk.rms > 1e-9) // avoid divide by zero
+      {
+        return (float)(sourceChunk->rms / e.outputChunk.rms);
+      }
+
+      return 1.0f;
     }
 
   private:
@@ -614,6 +761,10 @@ namespace synaptic
     std::vector<std::vector<sample>> mAccumulation;
     int mAccumulatedFrames = 0;
 
+    Morph mMorph;
+    int mFFTSize = 0;
+    FFTProcessor mFFT;
+
     // Pool and rings
     std::vector<PoolEntry> mPool;
     IndexRing mFree;
@@ -625,8 +776,10 @@ namespace synaptic
     int mOutputFrontFrameIndex = 0;
     // Overlap-add state
     synaptic::Window mOutputWindow;
+    synaptic::Window mInputAnalysisWindow;
     std::vector<std::vector<sample>> mOutputOverlapBuffer;
     int mOutputOverlapValidSamples = 0;
+    float mSpectralOLARescale = 1.0f;
   };
 }
 

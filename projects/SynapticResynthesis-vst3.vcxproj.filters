@@ -135,6 +135,15 @@
       <Filter>plugin_src\samplebrain</Filter>
     </ClCompile>
     <ClCompile Include="..\exdeps\pffft\pffft.c" />
+    <ClCompile Include="..\..\..\IGraphics\Controls\IControls.cpp" />
+    <ClCompile Include="..\..\..\IGraphics\Controls\IPopupMenuControl.cpp" />
+    <ClCompile Include="..\..\..\IGraphics\Controls\ITextEntryControl.cpp" />
+    <ClCompile Include="..\..\..\IGraphics\Drawing\IGraphicsNanoVG.cpp" />
+    <ClCompile Include="..\..\..\IGraphics\Drawing\IGraphicsSkia.cpp" />
+    <ClCompile Include="..\..\..\IGraphics\IControl.cpp" />
+    <ClCompile Include="..\..\..\IGraphics\IGraphics.cpp" />
+    <ClCompile Include="..\..\..\IGraphics\Platforms\IGraphicsWin.cpp" />
+    <ClCompile Include="..\..\..\IGraphics\IGraphicsEditorDelegate.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="../config.h" />
@@ -326,6 +335,21 @@
     <ClInclude Include="..\plugin_src\samplebrain\Brain.h">
       <Filter>plugin_src\samplebrain</Filter>
     </ClInclude>
+    <ClInclude Include="..\plugin_src\Morph.h">
+      <Filter>plugin_src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\transformers\ExpandedSimpleSampleBrainTransformer.h">
+      <Filter>plugin_src\transformers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\transformers\SimpleSampleBrainTransformer.h">
+      <Filter>plugin_src\transformers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\Structs.h">
+      <Filter>plugin_src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\FFT.h">
+      <Filter>plugin_src</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="resources">
@@ -390,6 +414,9 @@
     </Filter>
     <Filter Include="exdeps">
       <UniqueIdentifier>{c1d2e3f4-a5b6-c7d8-e9f0-a1b2c3d4e5f6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="plugin_src\transformers">
+      <UniqueIdentifier>{5a553ad8-b65d-423d-bc08-83ab78b3affa}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

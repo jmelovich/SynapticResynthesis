@@ -3,7 +3,7 @@
 #include "../ChunkBufferTransformer.h"
 #include "../samplebrain/Brain.h"
 #include "../Window.h"
-#include "../../exdeps/pffft/pffft.h"
+#include "../FFT.h"
 
 namespace synaptic
 {
@@ -19,22 +19,39 @@ namespace synaptic
         int idx;
         while (chunker.PopPendingInputChunkIndex(idx))
         {
-          CopyInputToOutput(chunker, idx);
+          // Simple passthrough when no brain
+          const AudioChunk* in = chunker.GetInputChunk(idx);
+          AudioChunk* out = chunker.GetOutputChunk(idx);
+          if (in && out)
+          {
+            const int numChannels = (int)in->channelSamples.size();
+            const int chunkSize = chunker.GetChunkSize();
+            if ((int)out->channelSamples.size() != numChannels)
+              out->channelSamples.assign(numChannels, std::vector<iplug::sample>(chunkSize, 0.0));
+            for (int ch = 0; ch < numChannels; ++ch)
+            {
+              const int copyN = std::min((int)in->channelSamples[ch].size(), chunkSize);
+              if (copyN > 0)
+                std::memcpy(out->channelSamples[ch].data(), in->channelSamples[ch].data(),
+                           sizeof(iplug::sample) * copyN);
+            }
+            chunker.CommitOutputChunk(idx, in->numFrames);
+          }
         }
         return;
       }
 
       const int numChannels = chunker.GetNumChannels();
 
-      int inIdx;
-      while (chunker.PopPendingInputChunkIndex(inIdx))
+      int idx;
+      while (chunker.PopPendingInputChunkIndex(idx))
       {
-        const AudioChunk* in = chunker.GetChunkConstByIndex(inIdx);
-        if (!in || in->numFrames <= 0)
-        {
-          chunker.EnqueueOutputChunkIndex(inIdx);
+        // NEW API: Access input and output from same entry
+        const AudioChunk* in = chunker.GetInputChunk(idx);
+        AudioChunk* out = chunker.GetOutputChunk(idx);
+
+        if (!in || !out || in->numFrames <= 0)
           continue;
-        }
 
         const int N = in->numFrames;
         const double nyquist = 0.5 * mSampleRate;
@@ -46,59 +63,41 @@ namespace synaptic
         {
           if (ch >= (int) in->channelSamples.size() || in->channelSamples[ch].empty())
             continue;
-          const auto& buf = in->channelSamples[ch];
-          int zc = 0;
-          double prev = buf[0];
-          for (int i = 1; i < N; ++i)
-          {
-            double x = buf[i];
-            if ((prev <= 0.0 && x > 0.0) || (prev >= 0.0 && x < 0.0))
-              ++zc;
-            prev = x;
-          }
-          double f = (double) zc * mSampleRate / (2.0 * (double) N);
-          if (!(f > 0.0)) f = 440.0;
-          if (f < 20.0) f = 20.0;
-          if (f > nyquist - 20.0) f = nyquist - 20.0;
-          inFreq[ch] = f;
 
-          if (mUseFftFreq)
+          // ZCR-based frequency (kept for backward compatibility)
           {
-            // Apply selected input window (Rectangular = no-op)
-            EnsureInputWindowBuilt(N);
-            const auto& w = mInputWindow.Coeffs();
-            const int W = (int) w.size();
-            const int M = std::min(N, W);
-            std::vector<iplug::sample> temp;
-            temp.resize(N);
-            for (int i = 0; i < N; ++i)
+            const auto& buf = in->channelSamples[ch];
+            int zc = 0;
+            double prev = buf[0];
+            for (int i = 1; i < N; ++i)
             {
-              const float wi = (i < M) ? w[i] : 0.0f;
-              temp[i] = (iplug::sample) (buf[i] * wi);
+              double x = buf[i];
+              if ((prev <= 0.0 && x > 0.0) || (prev >= 0.0 && x < 0.0))
+                ++zc;
+              prev = x;
             }
-            inFftFreq[ch] = ComputeDominantFftHz(temp, N, mSampleRate);
+            double f = (double) zc * mSampleRate / (2.0 * (double) N);
+            if (!(f > 0.0)) f = 440.0;
+            if (f < 20.0) f = 20.0;
+            if (f > nyquist - 20.0) f = nyquist - 20.0;
+            inFreq[ch] = f;
+          }
+
+          if (mUseFftFreq && in->fftSize > 0 && ch < (int)in->complexSpectrum.size())
+          {
+            const float* ordered = in->complexSpectrum[ch].data();
+            inFftFreq[ch] = FFTProcessor::DominantFreqHzFromOrderedSpectrum(ordered, in->fftSize, mSampleRate);
           }
         }
 
         // Channel-independent matching or average-based matching
-        int outIdx;
-        if (!chunker.AllocateWritableChunkIndex(outIdx))
-        {
-          chunker.EnqueueOutputChunkIndex(inIdx);
-          continue;
-        }
-        AudioChunk* out = chunker.GetWritableChunkByIndex(outIdx);
-        if (!out)
-        {
-          chunker.EnqueueOutputChunkIndex(inIdx);
-          continue;
-        }
-
         const int chunkSize = chunker.GetChunkSize();
-        if ((int) out->channelSamples.size() != numChannels)
+
+        // Ensure output chunk is properly sized
+        if ((int)out->channelSamples.size() != numChannels)
           out->channelSamples.assign(numChannels, std::vector<iplug::sample>(chunkSize, 0.0));
         for (int ch = 0; ch < numChannels; ++ch)
-          if ((int) out->channelSamples[ch].size() < chunkSize)
+          if ((int)out->channelSamples[ch].size() < chunkSize)
             out->channelSamples[ch].assign(chunkSize, 0.0);
 
         if (mChannelIndependent)
@@ -128,7 +127,7 @@ namespace synaptic
                 const double br = (bch < (int) bc->rmsPerChannel.size()) ? (double) bc->rmsPerChannel[bch] : (double) bc->avgRms;
                 const double inFeatureF = mUseFftFreq ? inFftFreq[ch] : inFreq[ch];
                 double df = std::abs(inFeatureF - bf) / nyquist;
-                double da = std::abs(in->inRMS - br);
+                double da = std::abs(in->rms - br);
                 if (da > 1.0) da = 1.0;
                 double score = mWeightFreq * df + mWeightAmp * da;
                 if (score < bestScore)
@@ -144,13 +143,9 @@ namespace synaptic
             {
               foundAnyMatch = true;
               const BrainChunk* match = mBrain->GetChunkByGlobalIndex(bestChunk);
-              const int framesToWrite = std::min(chunkSize, match ? match->audio.numFrames : chunkSize);
-              const int srcChans = match ? (int) match->audio.channelSamples.size() : 0;
-              const int sch = (bestSrcCh < srcChans) ? bestSrcCh : 0;
-              for (int i = 0; i < framesToWrite; ++i)
-                out->channelSamples[ch][i] = match->audio.channelSamples[sch][i];
-              for (int i = framesToWrite; i < chunkSize; ++i)
-                out->channelSamples[ch][i] = 0.0;
+              std::vector<int> src = { bestSrcCh };
+              std::vector<int> dst = { ch };
+              CopyBrainChannelsToOutput(match, chunkSize, numChannels, *out, src, dst);
             }
             else
             {
@@ -160,15 +155,8 @@ namespace synaptic
             }
           }
 
-          // If brain was completely empty, just output silence
-          if (!foundAnyMatch && total == 0)
-          {
-            chunker.CommitWritableChunkIndex(outIdx, chunkSize, 0.0);
-          }
-          else
-          {
-            chunker.CommitWritableChunkIndex(outIdx, chunkSize, in->inRMS);
-          }
+          // Commit output chunk (RMS calculated automatically)
+          chunker.CommitOutputChunk(idx, chunkSize);
         }
         else
         {
@@ -188,7 +176,7 @@ namespace synaptic
             const double br = (double) bc->avgRms;
             const double inFeatureAvg = mUseFftFreq ? inFftAvg : inFreqAvg;
             double df = std::abs(inFeatureAvg - bf) / nyquist;
-            double da = std::abs(in->inRMS - br);
+            double da = std::abs(in->rms - br);
             if (da > 1.0) da = 1.0;
             double score = mWeightFreq * df + mWeightAmp * da;
             if (score < bestScore)
@@ -200,29 +188,27 @@ namespace synaptic
 
           if (bestIdx < 0)
           {
-            chunker.EnqueueOutputChunkIndex(inIdx);
+            // No match found - output silence
+            for (int ch = 0; ch < numChannels; ++ch)
+              for (int i = 0; i < chunkSize; ++i)
+                out->channelSamples[ch][i] = 0.0;
+            chunker.CommitOutputChunk(idx, chunkSize);
             continue;
           }
 
           const BrainChunk* match = mBrain->GetChunkByGlobalIndex(bestIdx);
           if (!match)
           {
-            chunker.EnqueueOutputChunkIndex(inIdx);
+            // No match found - output silence
+            for (int ch = 0; ch < numChannels; ++ch)
+              for (int i = 0; i < chunkSize; ++i)
+                out->channelSamples[ch][i] = 0.0;
+            chunker.CommitOutputChunk(idx, chunkSize);
             continue;
           }
 
-          const int framesToWrite = std::min(chunkSize, match->audio.numFrames);
-          const int srcChans = (int) match->audio.channelSamples.size();
-          for (int ch = 0; ch < numChannels; ++ch)
-          {
-            const int sch = (ch < srcChans) ? ch : 0;
-            for (int i = 0; i < framesToWrite; ++i)
-              out->channelSamples[ch][i] = match->audio.channelSamples[sch][i];
-            for (int i = framesToWrite; i < chunkSize; ++i)
-              out->channelSamples[ch][i] = 0.0;
-          }
-
-          chunker.CommitWritableChunkIndex(outIdx, framesToWrite, in->inRMS);
+          CopyBrainChannelsToOutput(match, chunkSize, numChannels, *out);
+          chunker.CommitOutputChunk(idx, std::min(chunkSize, match->audio.numFrames));
         }
       }
     }
@@ -296,67 +282,7 @@ namespace synaptic
     double mWeightAmp = 1.0;
     bool mUseFftFreq = false;
 
-    static bool IsGoodFftN(int n)
-    {
-      if (n <= 0) return false;
-      if ((n % 32) != 0) return false;
-      int m = n;
-      for (int p : {2,3,5})
-      {
-        while ((m % p) == 0) m /= p;
-      }
-      return m == 1;
-    }
-
-    static int NextGoodFftN(int minN)
-    {
-      int n = (minN < 32) ? 32 : minN;
-      for (;; ++n) if (IsGoodFftN(n)) return n;
-    }
-
-    static double ComputeDominantFftHz(const std::vector<iplug::sample>& buf, int validFrames, double sampleRate)
-    {
-      if (validFrames <= 0 || sampleRate <= 0.0) return 0.0;
-      const int Nfft = NextGoodFftN(validFrames);
-      PFFFT_Setup* setup = pffft_new_setup(Nfft, PFFFT_REAL);
-      if (!setup) return 0.0;
-      float* inAligned = (float*) pffft_aligned_malloc(sizeof(float) * Nfft);
-      float* outAligned = (float*) pffft_aligned_malloc(sizeof(float) * Nfft);
-      if (!inAligned || !outAligned)
-      {
-        if (inAligned) pffft_aligned_free(inAligned);
-        if (outAligned) pffft_aligned_free(outAligned);
-        pffft_destroy_setup(setup);
-        return 0.0;
-      }
-      const int N = std::min((int) buf.size(), validFrames);
-      for (int i = 0; i < Nfft; ++i)
-        inAligned[i] = (i < N) ? (float) buf[i] : 0.0f;
-      pffft_transform_ordered(setup, inAligned, outAligned, nullptr, PFFFT_FORWARD);
-
-      int bestK = 0;
-      float bestMag = -1.0f;
-      // DC and Nyquist in out[0], out[1]
-      float mag0 = std::abs(outAligned[0]);
-      if (mag0 > bestMag) { bestMag = mag0; bestK = 0; }
-      float magNy = std::abs(outAligned[1]);
-      if (magNy > bestMag) { bestMag = magNy; bestK = Nfft/2; }
-      for (int k = 1; k < Nfft/2; ++k)
-      {
-        float re = outAligned[2*k + 0];
-        float im = outAligned[2*k + 1];
-        float mag = std::sqrt(re*re + im*im);
-        if (mag > bestMag) { bestMag = mag; bestK = k; }
-      }
-      double hz = (double) bestK * sampleRate / (double) Nfft;
-      const double ny = 0.5 * sampleRate;
-      if (hz < 20.0) hz = 20.0;
-      if (hz > ny - 20.0) hz = ny - 20.0;
-      pffft_aligned_free(inAligned);
-      pffft_aligned_free(outAligned);
-      pffft_destroy_setup(setup);
-      return hz;
-    }
+    // Removed local FFT helpers; we rely on spectra provided by the chunker.
   };
 }
 

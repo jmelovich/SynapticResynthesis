@@ -7,6 +7,7 @@
 #include "plugin_src/ChunkBufferTransformer.h"
 #include "plugin_src/samplebrain/Brain.h"
 #include "plugin_src/Window.h"
+#include "plugin_src/Morph.h"
 #include "plugin_src/modules/DSPConfig.h"
 #include "plugin_src/modules/UIBridge.h"
 #include "plugin_src/modules/ParameterManager.h"
@@ -32,6 +33,10 @@ enum EParams
   kEnableOverlap,
   kOutGain,
   kAGC,
+  kMorphMode,
+  kMorphAmount,
+  kPhaseMorphAmount,
+  kVocoderSensitivity,
   // Dynamic transformer parameters are indexed after this sentinel
   kNumParams
 };
@@ -119,7 +124,8 @@ private:
   synaptic::StateSerializer mStateSerializer;
 
   // === DSP Components ===
-  LogParamSmooth<sample, 1> mGainSmoother;
+  LogParamSmooth<sample, 1> mInGainSmoother;
+  LogParamSmooth<sample, 2> mOutGainSmoother;
   synaptic::AudioStreamChunker mChunker {2};
   std::shared_ptr<synaptic::IChunkBufferTransformer> mTransformer;
   std::shared_ptr<synaptic::IChunkBufferTransformer> mPendingTransformer; // For thread-safe swapping

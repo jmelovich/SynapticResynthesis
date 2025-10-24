@@ -16,7 +16,7 @@ namespace synaptic
 {
   struct BrainChunk
   {
-    AudioChunk audio; // same format as realtime chunks
+    AudioChunk audio; // same format as realtime chunks (now includes complexSpectrum and fftSize)
     int fileId = -1;
     int chunkIndexInFile = -1;
     // Per-channel analysis
@@ -24,7 +24,7 @@ namespace synaptic
     std::vector<double> freqHzPerChannel; // ZCR-based frequency per channel
     // FFT analysis (per channel)
     // Magnitude spectrum per channel (length = fftSize/2 + 1), computed via PFFFT
-    std::vector<std::vector<float>> fftMagnitudePerChannel;
+    std::vector<std::vector<float>> complexSpectrum;
     // Dominant frequency (Hz) derived from FFT magnitude peak per channel
     std::vector<double> fftDominantHzPerChannel;
     // FFT size actually used for analysis. PFFFT has strict size constraints:

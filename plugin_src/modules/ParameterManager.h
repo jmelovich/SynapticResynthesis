@@ -172,6 +172,10 @@ namespace synaptic
     int GetAlgorithmParamIdx() const { return mParamIdxAlgorithm; }
     int GetDirtyFlagParamIdx() const { return mParamIdxDirtyFlag; }
     int GetEnableOverlapParamIdx() const { return mParamIdxEnableOverlap; }
+    int GetMorphModeParamIdx() const { return mParamIdxMorphMode; }
+    int GetMorphAmountParamIdx() const { return mParamIdxMorphAmount; }
+    int GetPhaseMorphAmountParamIdx() const { return mParamIdxPhaseMorphAmount; }
+    int GetVocoderSensitivityParamIdx() const { return mParamIdxVocoderSensitivity; }
 
   private:
     // Transformer parameter bindings (union across all transformers)
@@ -185,6 +189,10 @@ namespace synaptic
     int mParamIdxAlgorithm = -1;
     int mParamIdxDirtyFlag = -1;
     int mParamIdxEnableOverlap = -1;
+    int mParamIdxMorphMode = -1;
+    int mParamIdxMorphAmount = -1;
+    int mParamIdxPhaseMorphAmount = -1;
+    int mParamIdxVocoderSensitivity = -1;
 
     // First transformer parameter index (base for dynamic params)
     int mTransformerParamBase = -1;

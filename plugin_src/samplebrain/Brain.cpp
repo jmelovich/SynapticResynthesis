@@ -11,6 +11,7 @@
 #include "../../exdeps/pffft/pffft.h"
 #include "../Window.h"
 #include "../FeatureAnalysis.h"
+#include "../FFT.h"
 
 namespace synaptic
 {
@@ -115,10 +116,11 @@ namespace synaptic
     chunk.avgRms = (chCount > 0) ? (float) (rmsSum / (double) chCount) : 0.0f;
     chunk.avgFreqHz = (chCount > 0) ? (freqSum / (double) chCount) : 0.0;
 
-    const int framesForFft = std::max(1, validFrames);
+    // Use the chunk's nominal size for FFT (we zero-pad anyway) to match the chunker
+    const int framesForFft = std::max(1, chunk.audio.numFrames);
     const int Nfft = Window::NextValidFFTSize(framesForFft);
     chunk.fftSize = Nfft;
-    chunk.fftMagnitudePerChannel.assign(chCount, std::vector<float>(Nfft/2 + 1, 0.0f));
+    chunk.complexSpectrum.assign(chCount, std::vector<float>(Nfft/2 + 1, 0.0f));
     chunk.fftDominantHzPerChannel.assign(chCount, 0.0);
 
     // Initialize extended features
@@ -146,13 +148,14 @@ namespace synaptic
           }
 
           // Apply windowing before FFT
-          (*mWindow)(inAligned);
+          const Window& window = *mWindow;
+          window(inAligned);
 
           // Ordered forward transform to get canonical interleaved output
           pffft_transform_ordered(setup, inAligned, outAligned, nullptr, PFFFT_FORWARD);
 
           // Extract magnitudes for bins 0..N/2
-          auto& mags = chunk.fftMagnitudePerChannel[ch];
+          auto& mags = chunk.complexSpectrum[ch];
           if ((int) mags.size() != (Nfft/2 + 1)) mags.assign(Nfft/2 + 1, 0.0f);
           // DC and Nyquist packed in first complex slot: out[0]=F0(real), out[1]=F(N/2)(real)
           mags[0] = std::abs(outAligned[0]);
@@ -181,6 +184,17 @@ namespace synaptic
           if (domHz < 20.0) domHz = 20.0;
           if (domHz > ny - 20.0) domHz = ny - 20.0;
           chunk.fftDominantHzPerChannel[ch] = domHz;
+
+          // Store full ordered spectrum into chunk.audio
+          if (chunk.audio.fftSize != Nfft)
+          {
+            chunk.audio.fftSize = Nfft;
+            chunk.audio.complexSpectrum.assign(chCount, std::vector<float>(Nfft, 0.0f));
+          }
+          if (ch < (int)chunk.audio.complexSpectrum.size())
+          {
+            std::memcpy(chunk.audio.complexSpectrum[ch].data(), outAligned, sizeof(float) * Nfft);
+          }
 
           // Compute extended features using FeatureAnalysis (outAligned has ordered FFT output)
           auto features = FeatureAnalysis::GetFeatures(outAligned, Nfft, (float)sampleRate);
@@ -378,13 +392,12 @@ namespace synaptic
     std::vector<BrainFile> filesSnapshot;
     std::vector<BrainChunk> chunksSnapshot;
     int oldChunkSize = 0;
-    const Window* analysisWindow = nullptr;
+    const Window& window = *mWindow;
     {
       std::unique_lock<std::mutex> lock(mutex_);
       filesSnapshot = files_;
       chunksSnapshot = chunks_;
       oldChunkSize = (mChunkSize > 0) ? mChunkSize : newChunkSizeSamples;
-      analysisWindow = mWindow;
     }
 
     // Rebuild each file by concatenating its chunks' valid frames, then rechunk
@@ -479,12 +492,9 @@ namespace synaptic
         }
 
         // Analyze metrics for this chunk over valid frames (use captured window pointer)
-        if (analysisWindow)
-        {
           // Temporarily set the analysis window pointer (thread-local) by calling member that reads mWindow.
           // Since AnalyzeChunk only reads mWindow, this is safe as we captured the pointer value.
           AnalyzeChunk(out, framesInChunk, (double) targetSampleRate);
-        }
 
         const int globalIdx = (int) newChunks.size();
         newChunks.push_back(std::move(out));
@@ -627,13 +637,14 @@ namespace synaptic
       int32_t fzc = (int32_t) c.freqHzPerChannel.size(); out.Put(&fzc);
       for (int i = 0; i < fzc; ++i) out.Put(&c.freqHzPerChannel[i]);
       int32_t fftSize = c.fftSize; out.Put(&fftSize);
-      int32_t fftc = (int32_t) c.fftMagnitudePerChannel.size(); out.Put(&fftc);
+      int32_t fftc = (int32_t)c.complexSpectrum.size();
+      out.Put(&fftc);
       for (int ch = 0; ch < fftc; ++ch)
       {
-        int32_t bins = (int32_t) c.fftMagnitudePerChannel[ch].size();
+        int32_t bins = (int32_t)c.complexSpectrum[ch].size();
         out.Put(&bins);
         if (bins > 0)
-          out.PutBytes(c.fftMagnitudePerChannel[ch].data(), (int) (sizeof(float) * bins));
+          out.PutBytes(c.complexSpectrum[ch].data(), (int)(sizeof(float) * bins));
       }
       int32_t domc = (int32_t) c.fftDominantHzPerChannel.size(); out.Put(&domc);
       for (int i = 0; i < domc; ++i) out.Put(&c.fftDominantHzPerChannel[i]);
@@ -731,14 +742,14 @@ namespace synaptic
       c.freqHzPerChannel.resize(fzc); for (int k = 0; k < fzc; ++k) pos = in.Get(&c.freqHzPerChannel[k], pos);
       int32_t fftSize = 0; pos = in.Get(&fftSize, pos); c.fftSize = fftSize; if (pos < 0) return -1;
       int32_t fftc = 0; pos = in.Get(&fftc, pos); if (pos < 0 || fftc < 0) return -1;
-      c.fftMagnitudePerChannel.resize(fftc);
+      c.complexSpectrum.resize(fftc);
       for (int ch = 0; ch < fftc; ++ch)
       {
         int32_t bins = 0; pos = in.Get(&bins, pos); if (pos < 0 || bins < 0) return -1;
-        c.fftMagnitudePerChannel[ch].resize(bins);
+        c.complexSpectrum[ch].resize(bins);
         if (bins > 0)
         {
-          pos = in.GetBytes(c.fftMagnitudePerChannel[ch].data(), (int) (sizeof(float) * bins), pos);
+          pos = in.GetBytes(c.complexSpectrum[ch].data(), (int)(sizeof(float) * bins), pos);
           if (pos < 0) return -1;
         }
       }

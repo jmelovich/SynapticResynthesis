@@ -304,7 +304,10 @@
     <ClInclude Include="..\plugin_src\AudioStreamChunker.h" />
     <ClInclude Include="..\plugin_src\ChunkBufferTransformer.h" />
     <ClInclude Include="..\plugin_src\FeatureAnalysis.h" />
+    <ClInclude Include="..\plugin_src\FFT.h" />
+    <ClInclude Include="..\plugin_src\Morph.h" />
     <ClInclude Include="..\plugin_src\PlatformFileDialogs.h" />
+    <ClInclude Include="..\plugin_src\Structs.h" />
     <ClInclude Include="..\plugin_src\TransformerFactory.h" />
     <ClInclude Include="..\plugin_src\modules\BrainManager.h" />
     <ClInclude Include="..\plugin_src\modules\DSPConfig.h" />
@@ -313,6 +316,8 @@
     <ClInclude Include="..\plugin_src\modules\UIBridge.h" />
     <ClInclude Include="..\plugin_src\modules\UIMessageHandler.h" />
     <ClInclude Include="..\plugin_src\samplebrain\Brain.h" />
+    <ClInclude Include="..\plugin_src\transformers\ExpandedSimpleSampleBrainTransformer.h" />
+    <ClInclude Include="..\plugin_src\transformers\SimpleSampleBrainTransformer.h" />
     <ClInclude Include="..\plugin_src\Window.h" />
     <ClInclude Include="..\SynapticResynthesis.h" />
     <ClInclude Include="..\resources\resource.h" />
@@ -325,6 +330,43 @@
     <ClCompile Include="..\plugin_src\modules\UIBridge.cpp" />
     <ClCompile Include="..\plugin_src\samplebrain\Brain.cpp" />
     <ClCompile Include="..\exdeps\pffft\pffft.c" />
+    <ClCompile Include="..\..\..\IGraphics\Controls\IControls.cpp">
+      <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\..\..\IGraphics\Controls\IPopupMenuControl.cpp">
+      <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\..\..\IGraphics\Controls\ITextEntryControl.cpp">
+      <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\..\..\IGraphics\Drawing\IGraphicsNanoVG.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Tracer|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Tracer|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\..\..\IGraphics\Drawing\IGraphicsSkia.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Tracer|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Tracer|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\..\..\IGraphics\IControl.cpp">
+      <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\..\..\IGraphics\IGraphics.cpp">
+      <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\..\..\IGraphics\Platforms\IGraphicsWin.cpp">
+      <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\..\..\IGraphics\IGraphicsEditorDelegate.cpp">
+      <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="..\..\..\Dependencies\IPlug\VST3_SDK\base\source\baseiids.cpp" />
     <ClCompile Include="..\..\..\Dependencies\IPlug\VST3_SDK\base\source\fbuffer.cpp" />
     <ClCompile Include="..\..\..\Dependencies\IPlug\VST3_SDK\base\source\fdebug.cpp" />

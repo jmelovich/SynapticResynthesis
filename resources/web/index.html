@@ -15,13 +15,14 @@
     }
 
     body {
-      overflow: hidden;
+      overflow: auto;
       padding: 0 20px;
       -webkit-overflow-scrolling: touch;
       background-color: #ffffff;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
 
+    /* Unused layout classes - commented out to prevent interference
     .left {
       width: 50%;
       position: absolute;
@@ -49,6 +50,7 @@
     .right input {
       vertical-align: baseline;
     }
+    */
 
     button {
       display: block;
@@ -165,6 +167,11 @@
       flex-direction: column;
       gap: 10px;
       margin-top: 8px;
+    }
+
+    .input-group .param-list {
+      margin-top: 8px;
+      margin-bottom: 0;
     }
     .reanalysis-box {
       border: 2px dashed #f59e0b;
@@ -319,7 +326,7 @@
         dspBtn.classList.add('active');
       }
       // Resize window to fit new content after tab switch
-      resizeWindowToFit();
+      setTimeout(resizeWindowToFit, 100);
     }
     function SendTestBinaryData() {
       let uint8 = new Uint8Array([0, 0, 0, 0]);
@@ -350,6 +357,51 @@
         const checkbox = document.getElementById('enableAGC');
         if (checkbox) {
           checkbox.checked = value > 0.5;
+        }
+        return;
+      }
+
+      // Handle morph mode dropdown (paramIdx=10)
+      if (param == 10) {
+        const select = document.getElementById('morphMode');
+        if (select) {
+          // Convert normalized value back to enum index (0-5)
+          const enumValue = Math.round(value * 5.0);
+          select.value = enumValue;
+          updateMorphParams(enumValue);
+        }
+        return;
+      }
+
+      // Handle morph amount (paramIdx=11)
+      if (param == 11) {
+        const input = document.getElementById('morphAmount');
+        if (input) {
+          input.value = value;
+          const valueEl = input.parentNode.querySelector('.value');
+          if (valueEl) valueEl.textContent = (Number(value)).toFixed(2);
+        }
+        return;
+      }
+
+      // Handle phase morph amount (paramIdx=12)
+      if (param == 12) {
+        const input = document.getElementById('phaseMorphAmount');
+        if (input) {
+          input.value = value;
+          const valueEl = input.parentNode.querySelector('.value');
+          if (valueEl) valueEl.textContent = (Number(value)).toFixed(2);
+        }
+        return;
+      }
+
+      // Handle vocoder sensitivity (paramIdx=13)
+      if (param == 13) {
+        const input = document.getElementById('vocoderSensitivity');
+        if (input) {
+          input.value = value;
+          const valueEl = input.parentNode.querySelector('.value');
+          if (valueEl) valueEl.textContent = (Number(value)).toFixed(2);
         }
         return;
       }
@@ -520,8 +572,20 @@
         <option value="1">Simple Sine Match</option>
         <option value="2">Simple SampleBrain</option>
       </select>
+      <div id="transformer-params" class="param-list"></div>
     </div>
-    <div id="transformer-params" class="param-list"></div>
+    <div class="input-group">
+      <label for="morphMode">Morph Mode</label>
+      <select id="morphMode">
+        <option value="0" selected>None</option>
+        <option value="1">Cross Synthesis</option>
+        <option value="2">Spectral Vocoder</option>
+        <option value="3">Cepstral Morph</option>
+        <option value="4">Harmonic Morph</option>
+        <option value="5">Spectral Masking</option>
+      </select>
+      <div id="morph-params" class="param-list"></div>
+    </div>
   </div>
 
 
@@ -645,6 +709,7 @@
     const outputWindowSelect = document.getElementById('outputWindow');
     const analysisWindowSelect = document.getElementById('analysisWindow');
     const algorithmSelect = document.getElementById('algorithm');
+    const morphModeSelect = document.getElementById('morphMode');
 
     function sanitizeInt(value, fallback, minVal = 1) {
       const n = parseInt(value, 10);
@@ -676,6 +741,14 @@
       }
     }
 
+    function sendMorphMode(value) {
+      if (typeof window['SPVFUI'] === 'function') {
+        // Normalize enum value to 0.0-1.0 range (6 possible values: 0-5)
+        const normalizedValue = value / 5.0;
+        window['SPVFUI'](10, normalizedValue); // paramIdx=10 for kMorphMode
+      }
+    }
+
     const onChunkChange = (e) => {
       const v = sanitizeInt(e.target.value, 4096, 1);
       e.target.value = v;
@@ -697,6 +770,132 @@
       sendAlgorithm(v);
     };
 
+    const onMorphModeChange = (e) => {
+      const v = parseInt(e.target.value, 10) || 0;
+      sendMorphMode(v);
+      updateMorphParams(v);
+    };
+
+    function updateMorphParams(mode) {
+      const container = document.getElementById('morph-params');
+      if (!container) return;
+      
+      container.innerHTML = '';
+      
+      if (mode === 0) return; // None mode - no additional controls
+      
+      // Cross Synthesis mode (mode === 1) - show morph amount and phase morph amount
+      if (mode === 1) {
+        // Add morph amount control
+        const morphAmountRow = document.createElement('div');
+        morphAmountRow.className = 'param-row';
+        const morphAmountLabel = document.createElement('label');
+        morphAmountLabel.textContent = 'Morph Amount';
+        morphAmountRow.appendChild(morphAmountLabel);
+        
+        const morphAmountInput = document.createElement('input');
+        morphAmountInput.type = 'range';
+        morphAmountInput.min = '0';
+        morphAmountInput.max = '1';
+        morphAmountInput.step = '0.01';
+        morphAmountInput.value = '1.0';
+        morphAmountInput.id = 'morphAmount';
+        
+        const morphAmountValue = document.createElement('div');
+        morphAmountValue.className = 'value';
+        morphAmountValue.textContent = '1.00';
+        
+        morphAmountInput.addEventListener('input', () => {
+          morphAmountValue.textContent = (Number(morphAmountInput.value)).toFixed(2);
+        });
+        
+        morphAmountInput.addEventListener('change', () => {
+          if (typeof window['SPVFUI'] === 'function') {
+            window['SPVFUI'](11, Number(morphAmountInput.value)); // paramIdx=11 for kMorphAmount
+          }
+        });
+        
+        morphAmountRow.appendChild(morphAmountInput);
+        morphAmountRow.appendChild(morphAmountValue);
+        container.appendChild(morphAmountRow);
+        
+        // Add phase morph amount control
+        const phaseMorphRow = document.createElement('div');
+        phaseMorphRow.className = 'param-row';
+        const phaseMorphLabel = document.createElement('label');
+        phaseMorphLabel.textContent = 'Phase Morph Amount';
+        phaseMorphRow.appendChild(phaseMorphLabel);
+        
+        const phaseMorphInput = document.createElement('input');
+        phaseMorphInput.type = 'range';
+        phaseMorphInput.min = '0';
+        phaseMorphInput.max = '1';
+        phaseMorphInput.step = '0.01';
+        phaseMorphInput.value = '1.0';
+        phaseMorphInput.id = 'phaseMorphAmount';
+        
+        const phaseMorphValue = document.createElement('div');
+        phaseMorphValue.className = 'value';
+        phaseMorphValue.textContent = '1.00';
+        
+        phaseMorphInput.addEventListener('input', () => {
+          phaseMorphValue.textContent = (Number(phaseMorphInput.value)).toFixed(2);
+        });
+        
+        phaseMorphInput.addEventListener('change', () => {
+          if (typeof window['SPVFUI'] === 'function') {
+            window['SPVFUI'](12, Number(phaseMorphInput.value)); // paramIdx=12 for kPhaseMorphAmount
+          }
+        });
+        
+        phaseMorphRow.appendChild(phaseMorphInput);
+        phaseMorphRow.appendChild(phaseMorphValue);
+        container.appendChild(phaseMorphRow);
+      }
+      
+      // Spectral Vocoder mode (mode === 2) - show only vocoder sensitivity
+      if (mode === 2) {
+        const vocoderRow = document.createElement('div');
+        vocoderRow.className = 'param-row';
+        const vocoderLabel = document.createElement('label');
+        vocoderLabel.textContent = 'Vocoder Sensitivity';
+        vocoderRow.appendChild(vocoderLabel);
+        
+        const vocoderInput = document.createElement('input');
+        vocoderInput.type = 'range';
+        vocoderInput.min = '0';
+        vocoderInput.max = '1';
+        vocoderInput.step = '0.01';
+        vocoderInput.value = '1.0';
+        vocoderInput.id = 'vocoderSensitivity';
+        
+        const vocoderValue = document.createElement('div');
+        vocoderValue.className = 'value';
+        vocoderValue.textContent = '1.00';
+        
+        vocoderInput.addEventListener('input', () => {
+          vocoderValue.textContent = (Number(vocoderInput.value)).toFixed(2);
+        });
+        
+        vocoderInput.addEventListener('change', () => {
+          if (typeof window['SPVFUI'] === 'function') {
+            window['SPVFUI'](13, Number(vocoderInput.value)); // paramIdx=13 for kVocoderSensitivity
+          }
+        });
+        
+        vocoderRow.appendChild(vocoderInput);
+        vocoderRow.appendChild(vocoderValue);
+        container.appendChild(vocoderRow);
+      }
+      
+      // Other modes (3, 4, 5) - no additional controls
+      
+      // Only resize when morph controls are added/removed
+      if (mode === 1 || mode === 2) {
+        setTimeout(resizeWindowToFit, 100);
+      }
+    }
+
     if (chunkSizeInput) {
       chunkSizeInput.addEventListener('change', onChunkChange);
     }
@@ -711,6 +910,10 @@
 
     if (algorithmSelect) {
       algorithmSelect.addEventListener('change', onAlgorithmChange);
+    }
+
+    if (morphModeSelect) {
+      morphModeSelect.addEventListener('change', onMorphModeChange);
     }
 
     // Enable Overlap-Add checkbox
@@ -756,42 +959,48 @@
       }
     }
 
+    let resizeTimeout = null;
+    let lastContentHeight = 0;
+    
     function resizeWindowToFit() {
-      // Use requestAnimationFrame to ensure DOM has settled and measurements are accurate
-      requestAnimationFrame(() => {
-        const body = document.body;
+      // Debounce resize calls to prevent excessive resizing
+      if (resizeTimeout) {
+        clearTimeout(resizeTimeout);
+      }
+      
+      resizeTimeout = setTimeout(() => {
+        // Use requestAnimationFrame to ensure DOM has settled and measurements are accurate
+        requestAnimationFrame(() => {
+          const body = document.body;
+          
+          // Calculate content height more reliably
+          let contentHeight = Math.max(
+            body.scrollHeight,
+            body.offsetHeight,
+            document.documentElement.scrollHeight
+          );
+          
+          // Add small margin for safety
+          contentHeight = Math.ceil(contentHeight) + 10;
+          
+          // Only resize if the content height has actually changed significantly
+          if (Math.abs(contentHeight - lastContentHeight) > 20) {
+            lastContentHeight = contentHeight;
+            
+            // Get current width (preserve it)
+            const currentWidth = window.innerWidth || 1024;
 
-        // Find all top-level children of body and calculate the bottommost point
-        let maxBottom = 0;
-        const children = body.children;
-        for (let i = 0; i < children.length; i++) {
-          const child = children[i];
-          // Skip hidden elements and the global overlay
-          if (child.style.display === 'none' || child.classList.contains('global')) {
-            continue;
+            // Send resize message to C++ - use measured content height
+            const obj = { width: currentWidth, height: contentHeight };
+            const enc = new TextEncoder();
+            const bytes = enc.encode(JSON.stringify(obj));
+            const b64 = uint8ToBase64(bytes);
+            if (typeof window['SAMFUI'] === 'function') {
+              window['SAMFUI'](108, -1, b64);
+            }
           }
-          const rect = child.getBoundingClientRect();
-          const bottom = rect.bottom;
-          if (bottom > maxBottom) {
-            maxBottom = bottom;
-          }
-        }
-
-        // Add a small margin for safety (accounts for any body padding)
-        const contentHeight = Math.ceil(maxBottom) + 10;
-
-        // Get current width (preserve it)
-        const currentWidth = window.innerWidth || 1024;
-
-        // Send resize message to C++ - use measured content height
-        const obj = { width: currentWidth, height: contentHeight };
-        const enc = new TextEncoder();
-        const bytes = enc.encode(JSON.stringify(obj));
-        const b64 = uint8ToBase64(bytes);
-        if (typeof window['SAMFUI'] === 'function') {
-          window['SAMFUI'](108, -1, b64);
-        }
-      });
+        });
+      }, 150); // Increased debounce time
     }
 
     function renderTransformerParams(params) {
@@ -873,9 +1082,10 @@
         container.appendChild(row);
       });
 
-      // After rendering params, resize window to fit
-      // requestAnimationFrame inside resizeWindowToFit ensures DOM has updated
-      resizeWindowToFit();
+      // Only resize if we actually added transformer parameters
+      if (params.length > 0) {
+        setTimeout(resizeWindowToFit, 100);
+      }
     }
 
     // Brain drop handling
@@ -960,6 +1170,11 @@
     if (resetBtn) resetBtn.addEventListener('click', () => { if (typeof window['SAMFUI'] === 'function') window['SAMFUI'](106, -1); });
     const detachBtn = document.getElementById('detach-brain-btn');
     if (detachBtn) detachBtn.addEventListener('click', () => { if (typeof window['SAMFUI'] === 'function') window['SAMFUI'](107, -1); });
+
+    // Initial resize to fit content
+    window.addEventListener('load', () => {
+      setTimeout(resizeWindowToFit, 100);
+    });
 </script>
 </body>
 </html>
