@@ -67,7 +67,7 @@ public:
   }
 
   // Main processing function - applies morphing to input audio
-  void Process(AudioChunk& a, AudioChunk& b, synaptic::FFTProcessor& fft)
+  void Process(AudioChunk& a, AudioChunk& b, FFTProcessor& fft)
   {
     switch (mType)
     {
@@ -89,8 +89,6 @@ public:
       ProcessSpectralMasking(a.complexSpectrum, b.complexSpectrum);
       break;
     }
-
-    //fft.ComputeChunkIFFT(b);
   }
 
   // Accessor methods
@@ -209,7 +207,7 @@ private:
         const float ma = sqrtf(aptr[i] * aptr[i] + aptr[i + 1] * aptr[i + 1]);
         const float mb = sqrtf(bptr[i] * bptr[i] + bptr[i + 1] * bptr[i + 1]);
 
-        const float m = magAmt * ma + oneMinusMagAmt * mb;
+        const float m = expf(oneMinusMagAmt * logf(ma) + magAmt * logf(mb));
 
         const float inv_ma = ma > 1e-12f ? 1.0f / ma : 0.0f;
         const float inv_mb = mb > 1e-12f ? 1.0f / mb : 0.0f;
@@ -219,8 +217,8 @@ private:
         const float ub_r = bptr[i    ] * inv_mb;
         const float ub_i = bptr[i + 1] * inv_mb;
 
-        float u_r = phaseAmt * ua_r + oneMinusPhaseAmt * ub_r;
-        float u_i = phaseAmt * ua_i + oneMinusPhaseAmt * ub_i;
+        float u_r = oneMinusPhaseAmt * ua_r + phaseAmt * ub_r;
+        float u_i = oneMinusPhaseAmt * ua_i + phaseAmt * ub_i;
 
         const float norm = 1.0/sqrtf(u_r * u_r + u_i * u_i + 1e-20f);
         u_r *= norm;
