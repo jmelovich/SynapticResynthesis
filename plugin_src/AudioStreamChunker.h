@@ -435,23 +435,16 @@ namespace synaptic
             // Ensure spectral processing before windowing/OLA
             // This function is where morph is applied
             SpectralProcessing(idx);
-            // Compute AGC first (uses original output chunk RMS)
+            // Compute AGC first (uses spectral-aware or RMS-aware calculation)
             const float agc = ComputeAGC(idx, agcEnabled);
-            // Keep window size in sync only for non-spectral path; for spectral path we skip synthesis windowing
+            // Maintain output window only for non-spectral path
+            const std::vector<float>* coeffsPtr = nullptr;
             if (!spectralActive)
             {
               if (mOutputWindow.Size() != e.outputChunk.numFrames)
                 mOutputWindow.Set(mOutputWindow.GetType(), e.outputChunk.numFrames);
+              coeffsPtr = &mOutputWindow.Coeffs();
             }
-
-            // Ensure output window type matches analysis when spectral is active (for consistency), though we won't use its coeffs
-            if (spectralActive)
-            {
-              if (mOutputWindow.GetType() != mInputAnalysisWindow.GetType() || mOutputWindow.Size() != e.outputChunk.numFrames)
-                mOutputWindow.Set(mInputAnalysisWindow.GetType(), e.outputChunk.numFrames);
-            }
-
-            const auto& coeffs = mOutputWindow.Coeffs();
             const int frames = e.outputChunk.numFrames;
             const int addPos = (mOutputOverlapValidSamples >= hopSize) ? (mOutputOverlapValidSamples - hopSize) : 0;
             const int requiredSize = addPos + frames;
@@ -471,7 +464,12 @@ namespace synaptic
                 {
                   if (addPos + i < (int)mOutputOverlapBuffer[ch].size())
                   {
-                    const float w = (!spectralActive && i < (int)coeffs.size()) ? coeffs[i] : 1.0f;
+                    float w = 1.0f;
+                    if (!spectralActive && coeffsPtr)
+                    {
+                      const auto& coeffs = *coeffsPtr;
+                      if (i < (int) coeffs.size()) w = coeffs[i];
+                    }
                     mOutputOverlapBuffer[ch][addPos + i] += e.outputChunk.channelSamples[ch][i] * w * agc;
                   }
                 }
