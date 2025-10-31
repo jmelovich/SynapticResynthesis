@@ -75,13 +75,14 @@ namespace synaptic
 
     // Morph mode parameters
     mParamIdxMorphMode = ::kMorphMode;
-    plugin->GetParam(mParamIdxMorphMode)->InitEnum("Morph Mode", 0, 6, "");
+    plugin->GetParam(mParamIdxMorphMode)->InitEnum("Morph Mode", 0, 7, "");
     plugin->GetParam(mParamIdxMorphMode)->SetDisplayText(0, "None");
     plugin->GetParam(mParamIdxMorphMode)->SetDisplayText(1, "Cross Synthesis");
     plugin->GetParam(mParamIdxMorphMode)->SetDisplayText(2, "Spectral Vocoder");
     plugin->GetParam(mParamIdxMorphMode)->SetDisplayText(3, "Cepstral Morph");
     plugin->GetParam(mParamIdxMorphMode)->SetDisplayText(4, "Harmonic Morph");
-    plugin->GetParam(mParamIdxMorphMode)->SetDisplayText(5, "Spectral Masking");
+    plugin->GetParam(mParamIdxMorphMode)->SetDisplayText(5, "Wave Morph");
+    plugin->GetParam(mParamIdxMorphMode)->SetDisplayText(6, "Spectral Masking");
 
     mParamIdxMorphAmount = ::kMorphAmount;
     plugin->GetParam(mParamIdxMorphAmount)->InitDouble("Morph Amount", 1.0, 0.0, 1.0, 0.01);

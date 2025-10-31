@@ -383,6 +383,7 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
   {
     auto params = mChunker.GetMorph().GetParameters();
     params.morphAmount = GetParam(paramIdx)->Value();
+    DBGMSG("Morph Amount: %f\n", params.morphAmount);
     mChunker.GetMorph().SetParameters(params);
   }
   else if (paramIdx == mParamManager.GetPhaseMorphAmountParamIdx())
