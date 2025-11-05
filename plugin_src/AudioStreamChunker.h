@@ -148,7 +148,11 @@ namespace synaptic
       mInputAnalysisWindow.Set(mInputAnalysisWindow.GetType(), mChunkSize);
 
       // Recompute spectral OLA rescale based on analysis window and current chunk size
-      mSpectralOLARescale = ComputeSpectralOLARescale(mInputAnalysisWindow, mChunkSize);
+      {
+        const float ovl = mInputAnalysisWindow.GetOverlap();
+        const int hop = std::max(1, (int) std::lround(mChunkSize * (1.0 - ovl)));
+        mSpectralOLARescale = ComputeSpectralOLARescale(mInputAnalysisWindow, mChunkSize, hop);
+      }
     }
 
     void SetChunkSize(int chunkSize)
@@ -193,7 +197,9 @@ namespace synaptic
       {
         mInputAnalysisWindow = w;
         // Update spectral rescale when analysis window changes
-        mSpectralOLARescale = ComputeSpectralOLARescale(mInputAnalysisWindow, mChunkSize);
+        const float ovl = mInputAnalysisWindow.GetOverlap();
+        const int hop = std::max(1, (int) std::lround(mChunkSize * (1.0 - ovl)));
+        mSpectralOLARescale = ComputeSpectralOLARescale(mInputAnalysisWindow, mChunkSize, hop);
       }
     }
 
@@ -247,9 +253,12 @@ namespace synaptic
         const bool overlapActive = mEnableOverlap && (spectralActive
           ? (mInputAnalysisWindow.GetOverlap() > 0.0f)
           : (mOutputWindow.GetOverlap() > 0.0f));
-        const int inputHopSize = overlapActive
-          ? mChunkSize / 2  // 50% hop when overlap-add is enabled
-          : mChunkSize;     // 100% hop when overlap-add is disabled or rectangular window
+        int inputHopSize = mChunkSize;
+        if (overlapActive)
+        {
+          const float ovl = mInputAnalysisWindow.GetOverlap();
+          inputHopSize = std::max(1, (int) std::lround(mChunkSize * (1.0 - ovl)));
+        }
         while (mAccumulatedFrames >= mChunkSize)
         {
           int poolIdx;
@@ -418,9 +427,9 @@ namespace synaptic
 
       if (useOverlapAdd)
       {
-        // Use consistent hop size for all windows to maintain timing
-        // Mathematical overlap properties are handled by coefficients and scaling only
-        const int hopSize = mChunkSize / 2;  // Consistent 50% hop for all windows
+        // Derive hop size from analysis window overlap (spectral) or output window overlap (non-spectral)
+        const float ovl = spectralActive ? mInputAnalysisWindow.GetOverlap() : mOutputWindow.GetOverlap();
+        const int hopSize = std::max(1, (int) std::lround(mChunkSize * (1.0 - ovl)));
         const float rescale = spectralActive ? mSpectralOLARescale : mOutputWindow.GetOverlapRescale();
 
         // First, process any queued chunks and overlap-add them to our buffer
@@ -435,8 +444,6 @@ namespace synaptic
             // Ensure spectral processing before windowing/OLA
             // This function is where morph is applied
             SpectralProcessing(idx);
-            for (int ch = 0; ch < mNumChannels; ++ch)
-              mOutputWindow.Polish(e.outputChunk.channelSamples[ch].data());
             // Compute AGC first (uses spectral-aware or RMS-aware calculation)
             const float agc = ComputeAGC(idx, agcEnabled);
             // Maintain output window only for non-spectral path
@@ -448,7 +455,10 @@ namespace synaptic
               coeffsPtr = &mOutputWindow.Coeffs();
             }
             const int frames = e.outputChunk.numFrames;
-            const int addPos = (mOutputOverlapValidSamples >= hopSize) ? (mOutputOverlapValidSamples - hopSize) : 0;
+            // Generalized OLA positioning: after adding a frame, the number of newly stable samples is hopSize
+            // Therefore, add position should be currentValid - (N - hop)
+            const int settledStride = std::max(0, mChunkSize - hopSize);
+            const int addPos = (mOutputOverlapValidSamples >= settledStride) ? (mOutputOverlapValidSamples - settledStride) : 0;
             const int requiredSize = addPos + frames;
 
             if ((int) mOutputOverlapBuffer[0].size() < requiredSize)
@@ -685,28 +695,40 @@ namespace synaptic
 
       // Synthesize back to time domain for rendering
       mFFT.ComputeChunkIFFT(e.outputChunk);
+
+      // 'Polish' the output chunk to avoid artifacts at the edges of the window
+      // This tapers the edges of the window to 0, to avoid clicking after OLA resynthesis.
+      for (int ch = 0; ch < mNumChannels; ++ch)
+        mOutputWindow.Polish(e.outputChunk.channelSamples[ch].data());
     }
 
   private:
-    // Approximate constant rescale for analysis-windowed OLA with hop = N/2
-    static float ComputeSpectralOLARescale(const synaptic::Window& w, int N)
+    // Approximate constant rescale for analysis-windowed OLA with arbitrary hop
+    static float ComputeSpectralOLARescale(const synaptic::Window& w, int N, int H)
     {
       const auto& a = w.Coeffs();
       if (a.empty() || N <= 0) return 1.0f;
-      const int H = N / 2;
+      const int hop = (H <= 0) ? N : H;
       double sum = 0.0;
       int count = 0;
       for (int n = 0; n < N; ++n)
       {
         double s = 0.0;
-        if (n < (int)a.size()) s += a[n];
-        const int n2 = n - H;
-        if (n2 >= 0 && n2 < (int)a.size()) s += a[n2];
+        // Sum contributions from all overlapping frames at multiples of hop
+        // j ranges over integers such that 0 <= n - j*hop < N
+        // Compute jmin and jmax and iterate
+        int jmin = (int) std::floor((n - (N - 1)) / (double) hop);
+        int jmax = (int) std::floor(n / (double) hop);
+        for (int j = jmin; j <= jmax; ++j)
+        {
+          const int idx = n - j * hop;
+          if (idx >= 0 && idx < (int) a.size()) s += a[idx];
+        }
         sum += s;
         ++count;
       }
-      const double mean = (count > 0) ? (sum / (double)count) : 1.0;
-      return (mean > 1e-9) ? (float)(1.0 / mean) : 1.0f;
+      const double mean = (count > 0) ? (sum / (double) count) : 1.0;
+      return (mean > 1e-9) ? (float) (1.0 / mean) : 1.0f;
     }
 
     void EnsureChunkSpectrum(AudioChunk& chunk)
@@ -763,10 +785,11 @@ namespace synaptic
       // Make AGC OLA-aware: predict gain introduced after AGC by OLA and final rescale
       if (overlapActive)
       {
-        // For spectral path we do not apply a synthesis window when writing into the OLA buffer,
-        // so with 50% hop two frames sum uniformly in steady state -> ~2x gain before final rescale.
-        const float olaGainBeforeRescale = spectralActive ? 2.0f : 1.0f;
+        // Predict OLA gain and combine with final rescale
         const float finalRescale = spectralActive ? mSpectralOLARescale : mOutputWindow.GetOverlapRescale();
+        const float olaGainBeforeRescale = spectralActive
+          ? ((finalRescale > 1e-9f) ? (1.0f / finalRescale) : 1.0f)
+          : 1.0f;
         denom *= (double) (olaGainBeforeRescale * finalRescale);
       }
 
