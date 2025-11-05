@@ -435,6 +435,8 @@ namespace synaptic
             // Ensure spectral processing before windowing/OLA
             // This function is where morph is applied
             SpectralProcessing(idx);
+            for (int ch = 0; ch < mNumChannels; ++ch)
+              mOutputWindow.Polish(e.outputChunk.channelSamples[ch].data());
             // Compute AGC first (uses spectral-aware or RMS-aware calculation)
             const float agc = ComputeAGC(idx, agcEnabled);
             // Maintain output window only for non-spectral path
