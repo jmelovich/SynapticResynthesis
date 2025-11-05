@@ -35,7 +35,7 @@ public:
 
     // set each value in polish to an upside down parabola going from zero to 1
     for (int i = 0; i < polish.size(); ++i)
-      polish[i] = 1.0f - (i / (float)polish.size()) * (i / (float)polish.size());
+      polish[i] = 1.0f - (i / (float)polish.size() - 1) * (i / (float)polish.size() - 1);
 
     switch (type)
     {
