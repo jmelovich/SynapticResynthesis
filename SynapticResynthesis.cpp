@@ -102,7 +102,7 @@ mEditorInitFunc = [this]() {
   mParamManager.InitializeCoreParameters(this, mDSPConfig);
   mParamManager.InitializeTransformerParameters(this);
 
-  
+
   // Initialize morph with default settings (using chunker's morph instance)
   mChunker.GetMorph().Configure(synaptic::Morph::Type::None, mDSPConfig.chunkSize);
 }
@@ -190,7 +190,7 @@ void SynapticResynthesis::ProcessBlock(sample** inputs, sample** outputs, int nF
   for (int s = 0; s < nFrames; s++)
   {
     const double smoothedInGain = mInGainSmoother.Process(inGain);
-    for (int ch = 0; ch < outChans; ch++)
+    for (int ch = 0; ch < inChans; ch++)
     {
       inputs[ch][s] *= smoothedInGain;
     }

@@ -256,7 +256,7 @@ namespace synaptic
         int inputHopSize = mChunkSize;
         if (overlapActive)
         {
-          const float ovl = mInputAnalysisWindow.GetOverlap();
+          const float ovl = spectralActive ? mInputAnalysisWindow.GetOverlap() : mOutputWindow.GetOverlap();
           inputHopSize = std::max(1, (int) std::lround(mChunkSize * (1.0 - ovl)));
         }
         while (mAccumulatedFrames >= mChunkSize)
