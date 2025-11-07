@@ -4,6 +4,8 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+#include <utility>
+
 namespace synaptic
 {
 
@@ -20,6 +22,7 @@ public:
     SpectralVocoder, // Apply input spectral envelope onto output
     CepstralMorph,   // Morph between cepstra
     HarmonicMorph,   // Morph between harmonic structures
+    WaveMorph,
     SpectralMasking, // Apply spectral masking effects
 
     // Proposed: (btw i have no idea what most of these mean theyre just what chatgpt recommended we check out)
@@ -37,12 +40,31 @@ public:
     // Spectral Entropy Morph (low entropy bins emphasize one, high entropy bins emphasize another, morph adapts to signal character)
   };
 
+  enum HarmonicMorphType
+  {
+    SimpleSynthesis,
+    PseudoInverseSynthesis
+  };
+
+  enum WaveMorphShape
+  {
+    Square,
+    Saw,
+    Triangle,
+    Wavetable,
+  };
+
   // Morphing parameters structure
   struct Parameters
   {
     float morphAmount = 1.0f;        // 0.0 = a only, 1.0 = b only
     float phaseMorphAmount = 1.0f;   // 0.0 = a only, 1.0 = b only
     float vocoderSensitivity = 1.0f; // 0.0 = broad envelope, 1.0 = precise envelope
+    WaveMorphShape waveShape = Square;
+    double waveMorphStart = 0.03;
+    int waveHarmonics = 20;
+    //int harmonics = 10;
+    //HarmonicMorphType harmonicSynthMode = SimpleSynthesis;
   };
 
   Morph() = default;
@@ -61,13 +83,15 @@ public:
         break;
       case (CrossSynthesis):
         break;
+      case (HarmonicMorph):
+        break;
       }
     }
     mFFTSize = fftSize;
   }
 
   // Main processing function - applies morphing to input audio
-  void Process(AudioChunk& a, AudioChunk& b, synaptic::FFTProcessor& fft)
+  void Process(AudioChunk& a, AudioChunk& b, FFTProcessor& fft)
   {
     switch (mType)
     {
@@ -85,12 +109,13 @@ public:
     case Type::HarmonicMorph:
       ProcessHarmonicMorph(a.complexSpectrum, b.complexSpectrum);
       break;
+    case Type::WaveMorph:
+      ProcessWaveMorph(a.complexSpectrum, b.complexSpectrum);
+      break;
     case Type::SpectralMasking:
       ProcessSpectralMasking(a.complexSpectrum, b.complexSpectrum);
       break;
     }
-
-    //fft.ComputeChunkIFFT(b);
   }
 
   // Accessor methods
@@ -116,6 +141,8 @@ public:
       return "Cepstral Morph";
     case Type::HarmonicMorph:
       return "Harmonic Morph";
+    case Type::WaveMorph:
+      return "Wave Morph";
     case Type::SpectralMasking:
       return "Spectral Masking";
     default:
@@ -140,6 +167,8 @@ public:
     case 4:
       return Type::HarmonicMorph;
     case 5:
+      return Type::WaveMorph;
+    case 6:
       return Type::SpectralMasking;
     default:
       return Type::None;
@@ -161,8 +190,10 @@ public:
       return 3;
     case Type::HarmonicMorph:
       return 4;
-    case Type::SpectralMasking:
+    case Type::WaveMorph:
       return 5;
+    case Type::SpectralMasking:
+      return 6;
     default:
       return 0;
     }
@@ -188,7 +219,7 @@ private:
   //  }
   //}
 
-  void ProcessCrossSynthesis(const Chunk& a, Chunk& b) {
+  void ProcessCrossSynthesis(Chunk& a, Chunk& b) {
     const int numChannels = std::min(a.size(), b.size());
 
     const float magAmt = mParams.morphAmount;
@@ -209,7 +240,7 @@ private:
         const float ma = sqrtf(aptr[i] * aptr[i] + aptr[i + 1] * aptr[i + 1]);
         const float mb = sqrtf(bptr[i] * bptr[i] + bptr[i + 1] * bptr[i + 1]);
 
-        const float m = magAmt * ma + oneMinusMagAmt * mb;
+        const float m = expf(oneMinusMagAmt * logf(ma) + magAmt * logf(mb));
 
         const float inv_ma = ma > 1e-12f ? 1.0f / ma : 0.0f;
         const float inv_mb = mb > 1e-12f ? 1.0f / mb : 0.0f;
@@ -219,8 +250,8 @@ private:
         const float ub_r = bptr[i    ] * inv_mb;
         const float ub_i = bptr[i + 1] * inv_mb;
 
-        float u_r = phaseAmt * ua_r + oneMinusPhaseAmt * ub_r;
-        float u_i = phaseAmt * ua_i + oneMinusPhaseAmt * ub_i;
+        float u_r = oneMinusPhaseAmt * ua_r + phaseAmt * ub_r;
+        float u_i = oneMinusPhaseAmt * ua_i + phaseAmt * ub_i;
 
         const float norm = 1.0/sqrtf(u_r * u_r + u_i * u_i + 1e-20f);
         u_r *= norm;
@@ -231,10 +262,66 @@ private:
       }
     }
   }
-  void ProcessSpectralVocoder(const Chunk& a, Chunk& b) {}
-  void ProcessCepstralMorph(const Chunk& a, Chunk& b) {}
-  void ProcessHarmonicMorph(const Chunk& a, Chunk& b) {}
-  void ProcessSpectralMasking(const Chunk& a, Chunk& b) {}
+  void ProcessSpectralVocoder(Chunk& a, Chunk& b) {}
+  void ProcessCepstralMorph(Chunk& a, Chunk& b) {}
+  void ProcessHarmonicMorph(Chunk& a, Chunk& b) {}
+  void ProcessWaveMorph(Chunk& a, Chunk& b)
+  {
+    const int numChannels = std::min(a.size(), b.size());
+
+    std::pair<double, double> partial = {0, 0};
+
+    double start = mParams.waveMorphStart;
+    double nHarmonics = mParams.waveHarmonics;
+
+    int minHarmonic = std::floor(std::max(mFFTSize * start / 2, 1.0));
+
+    for (int c = 0; c < numChannels; c++)
+    {
+      float* __restrict aptr = a[c].data();
+      float* __restrict bptr = b[c].data();
+
+      for (int i = minHarmonic; i < mFFTSize / 2; i++)
+      {
+        for (int k = 2; k < nHarmonics; k++)
+        {
+          int currHarm = 2 * i * k;
+          if (currHarm >= mFFTSize)
+            break;
+
+          partial = SquareNthHarmonic(aptr[2 * i], aptr[2 * i + 1], k);
+          aptr[currHarm]     -= partial.first;
+          aptr[currHarm + 1] -= partial.second;
+
+          partial = SquareNthHarmonic(bptr[2 * i], bptr[2 * i + 1], k);
+          bptr[currHarm]     -= partial.first;
+          bptr[currHarm + 1] -= partial.second;
+        }
+      }
+    }
+
+    ProcessCrossSynthesis(a, b);
+
+    for (int c = 0; c < numChannels; c++)
+    {
+      float* __restrict bptr = b[c].data();
+
+      for (int i = mFFTSize / 2 - 1; i >= minHarmonic; i--)
+      {
+        for (int k = 2; k < nHarmonics; k++)
+        {
+          int currHarm = 2 * i * k;
+          if (currHarm >= mFFTSize)
+            break;
+
+          partial = SquareNthHarmonic(bptr[2 * i], bptr[2 * i + 1], k);
+          bptr[currHarm] += partial.first;
+          bptr[currHarm + 1] += partial.second;
+        }
+      }
+    }
+  }
+  void ProcessSpectralMasking(Chunk& a, Chunk& b) {}
 
   // Member variables
   Type mType = Type::CrossSynthesis;
@@ -242,5 +329,40 @@ private:
   Parameters mParams;
 
   std::map<std::string, Chunk> morphScratch;
+
+  // helper functions
+
+  inline std::pair<double, double> SquareNthHarmonic(double r, double i, int n) {
+    if (n % 2 == 0)
+      return {0.0, 0.0};
+
+    double amplitude = 1.0 / n;
+
+    return {r * amplitude, i * amplitude};
+  }
+
+  // Triangle wave nth harmonic
+  inline std::pair<double, double> TriangleNthHarmonic(double r, double i, int n) {
+    if (n % 2 == 0)
+      return {0.0, 0.0}; // even harmonics are zero
+
+    double rescale = 8.0 / (M_PI * M_PI);
+    int k = (n - 1) / 2;                     // 0,1,2,...
+    double sign = (k % 2 == 0) ? 1.0 : -1.0; // (-1)^{k} == (-1)^{(n-1)/2}
+    double factor = sign * rescale / (double)(n * n);  // 1/n^2 with alternating sign
+
+    return {r * factor, i * factor};
+  }
+
+  // Sawtooth wave nth harmonic
+  inline std::pair<double, double> SawtoothNthHarmonic(double r, double i, int n)
+  {
+    double rescale = 2.0 / M_PI;
+    double sign = ((n + 1) % 2 == 0) ? 1.0 : -1.0;
+    double factor = sign * rescale / static_cast<double>(n);
+
+    return {r * factor, i * factor};
+  }
 };
+
 } // namespace synaptic

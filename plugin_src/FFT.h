@@ -34,6 +34,41 @@ namespace synaptic
       }
     }
 
+    // Compute spectral energy from ordered real spectrum (unique bins).
+    // Uses DC^2 + Nyquist^2 + 2 * sum_{k=1..N/2-1} (Re^2 + Im^2)
+    static double SpectrumEnergyOrdered(const float* ordered, int Nfft)
+    {
+      if (!ordered || Nfft <= 0) return 0.0;
+      double energy = 0.0;
+      // DC and Nyquist (if present)
+      energy += (double) ordered[0] * (double) ordered[0];
+      if (Nfft >= 2)
+        energy += (double) ordered[1] * (double) ordered[1];
+      // Interior bins
+      for (int k = 1; k < Nfft/2; ++k)
+      {
+        const float re = ordered[2*k + 0];
+        const float im = ordered[2*k + 1];
+        energy += 2.0 * ((double) re * (double) re + (double) im * (double) im);
+      }
+      return energy;
+    }
+
+    // Compute total spectral energy across channels for a chunk (expects spectrum present)
+    static double ComputeChunkSpectralEnergy(const AudioChunk& chunk)
+    {
+      const int chans = (int) chunk.complexSpectrum.size();
+      if (chans <= 0 || chunk.fftSize <= 0) return 0.0;
+      double total = 0.0;
+      for (int ch = 0; ch < chans; ++ch)
+      {
+        const float* spec = chunk.complexSpectrum[ch].empty() ? nullptr : chunk.complexSpectrum[ch].data();
+        if (!spec) continue;
+        total += SpectrumEnergyOrdered(spec, chunk.fftSize);
+      }
+      return total;
+    }
+
     static int NextValidFFTSize(int minN)
     {
       return Window::NextValidFFTSize(minN);
