@@ -7,7 +7,7 @@ namespace synaptic
   class SpectralVocoderMorph final : public IMorph
   {
   public:
-    void OnReset(double /*sampleRate*/, int fftSize, int /*numChannels*/) override { mFFTSize = fftSize; }
+    void OnReset(double /*sampleRate*/, int /*fftSize*/, int /*numChannels*/) override {}
 
     void Process(AudioChunk& /*a*/, AudioChunk& /*b*/, FFTProcessor& /*fft*/) override {}
 
@@ -36,7 +36,6 @@ namespace synaptic
     }
 
   private:
-    int mFFTSize = 0;
     double mSensitivity = 1.0;
   };
 }

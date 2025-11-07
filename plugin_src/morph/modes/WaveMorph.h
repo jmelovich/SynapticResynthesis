@@ -16,11 +16,11 @@ namespace synaptic
       Triangle,
     };
 
-    void OnReset(double /*sampleRate*/, int fftSize, int /*numChannels*/) override { mFFTSize = fftSize; }
+    void OnReset(double /*sampleRate*/, int /*fftSize*/, int /*numChannels*/) override {}
 
     void Process(AudioChunk& a, AudioChunk& b, FFTProcessor& /*fft*/) override
     {
-      const int fftSize = (b.fftSize > 0) ? b.fftSize : mFFTSize;
+      const int fftSize = b.fftSize;
       if (fftSize <= 0) return;
 
       const int numChannels = (int) std::min(a.complexSpectrum.size(), b.complexSpectrum.size());
@@ -32,7 +32,6 @@ namespace synaptic
 
       for (int c = 0; c < numChannels; c++)
       {
-        if ((int)a.complexSpectrum[c].size() < fftSize || (int)b.complexSpectrum[c].size() < fftSize) continue;
         float* __restrict aptr = a.complexSpectrum[c].data();
         float* __restrict bptr = b.complexSpectrum[c].data();
 
@@ -60,7 +59,6 @@ namespace synaptic
 
       for (int c = 0; c < numChannels; c++)
       {
-        if ((int)b.complexSpectrum[c].size() < fftSize) continue;
         float* __restrict bptr = b.complexSpectrum[c].data();
 
         for (int i = fftSize / 2 - 1; i >= minHarmonic; i--)
@@ -179,7 +177,6 @@ namespace synaptic
       return {0.0, 0.0};
     }
 
-    int mFFTSize = 0;
     WaveMorphShape mWaveShape = Square;
     double mWaveMorphStart = 0.03;
     int mWaveHarmonics = 20;

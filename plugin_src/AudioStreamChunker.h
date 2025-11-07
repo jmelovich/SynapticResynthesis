@@ -675,7 +675,8 @@ namespace synaptic
       const bool spectralActive = (mMorph && mMorph->IsActive());
       if (!spectralActive) return;
 
-      // If transformer didn't provide spectrum, build it from current samples
+      // Ensure both input and output spectra are consistent with current FFT settings
+      EnsureChunkSpectrum(e.inputChunk);
       EnsureChunkSpectrum(e.outputChunk);
 
       // Apply morph implementation on spectra

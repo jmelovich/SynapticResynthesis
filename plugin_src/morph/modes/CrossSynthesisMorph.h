@@ -8,14 +8,12 @@ namespace synaptic
   class CrossSynthesisMorph final : public IMorph
   {
   public:
-    void OnReset(double /*sampleRate*/, int fftSize, int /*numChannels*/) override { mFFTSize = fftSize; }
+    void OnReset(double /*sampleRate*/, int /*fftSize*/, int /*numChannels*/) override {}
 
     void Process(AudioChunk& a, AudioChunk& b, FFTProcessor& /*fft*/) override
     {
-      const int fftSize = (b.fftSize > 0) ? b.fftSize : mFFTSize;
-      if (fftSize <= 0) return;
-      if ((int)a.complexSpectrum.size() == 0 || (int)b.complexSpectrum.size() == 0) return;
-      CrossSynthesisApply(a.complexSpectrum, b.complexSpectrum, fftSize,
+      if (b.fftSize <= 0) return;
+      CrossSynthesisApply(a.complexSpectrum, b.complexSpectrum, b.fftSize,
                           (float) mMorphAmount, (float) mPhaseMorphAmount);
     }
 
@@ -54,7 +52,6 @@ namespace synaptic
     }
 
   private:
-    int mFFTSize = 0;
     double mMorphAmount = 1.0;
     double mPhaseMorphAmount = 1.0;
   };
