@@ -33,10 +33,10 @@ namespace synaptic
     {
       // Static list defined here; edit to add/remove/disable entries.
       static const std::vector<TransformerInfo> kAll = {
-        { "passthrough", "Passthrough", []{ return std::make_unique<PassthroughTransformer>(); }, true },
-        { "sinematch", "Simple Sine Match", []{ return std::make_unique<SineMatchTransformer>(); }, true },
-        { "samplebrain", "Simple SampleBrain", []{ return std::make_unique<SimpleSampleBrainTransformer>(); }, true },
-        { "expandedsamplebrain", "Expanded SampleBrain", []{ return std::make_unique<ExpandedSimpleSampleBrainTransformer>(); }, true },
+        { "passthrough", "Passthrough", []{ return std::make_shared<PassthroughTransformer>(); }, true },
+        { "sinematch", "Simple Sine Match", []{ return std::make_shared<SineMatchTransformer>(); }, true },
+        { "samplebrain", "Simple SampleBrain", []{ return std::make_shared<SimpleSampleBrainTransformer>(); }, true },
+        { "expandedsamplebrain", "Expanded SampleBrain", []{ return std::make_shared<ExpandedSimpleSampleBrainTransformer>(); }, true },
       };
       return kAll;
     }

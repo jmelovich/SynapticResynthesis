@@ -335,9 +335,6 @@
     <ClInclude Include="..\plugin_src\samplebrain\Brain.h">
       <Filter>plugin_src\samplebrain</Filter>
     </ClInclude>
-    <ClInclude Include="..\plugin_src\Morph.h">
-      <Filter>plugin_src</Filter>
-    </ClInclude>
     <ClInclude Include="..\plugin_src\transformers\ExpandedSimpleSampleBrainTransformer.h">
       <Filter>plugin_src\transformers</Filter>
     </ClInclude>

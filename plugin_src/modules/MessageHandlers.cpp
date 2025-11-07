@@ -14,6 +14,7 @@ bool SynapticResynthesis::HandleUiReadyMsg()
 {
   // UI is ready to receive state; resend current values to repopulate panels
   mUIBridge.SendTransformerParams(mTransformer);
+  mUIBridge.SendMorphParams(mMorph);
 
   SyncAndSendDSPConfig();
 
@@ -155,7 +156,7 @@ bool SynapticResynthesis::HandleSetAlgorithmMsg(int algorithmId)
 bool SynapticResynthesis::HandleTransformerSetParamMsg(const void* jsonData, int dataSize)
 {
   // jsonData is expected to be raw JSON bytes: {"id":"...","type":"number|boolean|string","value":...}
-  if (!jsonData || dataSize <= 0 || !mTransformer)
+  if (!jsonData || dataSize <= 0)
     return false;
 
   const char* bytes = reinterpret_cast<const char*>(jsonData);
@@ -170,22 +171,26 @@ bool SynapticResynthesis::HandleTransformerSetParamMsg(const void* jsonData, int
     if (type == "number" && j.contains("value"))
     {
       double v = j["value"].get<double>();
-      ok = mTransformer->SetParamFromNumber(id, v);
+      if (mTransformer) ok |= mTransformer->SetParamFromNumber(id, v);
+      if (mMorph) ok |= mMorph->SetParamFromNumber(id, v);
     }
     else if (type == "boolean" && j.contains("value"))
     {
       bool v = j["value"].get<bool>();
-      ok = mTransformer->SetParamFromBool(id, v);
+      if (mTransformer) ok |= mTransformer->SetParamFromBool(id, v);
+      if (mMorph) ok |= mMorph->SetParamFromBool(id, v);
     }
     else if (type == "text" || type == "string")
     {
       std::string v = j.value("value", std::string());
-      ok = mTransformer->SetParamFromString(id, v);
+      if (mTransformer) ok |= mTransformer->SetParamFromString(id, v);
+      if (mMorph) ok |= mMorph->SetParamFromString(id, v);
     }
     else if (type == "enum")
     {
       std::string v = j.value("value", std::string());
-      ok = mTransformer->SetParamFromString(id, v);
+      if (mTransformer) ok |= mTransformer->SetParamFromString(id, v);
+      if (mMorph) ok |= mMorph->SetParamFromString(id, v);
     }
 
     if (ok)
@@ -218,6 +223,7 @@ bool SynapticResynthesis::HandleTransformerSetParamMsg(const void* jsonData, int
         SetParameterFromUI(it->paramIdx, GetParam(it->paramIdx)->FromNormalized(normalized));
       }
       mUIBridge.SendTransformerParams(mTransformer);
+      mUIBridge.SendMorphParams(mMorph);
     }
     return ok;
   }

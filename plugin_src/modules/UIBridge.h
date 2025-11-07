@@ -13,6 +13,7 @@ namespace synaptic
 {
   class Brain;
   class IChunkBufferTransformer;
+  struct IMorph;
 }
 
 namespace synaptic
@@ -44,6 +45,12 @@ namespace synaptic
     void SendTransformerParams(std::shared_ptr<const IChunkBufferTransformer> transformer);
 
     /**
+     * @brief Send current morph parameter schema and values to UI
+     * Sends JSON with id="morphParams" containing parameter descriptions
+     */
+    void SendMorphParams(std::shared_ptr<const IMorph> morph);
+
+    /**
      * @brief Send DSP configuration to UI
      * Sends JSON with id="dspConfig" containing all DSP settings
      */
@@ -56,6 +63,11 @@ namespace synaptic
     void SendDSPConfigWithAlgorithms(const DSPConfig& config);
 
     /**
+     * @brief Send DSP config with transformer algorithms and morph modes and current morph index
+     */
+    void SendDSPConfigWithAlgorithms(const DSPConfig& config, int currentMorphIndex);
+
+    /**
      * @brief Send external brain reference info to UI
      * Sends JSON with id="brainExternalRef"
      */
@@ -65,8 +77,9 @@ namespace synaptic
      * @brief Send all state to UI (used on UI ready and state restore)
      */
     void SendAllState(const Brain& brain,
-                     std::shared_ptr<const IChunkBufferTransformer> transformer,
-                     const DSPConfig& config);
+                      std::shared_ptr<const IChunkBufferTransformer> transformer,
+                      std::shared_ptr<const IMorph> morph,
+                      const DSPConfig& config);
 
     // === Overlay Controls ===
 

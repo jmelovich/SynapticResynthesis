@@ -2,6 +2,9 @@
 #include "plugin_src/samplebrain/Brain.h"
 #include "plugin_src/ChunkBufferTransformer.h"
 #include "plugin_src/TransformerFactory.h"
+#include "plugin_src/morph/IMorph.h"
+#include "plugin_src/morph/MorphFactory.h"
+#include "plugin_src/params/DynamicParamSchema.h"
 
 namespace synaptic
 {
@@ -49,9 +52,7 @@ namespace synaptic
       return;
     }
 
-    // Get parameter descriptions from transformer
-    // Holding shared_ptr keeps transformer alive during this entire function
-    std::vector<IChunkBufferTransformer::ExposedParamDesc> descs;
+    std::vector<ExposedParamDesc> descs;
     transformer->GetParamDescs(descs);
 
     nlohmann::json arr = nlohmann::json::array();
@@ -64,38 +65,20 @@ namespace synaptic
       // Type
       switch (d.type)
       {
-        case IChunkBufferTransformer::ParamType::Number:
-          o["type"] = "number";
-          break;
-        case IChunkBufferTransformer::ParamType::Boolean:
-          o["type"] = "boolean";
-          break;
-        case IChunkBufferTransformer::ParamType::Enum:
-          o["type"] = "enum";
-          break;
-        case IChunkBufferTransformer::ParamType::Text:
-          o["type"] = "text";
-          break;
+        case ParamType::Number:  o["type"] = "number";  break;
+        case ParamType::Boolean: o["type"] = "boolean"; break;
+        case ParamType::Enum:    o["type"] = "enum";    break;
+        case ParamType::Text:    o["type"] = "text";    break;
       }
 
       // Control type
       switch (d.control)
       {
-        case IChunkBufferTransformer::ControlType::Slider:
-          o["control"] = "slider";
-          break;
-        case IChunkBufferTransformer::ControlType::NumberBox:
-          o["control"] = "numberbox";
-          break;
-        case IChunkBufferTransformer::ControlType::Select:
-          o["control"] = "select";
-          break;
-        case IChunkBufferTransformer::ControlType::Checkbox:
-          o["control"] = "checkbox";
-          break;
-        case IChunkBufferTransformer::ControlType::TextBox:
-          o["control"] = "textbox";
-          break;
+        case ControlType::Slider:    o["control"] = "slider";    break;
+        case ControlType::NumberBox: o["control"] = "numberbox"; break;
+        case ControlType::Select:    o["control"] = "select";    break;
+        case ControlType::Checkbox:  o["control"] = "checkbox";  break;
+        case ControlType::TextBox:   o["control"] = "textbox";   break;
       }
 
       // Numeric bounds
@@ -130,14 +113,90 @@ namespace synaptic
       else
       {
         // Fall back to defaults
-        if (d.type == IChunkBufferTransformer::ParamType::Number)
+        if (d.type == ParamType::Number)
           o["value"] = d.defaultNumber;
-        else if (d.type == IChunkBufferTransformer::ParamType::Boolean)
+        else if (d.type == ParamType::Boolean)
           o["value"] = d.defaultBool;
         else
           o["value"] = d.defaultString;
       }
 
+      arr.push_back(o);
+    }
+
+    j["params"] = arr;
+    SendJSON(j);
+  }
+
+  void UIBridge::SendMorphParams(std::shared_ptr<const IMorph> morph)
+  {
+    nlohmann::json j;
+    j["id"] = "morphParams";
+
+    if (!morph)
+    {
+      j["params"] = nlohmann::json::array();
+      SendJSON(j);
+      return;
+    }
+
+    std::vector<ExposedParamDesc> descs;
+    morph->GetParamDescs(descs);
+
+    nlohmann::json arr = nlohmann::json::array();
+    for (const auto& d : descs)
+    {
+      nlohmann::json o;
+      o["id"] = d.id;
+      o["label"] = d.label;
+      switch (d.type)
+      {
+        case ParamType::Number:  o["type"] = "number";  break;
+        case ParamType::Boolean: o["type"] = "boolean"; break;
+        case ParamType::Enum:    o["type"] = "enum";    break;
+        case ParamType::Text:    o["type"] = "text";    break;
+      }
+      switch (d.control)
+      {
+        case ControlType::Slider:    o["control"] = "slider";    break;
+        case ControlType::NumberBox: o["control"] = "numberbox"; break;
+        case ControlType::Select:    o["control"] = "select";    break;
+        case ControlType::Checkbox:  o["control"] = "checkbox";  break;
+        case ControlType::TextBox:   o["control"] = "textbox";   break;
+      }
+      o["min"] = d.minValue;
+      o["max"] = d.maxValue;
+      o["step"] = d.step;
+      if (!d.options.empty())
+      {
+        nlohmann::json opts = nlohmann::json::array();
+        for (const auto& opt : d.options)
+        {
+          nlohmann::json jo;
+          jo["value"] = opt.value;
+          jo["label"] = opt.label;
+          opts.push_back(jo);
+        }
+        o["options"] = opts;
+      }
+      double num;
+      bool b;
+      std::string str;
+      if (morph->GetParamAsNumber(d.id, num))
+        o["value"] = num;
+      else if (morph->GetParamAsBool(d.id, b))
+        o["value"] = b;
+      else if (morph->GetParamAsString(d.id, str))
+        o["value"] = str;
+      else
+      {
+        if (d.type == ParamType::Number)
+          o["value"] = d.defaultNumber;
+        else if (d.type == ParamType::Boolean)
+          o["value"] = d.defaultBool;
+        else
+          o["value"] = d.defaultString;
+      }
       arr.push_back(o);
     }
 
@@ -161,6 +220,11 @@ namespace synaptic
   }
 
   void UIBridge::SendDSPConfigWithAlgorithms(const DSPConfig& config)
+  {
+    SendDSPConfigWithAlgorithms(config, 0);
+  }
+
+  void UIBridge::SendDSPConfigWithAlgorithms(const DSPConfig& config, int currentMorphIndex)
   {
     nlohmann::json j;
     j["id"] = "dspConfig";
@@ -188,6 +252,23 @@ namespace synaptic
     }
 
     j["algorithms"] = opts;
+
+    // Add morph mode options from factory
+    nlohmann::json mopts = nlohmann::json::array();
+    const auto mids = MorphFactory::GetUiIds();
+    const auto mlabels = MorphFactory::GetUiLabels();
+    const int mn = (int)std::min(mids.size(), mlabels.size());
+    for (int i = 0; i < mn; ++i)
+    {
+      nlohmann::json o;
+      o["id"] = mids[i];
+      o["label"] = mlabels[i];
+      o["index"] = i;
+      mopts.push_back(o);
+    }
+    j["morphModes"] = mopts;
+    j["morphModeIndex"] = currentMorphIndex;
+
     SendJSON(j);
   }
 
@@ -203,9 +284,11 @@ namespace synaptic
 
   void UIBridge::SendAllState(const Brain& brain,
                               std::shared_ptr<const IChunkBufferTransformer> transformer,
+                              std::shared_ptr<const IMorph> morph,
                               const DSPConfig& config)
   {
     SendTransformerParams(transformer);
+    SendMorphParams(morph);
     SendDSPConfigWithAlgorithms(config);
     SendBrainSummary(brain);
     SendExternalRefInfo(config.useExternalBrain, config.externalPath);

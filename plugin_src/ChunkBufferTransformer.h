@@ -2,6 +2,7 @@
 
 #include "AudioStreamChunker.h"
 #include "samplebrain/Brain.h"
+#include "params/DynamicParamSchema.h"
 #include <cmath>
 #include <string>
 #include <vector>
@@ -16,7 +17,7 @@ namespace synaptic
   // Base interface for all chunk-buffer transformers.
   // Implementations can declare additional algorithmic latency (in samples),
   // beyond the intrinsic chunk accumulation delay.
-  class IChunkBufferTransformer
+  class IChunkBufferTransformer : public IDynamicParamOwner
   {
   public:
     virtual ~IChunkBufferTransformer() {}
@@ -39,46 +40,24 @@ namespace synaptic
     // If false, the chunker will use simple sequential playback.
     virtual bool WantsOverlapAdd() const { return true; }
 
-    // Generic parameter exposure API for UI
-    enum class ParamType { Number, Boolean, Enum, Text };
-    enum class ControlType { Slider, NumberBox, Select, Checkbox, TextBox };
-
-    struct ParamOption
-    {
-      std::string value;  // internal value
-      std::string label;  // human-readable label
-    };
-
-    struct ExposedParamDesc
-    {
-      std::string id;           // unique, stable identifier
-      std::string label;        // display name
-      ParamType type = ParamType::Number;
-      ControlType control = ControlType::NumberBox;
-      // Numeric constraints (for Number)
-      double minValue = 0.0;
-      double maxValue = 1.0;
-      double step = 0.01;
-      // Options (for Enum)
-      std::vector<ParamOption> options;
-      // Defaults
-      double defaultNumber = 0.0;
-      bool defaultBool = false;
-      std::string defaultString;
-    };
+    // Import shared schema types into this class scope for backward compatibility
+    using ParamType = synaptic::ParamType;
+    using ControlType = synaptic::ControlType;
+    using ParamOption = synaptic::ParamOption;
+    using ExposedParamDesc = synaptic::ExposedParamDesc;
 
     // Describe all exposed parameters (schema)
-    virtual void GetParamDescs(std::vector<ExposedParamDesc>& out) const { out.clear(); }
+    void GetParamDescs(std::vector<ExposedParamDesc>& out) const override { out.clear(); }
 
     // Get current value by id
-    virtual bool GetParamAsNumber(const std::string& /*id*/, double& /*out*/) const { return false; }
-    virtual bool GetParamAsBool(const std::string& /*id*/, bool& /*out*/) const { return false; }
-    virtual bool GetParamAsString(const std::string& /*id*/, std::string& /*out*/) const { return false; }
+    bool GetParamAsNumber(const std::string& /*id*/, double& /*out*/) const override { return false; }
+    bool GetParamAsBool(const std::string& /*id*/, bool& /*out*/) const override { return false; }
+    bool GetParamAsString(const std::string& /*id*/, std::string& /*out*/) const override { return false; }
 
     // Set value by id
-    virtual bool SetParamFromNumber(const std::string& /*id*/, double /*v*/) { return false; }
-    virtual bool SetParamFromBool(const std::string& /*id*/, bool /*v*/) { return false; }
-    virtual bool SetParamFromString(const std::string& /*id*/, const std::string& /*v*/) { return false; }
+    bool SetParamFromNumber(const std::string& /*id*/, double /*v*/) override { return false; }
+    bool SetParamFromBool(const std::string& /*id*/, bool /*v*/) override { return false; }
+    bool SetParamFromString(const std::string& /*id*/, const std::string& /*v*/) override { return false; }
 
   protected:
     // NOTE: CopyInputToOutput helper removed - no longer needed with dual-chunk pool entries.

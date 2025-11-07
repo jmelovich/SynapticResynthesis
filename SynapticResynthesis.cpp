@@ -9,6 +9,8 @@
 #endif
 #include "plugin_src/TransformerFactory.h"
 #include "plugin_src/PlatformFileDialogs.h"
+#include "plugin_src/params/DynamicParamSchema.h"
+#include "plugin_src/morph/MorphFactory.h"
 #include <thread>
 #include <mutex>
 #ifdef AAX_API
@@ -19,16 +21,25 @@ namespace {
   static int ComputeTotalParams()
   {
     // Fixed params are enumerated in EParams up to kNumParams.
-    // Dynamic transformer params are appended after kNumParams.
-    // Use ParameterManager's method to get union count
-    std::vector<synaptic::IChunkBufferTransformer::ExposedParamDesc> unionDescs;
-    synaptic::ParameterManager tempMgr;
-    // We need to compute this statically, so we replicate the union logic here
+    // Dynamic transformer and morph params are appended after kNumParams.
+    std::vector<synaptic::ExposedParamDesc> unionDescs;
+    // Replicate union logic across both factories
     for (const auto& info : synaptic::TransformerFactory::GetAll())
     {
       auto t = info.create();
-      std::vector<synaptic::IChunkBufferTransformer::ExposedParamDesc> tmp;
+      std::vector<synaptic::ExposedParamDesc> tmp;
       t->GetParamDescs(tmp);
+      for (const auto& d : tmp)
+      {
+        auto it = std::find_if(unionDescs.begin(), unionDescs.end(), [&](const auto& e){ return e.id == d.id; });
+        if (it == unionDescs.end()) unionDescs.push_back(d);
+      }
+    }
+    for (const auto& info : synaptic::MorphFactory::GetAll())
+    {
+      auto m = info.create();
+      std::vector<synaptic::ExposedParamDesc> tmp;
+      m->GetParamDescs(tmp);
       for (const auto& d : tmp)
       {
         auto it = std::find_if(unionDescs.begin(), unionDescs.end(), [&](const auto& e){ return e.id == d.id; });
@@ -90,6 +101,10 @@ mEditorInitFunc = [this]() {
   if (auto sb = dynamic_cast<synaptic::BaseSampleBrainTransformer*>(mTransformer.get()))
     sb->SetBrain(&mBrain);
 
+  // Default morph = first UI-visible entry
+  mMorph = synaptic::MorphFactory::CreateByUiIndex(0);
+  mChunker.SetMorph(mMorph);
+
   // Initialize analysis window with default Hann window
   mAnalysisWindow.Set(synaptic::Window::Type::Hann, mDSPConfig.chunkSize);
 
@@ -101,10 +116,6 @@ mEditorInitFunc = [this]() {
   // Initialize parameters using ParameterManager
   mParamManager.InitializeCoreParameters(this, mDSPConfig);
   mParamManager.InitializeTransformerParameters(this);
-
-
-  // Initialize morph with default settings (using chunker's morph instance)
-  mChunker.GetMorph().Configure(synaptic::Morph::Type::None, mDSPConfig.chunkSize);
 }
 
 void SynapticResynthesis::DrainUiQueueOnMainThread()
@@ -169,6 +180,9 @@ void SynapticResynthesis::ProcessBlock(sample** inputs, sample** outputs, int nF
     mPendingTransformer.reset();
     // Update latency after swap
     SetLatency(ComputeLatencySamples());
+
+    // Also apply bindings to the newly swapped transformer
+    mParamManager.ApplyBindingsToOwners(this, mTransformer.get(), mMorph.get());
   }
 
   const double inGain = GetParam(kInGain)->DBToAmp();
@@ -256,31 +270,17 @@ void SynapticResynthesis::OnReset()
   if (mTransformer)
     mTransformer->OnReset(sr, mDSPConfig.chunkSize, mDSPConfig.bufferWindowSize, NInChansConnected());
 
+  if (mMorph)
+    mMorph->OnReset(sr, mDSPConfig.chunkSize, NInChansConnected());
+  mChunker.SetMorph(mMorph);
+
   // After reset, apply IParam values to transformer implementation using ParameterManager
-  mParamManager.ApplyBindingsToTransformer(this, mTransformer.get());
-
-  // Apply morph parameters
-  const int morphModeIdx = mParamManager.GetMorphModeParamIdx();
-  const int morphAmountIdx = mParamManager.GetMorphAmountParamIdx();
-  const int phaseMorphAmountIdx = mParamManager.GetPhaseMorphAmountParamIdx();
-  const int vocoderSensitivityIdx = mParamManager.GetVocoderSensitivityParamIdx();
-
-  if (morphModeIdx >= 0) {
-    const int mode = GetParam(morphModeIdx)->Int();
-    mChunker.GetMorph().Configure(synaptic::Morph::IntToType(mode), mDSPConfig.chunkSize);
-  }
-
-  if (morphAmountIdx >= 0 || phaseMorphAmountIdx >= 0 || vocoderSensitivityIdx >= 0) {
-    auto params = mChunker.GetMorph().GetParameters();
-    if (morphAmountIdx >= 0) params.morphAmount = GetParam(morphAmountIdx)->Value();
-    if (phaseMorphAmountIdx >= 0) params.phaseMorphAmount = GetParam(phaseMorphAmountIdx)->Value();
-    if (vocoderSensitivityIdx >= 0) params.vocoderSensitivity = GetParam(vocoderSensitivityIdx)->Value();
-    mChunker.GetMorph().SetParameters(params);
-  }
+  mParamManager.ApplyBindingsToOwners(this, mTransformer.get(), mMorph.get());
 
   // When audio engine resets, leave brain state intact; just resend summary to UI
   mUIBridge.SendBrainSummary(mBrain);
   mUIBridge.SendTransformerParams(mTransformer);
+  mUIBridge.SendMorphParams(mMorph);
 
   // Update and send DSP config to UI
   SyncAndSendDSPConfig();
@@ -299,6 +299,7 @@ void SynapticResynthesis::OnUIOpen()
   Plugin::OnUIOpen();
 #if SR_USE_WEB_UI
   mUIBridge.SendTransformerParams(mTransformer);
+  mUIBridge.SendMorphParams(mMorph);
   SyncAndSendDSPConfig();
   mUIBridge.SendBrainSummary(mBrain);
 #endif
@@ -315,6 +316,7 @@ void SynapticResynthesis::OnRestoreState()
   Plugin::OnRestoreState();
 #if SR_USE_WEB_UI
   mUIBridge.SendTransformerParams(mTransformer);
+  mUIBridge.SendMorphParams(mMorph);
   SyncAndSendDSPConfig();
   mUIBridge.SendBrainSummary(mBrain);
 #endif
@@ -373,33 +375,17 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
     mParamManager.HandleCoreParameterChange(paramIdx, GetParam(paramIdx), mDSPConfig);
     UpdateChunkerWindowing();
   }
-  // Handle morph parameters
+  // Handle morph mode change
   else if (paramIdx == mParamManager.GetMorphModeParamIdx())
   {
-    const int mode = GetParam(paramIdx)->Int();
-    mChunker.GetMorph().Configure(synaptic::Morph::IntToType(mode), mDSPConfig.chunkSize);
+    // Create/reset new IMorph instance and apply bindings
+    mMorph = mParamManager.HandleMorphModeChange(paramIdx, GetParam(paramIdx), this,
+                                                 GetSampleRate(), mDSPConfig.chunkSize, NInChansConnected());
+    mChunker.SetMorph(mMorph);
+    mUIBridge.SendMorphParams(mMorph);
   }
-  else if (paramIdx == mParamManager.GetMorphAmountParamIdx())
-  {
-    auto params = mChunker.GetMorph().GetParameters();
-    params.morphAmount = GetParam(paramIdx)->Value();
-    DBGMSG("Morph Amount: %f\n", params.morphAmount);
-    mChunker.GetMorph().SetParameters(params);
-  }
-  else if (paramIdx == mParamManager.GetPhaseMorphAmountParamIdx())
-  {
-    auto params = mChunker.GetMorph().GetParameters();
-    params.phaseMorphAmount = GetParam(paramIdx)->Value();
-    mChunker.GetMorph().SetParameters(params);
-  }
-  else if (paramIdx == mParamManager.GetVocoderSensitivityParamIdx())
-  {
-    auto params = mChunker.GetMorph().GetParameters();
-    params.vocoderSensitivity = GetParam(paramIdx)->Value();
-    mChunker.GetMorph().SetParameters(params);
-  }
-  // Handle transformer parameters using ParameterManager
-  else if (mParamManager.HandleTransformerParameterChange(paramIdx, GetParam(paramIdx), mTransformer.get()))
+  // Handle dynamic parameters using ParameterManager
+  else if (mParamManager.HandleDynamicParameterChange(paramIdx, GetParam(paramIdx), mTransformer.get(), mMorph.get()))
   {
     // Parameter was handled by ParameterManager
   }
@@ -474,7 +460,12 @@ void SynapticResynthesis::SyncAndSendDSPConfig()
 {
   mDSPConfig.useExternalBrain = mBrainManager.UseExternal();
   mDSPConfig.externalPath = mBrainManager.UseExternal() ? mBrainManager.ExternalPath() : std::string();
-  mUIBridge.SendDSPConfigWithAlgorithms(mDSPConfig);
+  int morphIdx = 0;
+  {
+    const int morphModeParamIdx = mParamManager.GetMorphModeParamIdx();
+    if (morphModeParamIdx >= 0) morphIdx = GetParam(morphModeParamIdx)->Int();
+  }
+  mUIBridge.SendDSPConfigWithAlgorithms(mDSPConfig, morphIdx);
 }
 
 void SynapticResynthesis::SetParameterFromUI(int paramIdx, double value)
@@ -514,6 +505,7 @@ int SynapticResynthesis::UnserializeState(const IByteChunk& chunk, int startPos)
   SyncAndSendDSPConfig();
 
   mUIBridge.SendTransformerParams(mTransformer);
+  mUIBridge.SendMorphParams(mMorph);
   mUIBridge.SendExternalRefInfo(mBrainManager.UseExternal(), mBrainManager.ExternalPath());
 
   return pos;

@@ -1,8 +1,10 @@
 #pragma once
 
 #include "IPlug_include_in_plug_hdr.h"
+#include "plugin_src/params/DynamicParamSchema.h"
 #include "plugin_src/ChunkBufferTransformer.h"
 #include "plugin_src/transformers/ExpandedSimpleSampleBrainTransformer.h"
+#include "plugin_src/morph/IMorph.h"
 #include "DSPConfig.h"
 #include <vector>
 #include <string>
@@ -15,7 +17,7 @@ namespace synaptic
   struct TransformerParamBinding
   {
     std::string id;
-    IChunkBufferTransformer::ParamType type;
+    synaptic::ParamType type;
     int paramIdx = -1;
     // For enums, map index<->string value
     std::vector<std::string> enumValues; // order corresponds to indices 0..N-1
@@ -108,6 +110,24 @@ namespace synaptic
       return newTransformer;
     }
 
+    // Create/reset morph on morph mode change; apply bindings
+    template<typename PluginT>
+    std::shared_ptr<IMorph> HandleMorphModeChange(
+      int paramIdx, iplug::IParam* param,
+      PluginT* plugin, double sampleRate, int fftSize, int channels)
+    {
+      (void) paramIdx;
+      (void) param;
+      // Create new morph by UI index stored in param
+      const int modeIdx = param->Int();
+      auto newMorph = synaptic::MorphFactory::CreateByUiIndex(modeIdx);
+      if (newMorph)
+        newMorph->OnReset(sampleRate, fftSize, channels);
+      // Apply current bindings to morph (and transformer if caller passes it)
+      ApplyBindingsToOwners(plugin, nullptr, newMorph.get());
+      return newMorph;
+    }
+
     /**
      * @brief Handle analysis window parameter change with side effects
      * Returns true if reanalysis should be triggered
@@ -131,6 +151,11 @@ namespace synaptic
     bool HandleTransformerParameterChange(int paramIdx, iplug::IParam* param,
                                           IChunkBufferTransformer* transformer);
 
+    // Unified handler: routes to transformer and/or morph
+    bool HandleDynamicParameterChange(int paramIdx, iplug::IParam* param,
+                                      IChunkBufferTransformer* transformer,
+                                      IMorph* morph);
+
     // === Transformer Binding Management ===
 
     /**
@@ -139,6 +164,7 @@ namespace synaptic
      * @param transformer Transformer to apply values to
      */
     void ApplyBindingsToTransformer(iplug::Plugin* plugin, IChunkBufferTransformer* transformer);
+    void ApplyBindingsToOwners(iplug::Plugin* plugin, IChunkBufferTransformer* transformer, IMorph* morph);
 
     // === Query Methods ===
 
@@ -173,9 +199,6 @@ namespace synaptic
     int GetDirtyFlagParamIdx() const { return mParamIdxDirtyFlag; }
     int GetEnableOverlapParamIdx() const { return mParamIdxEnableOverlap; }
     int GetMorphModeParamIdx() const { return mParamIdxMorphMode; }
-    int GetMorphAmountParamIdx() const { return mParamIdxMorphAmount; }
-    int GetPhaseMorphAmountParamIdx() const { return mParamIdxPhaseMorphAmount; }
-    int GetVocoderSensitivityParamIdx() const { return mParamIdxVocoderSensitivity; }
 
   private:
     // Transformer parameter bindings (union across all transformers)
@@ -190,9 +213,6 @@ namespace synaptic
     int mParamIdxDirtyFlag = -1;
     int mParamIdxEnableOverlap = -1;
     int mParamIdxMorphMode = -1;
-    int mParamIdxMorphAmount = -1;
-    int mParamIdxPhaseMorphAmount = -1;
-    int mParamIdxVocoderSensitivity = -1;
 
     // First transformer parameter index (base for dynamic params)
     int mTransformerParamBase = -1;

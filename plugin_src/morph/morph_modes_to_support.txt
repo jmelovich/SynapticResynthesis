@@ -1,0 +1,21 @@
+// Proposed: (btw i have no idea what most of these mean theyre just what chatgpt recommended we check out)
+// Geometric Mean Magnitude Morph
+// Envelope Cross-Deformation (spectral energy of output with formant curvature of input)
+// Spectral Warping Morph (map formant shifts and warp smoothly)
+// Morph that emphasizes phase coherence, really blending two signals
+// Distribution Morph (magnitudes are probability distributions, interpolate via Earth Mover's Distance)
+// Noise-Tone Decomposition Morph (morph tonal and residual components separately)
+// Spectral Contrast Morph (extract "contrast" and interpolate contrast instead of magnitudes)
+// Iterative Projection Morph (project into shared manifold, nmf or pca, and interpolate in that space)
+//    Spectral Topology Morph (get each partial's features and morph on shortest path between manifolds)
+//    Optimal Transport Morph (treat magnitudes as mass distributions, wasserstein barycenter to morph)
+//    Laplacian Morph (construct graph laplacians and interpolate)
+// Spectral Entropy Morph (low entropy bins emphasize one, high entropy bins emphasize another, morph adapts to signal character)
+
+
+CrossSynthesis;
+SpectralVocoder;
+CepstralMorph;
+HarmonicMorph;
+WaveMorph;
+SpectralMasking;

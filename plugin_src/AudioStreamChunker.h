@@ -10,7 +10,7 @@
 
 #include "FFT.h"
 #include "Structs.h"
-#include "Morph.h"
+#include "morph/IMorph.h"
 
 namespace synaptic
 {
@@ -94,8 +94,6 @@ namespace synaptic
       mChunkSize = newChunkSize;
       mBufferWindowSize = newBufferWindowSize;
       mPoolCapacity = newPoolCapacity;
-
-      mMorph.Configure(Morph::Type::None, mChunkSize);  // Disabled for now
 
       if (needsReallocation)
       {
@@ -219,8 +217,8 @@ namespace synaptic
 
     int GetChunkSize() const { return mChunkSize; }
 
-    // Access to morph instance for configuration
-    Morph& GetMorph() { return mMorph; }
+    // Set new morph owner (IMorph implementation)
+    void SetMorph(std::shared_ptr<IMorph> morph) { mMorph = std::move(morph); }
 
     void PushAudio(sample** inputs, int nFrames)
     {
@@ -249,7 +247,7 @@ namespace synaptic
 
         // Use appropriate hop size for input processing
         // When spectral processing is active, key overlap decision off the analysis window
-        const bool spectralActive = (mMorph.GetType() != Morph::Type::None);
+        const bool spectralActive = (mMorph && mMorph->IsActive());
         const bool overlapActive = mEnableOverlap && (spectralActive
           ? (mInputAnalysisWindow.GetOverlap() > 0.0f)
           : (mOutputWindow.GetOverlap() > 0.0f));
@@ -417,7 +415,7 @@ namespace synaptic
       const int chansToWrite = std::min(outChans, mNumChannels);
 
       // Determine if spectral processing is active
-      const bool spectralActive = (mMorph.GetType() != Morph::Type::None);
+      const bool spectralActive = (mMorph && mMorph->IsActive());
 
       // Use overlap-add only when there's actual overlap (not rectangular window)
       // When spectral processing is active, decide based on the analysis window
@@ -674,30 +672,19 @@ namespace synaptic
       if (mFFTSize <= 0) return;
       PoolEntry& e = mPool[poolIdx];
 
-      bool needsSpectrumProcessing = false;
-
-      // check if any spectral processing is needed
-      // (such as checking if morph is enabled)
-      // if so, then set needsSpectrumProcessing to true
-      if(mMorph.GetType() != Morph::Type::None){
-        needsSpectrumProcessing = true;
-      }
-
-      if(!needsSpectrumProcessing){
-        return; // avoid unnecessary spectrum processing
-      }
+      const bool spectralActive = (mMorph && mMorph->IsActive());
+      if (!spectralActive) return;
 
       // If transformer didn't provide spectrum, build it from current samples
       EnsureChunkSpectrum(e.outputChunk);
 
-      // TODO: Future spectral processing here (e.g., morph acting on spectra only)
-      mMorph.Process(e.inputChunk, e.outputChunk, mFFT);
+      // Apply morph implementation on spectra
+      mMorph->Process(e.inputChunk, e.outputChunk, mFFT);
 
       // Synthesize back to time domain for rendering
       mFFT.ComputeChunkIFFT(e.outputChunk);
 
       // 'Polish' the output chunk to avoid artifacts at the edges of the window
-      // This tapers the edges of the window to 0, to avoid clicking after OLA resynthesis.
       for (int ch = 0; ch < mNumChannels; ++ch)
         mOutputWindow.Polish(e.outputChunk.channelSamples[ch].data());
     }
@@ -763,7 +750,7 @@ namespace synaptic
       const PoolEntry& e = mPool[outputIdx];
 
       // Determine processing mode
-      const bool spectralActive = (mMorph.GetType() != Morph::Type::None);
+      const bool spectralActive = (mMorph && mMorph->IsActive());
       const bool overlapActive = mEnableOverlap && (spectralActive
         ? (mInputAnalysisWindow.GetOverlap() > 0.0f)
         : (mOutputWindow.GetOverlap() > 0.0f));
@@ -815,7 +802,7 @@ namespace synaptic
     std::vector<std::vector<sample>> mAccumulation;
     int mAccumulatedFrames = 0;
 
-    Morph mMorph;
+    std::shared_ptr<IMorph> mMorph;
     int mFFTSize = 0;
     FFTProcessor mFFT;
 

@@ -1,16 +1,18 @@
 #include "ParameterManager.h"
 #include "plugin_src/TransformerFactory.h"
+#include "plugin_src/morph/MorphFactory.h"
+#include "plugin_src/params/DynamicParamSchema.h"
 #include "SynapticResynthesis.h"  // For EParams enum
 
 namespace synaptic
 {
   namespace
   {
-    // Build a union of transformer parameter descs across all known transformers
-    void BuildTransformerUnion(std::vector<IChunkBufferTransformer::ExposedParamDesc>& out)
+    // Build a union of dynamic parameter descs across all known transformers and morph modes
+    void BuildTransformerUnion(std::vector<ExposedParamDesc>& out)
     {
       out.clear();
-      std::vector<IChunkBufferTransformer::ExposedParamDesc> tmp;
+      std::vector<ExposedParamDesc> tmp;
       auto consider = [&](std::shared_ptr<IChunkBufferTransformer> t){
         tmp.clear();
         t->GetParamDescs(tmp);
@@ -23,6 +25,19 @@ namespace synaptic
       // Iterate all known transformers from the factory
       for (const auto& info : TransformerFactory::GetAll())
         consider(info.create());
+
+      // Also consider morph modes
+      auto considerMorph = [&](std::shared_ptr<IMorph> m){
+        tmp.clear();
+        m->GetParamDescs(tmp);
+        for (const auto& d : tmp)
+        {
+          auto it = std::find_if(out.begin(), out.end(), [&](const auto& e){ return e.id == d.id; });
+          if (it == out.end()) out.push_back(d);
+        }
+      };
+      for (const auto& info : MorphFactory::GetAll())
+        considerMorph(info.create());
     }
   }
 
@@ -73,31 +88,21 @@ namespace synaptic
     mParamIdxEnableOverlap = ::kEnableOverlap;
     plugin->GetParam(mParamIdxEnableOverlap)->InitBool("Enable Overlap-Add", config.enableOverlapAdd);
 
-    // Morph mode parameters
+    // Morph mode parameters (factory-driven)
     mParamIdxMorphMode = ::kMorphMode;
-    plugin->GetParam(mParamIdxMorphMode)->InitEnum("Morph Mode", 0, 7, "");
-    plugin->GetParam(mParamIdxMorphMode)->SetDisplayText(0, "None");
-    plugin->GetParam(mParamIdxMorphMode)->SetDisplayText(1, "Cross Synthesis");
-    plugin->GetParam(mParamIdxMorphMode)->SetDisplayText(2, "Spectral Vocoder");
-    plugin->GetParam(mParamIdxMorphMode)->SetDisplayText(3, "Cepstral Morph");
-    plugin->GetParam(mParamIdxMorphMode)->SetDisplayText(4, "Harmonic Morph");
-    plugin->GetParam(mParamIdxMorphMode)->SetDisplayText(5, "Wave Morph");
-    plugin->GetParam(mParamIdxMorphMode)->SetDisplayText(6, "Spectral Masking");
-
-    mParamIdxMorphAmount = ::kMorphAmount;
-    plugin->GetParam(mParamIdxMorphAmount)->InitDouble("Morph Amount", 1.0, 0.0, 1.0, 0.01);
-
-    mParamIdxPhaseMorphAmount = ::kPhaseMorphAmount;
-    plugin->GetParam(mParamIdxPhaseMorphAmount)->InitDouble("Phase Morph Amount", 1.0, 0.0, 1.0, 0.01);
-
-    mParamIdxVocoderSensitivity = ::kVocoderSensitivity;
-    plugin->GetParam(mParamIdxVocoderSensitivity)->InitDouble("Vocoder Sensitivity", 1.0, 0.0, 1.0, 0.01);
+    {
+      const int count = synaptic::MorphFactory::GetUiCount();
+      plugin->GetParam(mParamIdxMorphMode)->InitEnum("Morph Mode", 0, count, "");
+      const auto labels = synaptic::MorphFactory::GetUiLabels();
+      for (int i = 0; i < (int)labels.size(); ++i)
+        plugin->GetParam(mParamIdxMorphMode)->SetDisplayText(i, labels[i].c_str());
+    }
   }
 
   void ParameterManager::InitializeTransformerParameters(iplug::Plugin* plugin)
   {
     // Build union descs and initialize the remaining pre-allocated params
-    std::vector<IChunkBufferTransformer::ExposedParamDesc> unionDescs;
+    std::vector<ExposedParamDesc> unionDescs;
     BuildTransformerUnion(unionDescs);
     int base = ::kNumParams;  // Use EParams enum value directly
     mTransformerParamBase = base;
@@ -110,15 +115,15 @@ namespace synaptic
 
       switch (d.type)
       {
-        case IChunkBufferTransformer::ParamType::Number:
+        case ParamType::Number:
           plugin->GetParam(idx)->InitDouble(d.label.c_str(), d.defaultNumber, d.minValue, d.maxValue, d.step);
           break;
 
-        case IChunkBufferTransformer::ParamType::Boolean:
+        case ParamType::Boolean:
           plugin->GetParam(idx)->InitBool(d.label.c_str(), d.defaultBool);
           break;
 
-        case IChunkBufferTransformer::ParamType::Enum:
+        case ParamType::Enum:
         {
           const int n = (int)d.options.size();
           plugin->GetParam(idx)->InitEnum(d.label.c_str(), 0, n, "");
@@ -135,7 +140,7 @@ namespace synaptic
           continue;
         }
 
-        case IChunkBufferTransformer::ParamType::Text:
+        case ParamType::Text:
           plugin->GetParam(idx)->InitDouble(d.label.c_str(), 0.0, 0.0, 1.0, 0.01, "", iplug::IParam::kFlagCannotAutomate);
           break;
       }
@@ -180,21 +185,6 @@ namespace synaptic
       // Morph mode is handled by the plugin directly, not stored in DSPConfig
       return true;
     }
-    else if (paramIdx == mParamIdxMorphAmount)
-    {
-      // Morph amount is handled by the plugin directly, not stored in DSPConfig
-      return true;
-    }
-    else if (paramIdx == mParamIdxPhaseMorphAmount)
-    {
-      // Phase morph amount is handled by the plugin directly, not stored in DSPConfig
-      return true;
-    }
-    else if (paramIdx == mParamIdxVocoderSensitivity)
-    {
-      // Vocoder sensitivity is handled by the plugin directly, not stored in DSPConfig
-      return true;
-    }
 
     return false;
   }
@@ -202,38 +192,51 @@ namespace synaptic
   bool ParameterManager::HandleTransformerParameterChange(int paramIdx, iplug::IParam* param,
                                                           IChunkBufferTransformer* transformer)
   {
-    if (!transformer) return false;
+    return HandleDynamicParameterChange(paramIdx, param, transformer, nullptr);
+  }
 
+  bool ParameterManager::HandleDynamicParameterChange(int paramIdx, iplug::IParam* param,
+                                                      IChunkBufferTransformer* transformer,
+                                                      IMorph* morph)
+  {
     for (const auto& b : mBindings)
     {
       if (b.paramIdx == paramIdx)
       {
         switch (b.type)
         {
-          case IChunkBufferTransformer::ParamType::Number:
-            transformer->SetParamFromNumber(b.id, param->Value());
-            return true;
-
-          case IChunkBufferTransformer::ParamType::Boolean:
-            transformer->SetParamFromBool(b.id, param->Bool());
-            return true;
-
-          case IChunkBufferTransformer::ParamType::Enum:
+          case ParamType::Number:
+          {
+            const double v = param->Value();
+            bool handled = false;
+            if (transformer) handled |= transformer->SetParamFromNumber(b.id, v);
+            if (morph) handled |= morph->SetParamFromNumber(b.id, v);
+            return handled;
+          }
+          case ParamType::Boolean:
+          {
+            const bool v = param->Bool();
+            bool handled = false;
+            if (transformer) handled |= transformer->SetParamFromBool(b.id, v);
+            if (morph) handled |= morph->SetParamFromBool(b.id, v);
+            return handled;
+          }
+          case ParamType::Enum:
           {
             int idx = param->Int();
             std::string val = (idx >= 0 && idx < (int)b.enumValues.size()) ? b.enumValues[idx] : std::to_string(idx);
-            transformer->SetParamFromString(b.id, val);
-            return true;
+            bool handled = false;
+            if (transformer) handled |= transformer->SetParamFromString(b.id, val);
+            if (morph) handled |= morph->SetParamFromString(b.id, val);
+            return handled;
           }
-
-          case IChunkBufferTransformer::ParamType::Text:
+          case ParamType::Text:
             // Not supported as text; ignore
-            break;
+            return false;
         }
         return false;
       }
     }
-
     return false;
   }
 
@@ -250,15 +253,15 @@ namespace synaptic
 
       switch (b.type)
       {
-        case IChunkBufferTransformer::ParamType::Number:
+        case ParamType::Number:
           transformer->SetParamFromNumber(b.id, param->Value());
           break;
 
-        case IChunkBufferTransformer::ParamType::Boolean:
+        case ParamType::Boolean:
           transformer->SetParamFromBool(b.id, param->Bool());
           break;
 
-        case IChunkBufferTransformer::ParamType::Enum:
+        case ParamType::Enum:
         {
           int idx = param->Int();
           std::string val = (idx >= 0 && idx < (int)b.enumValues.size()) ? b.enumValues[idx] : std::to_string(idx);
@@ -266,7 +269,46 @@ namespace synaptic
           break;
         }
 
-        case IChunkBufferTransformer::ParamType::Text:
+        case ParamType::Text:
+          // Not supported
+          break;
+      }
+    }
+  }
+
+  void ParameterManager::ApplyBindingsToOwners(iplug::Plugin* plugin, IChunkBufferTransformer* transformer, IMorph* morph)
+  {
+    for (const auto& b : mBindings)
+    {
+      if (b.paramIdx < 0) continue;
+      auto* param = plugin->GetParam(b.paramIdx);
+      if (!param) continue;
+
+      switch (b.type)
+      {
+        case ParamType::Number:
+        {
+          const double v = param->Value();
+          if (transformer) transformer->SetParamFromNumber(b.id, v);
+          if (morph) morph->SetParamFromNumber(b.id, v);
+          break;
+        }
+        case ParamType::Boolean:
+        {
+          const bool v = param->Bool();
+          if (transformer) transformer->SetParamFromBool(b.id, v);
+          if (morph) morph->SetParamFromBool(b.id, v);
+          break;
+        }
+        case ParamType::Enum:
+        {
+          int idx = param->Int();
+          std::string val = (idx >= 0 && idx < (int)b.enumValues.size()) ? b.enumValues[idx] : std::to_string(idx);
+          if (transformer) transformer->SetParamFromString(b.id, val);
+          if (morph) morph->SetParamFromString(b.id, val);
+          break;
+        }
+        case ParamType::Text:
           // Not supported
           break;
       }
@@ -282,10 +324,7 @@ namespace synaptic
             paramIdx == mParamIdxAnalysisWindow ||
             paramIdx == mParamIdxDirtyFlag ||
             paramIdx == mParamIdxEnableOverlap ||
-            paramIdx == mParamIdxMorphMode ||
-            paramIdx == mParamIdxMorphAmount ||
-            paramIdx == mParamIdxPhaseMorphAmount ||
-            paramIdx == mParamIdxVocoderSensitivity);
+            paramIdx == mParamIdxMorphMode);
   }
 
   bool ParameterManager::IsTransformerParameter(int paramIdx) const

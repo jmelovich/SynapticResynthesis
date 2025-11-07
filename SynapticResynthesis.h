@@ -7,7 +7,8 @@
 #include "plugin_src/ChunkBufferTransformer.h"
 #include "plugin_src/samplebrain/Brain.h"
 #include "plugin_src/Window.h"
-#include "plugin_src/Morph.h"
+// #include "plugin_src/Morph.h" // Legacy morph, only used by chunker now
+#include "plugin_src/morph/IMorph.h"
 #include "plugin_src/modules/DSPConfig.h"
 #include "plugin_src/modules/UIBridge.h"
 #include "plugin_src/modules/ParameterManager.h"
@@ -34,9 +35,6 @@ enum EParams
   kOutGain,
   kAGC,
   kMorphMode,
-  kMorphAmount,
-  kPhaseMorphAmount,
-  kVocoderSensitivity,
   // Dynamic transformer parameters are indexed after this sentinel
   kNumParams
 };
@@ -130,6 +128,7 @@ private:
   std::shared_ptr<synaptic::IChunkBufferTransformer> mTransformer;
   std::shared_ptr<synaptic::IChunkBufferTransformer> mPendingTransformer; // For thread-safe swapping
   synaptic::Window mOutputWindow;
+  std::shared_ptr<synaptic::IMorph> mMorph; // dynamic morph owner (for params)
 
   // Utility methods
   int ComputeLatencySamples() const { return mDSPConfig.chunkSize + (mTransformer ? mTransformer->GetAdditionalLatencySamples(mDSPConfig.chunkSize, mDSPConfig.bufferWindowSize) : 0); }
