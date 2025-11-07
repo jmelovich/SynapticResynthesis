@@ -413,6 +413,12 @@
     <ClCompile Include="..\..\..\IPlug\VST3\IPlugVST3.cpp" />
     <ClCompile Include="..\..\..\IPlug\VST3\IPlugVST3_ProcessorBase.cpp" />
     <ClCompile Include="..\SynapticResynthesis.cpp" />
+    <ClCompile Include="..\plugin_src\ui\core\SynapticUI.cpp" />
+    <ClCompile Include="..\plugin_src\ui\controls\UIControls.cpp" />
+    <ClCompile Include="..\plugin_src\ui\layout\UILayout.cpp" />
+    <ClCompile Include="..\plugin_src\ui\tabs\DSPTabView.cpp" />
+    <ClCompile Include="..\plugin_src\ui\tabs\BrainTabView.cpp" />
+    <ClCompile Include="..\plugin_src\ui\dynamic\ParamUI.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\resources\main.rc" />
