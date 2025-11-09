@@ -63,12 +63,6 @@ bool SynapticResynthesis::HandleSetChunkSizeMsg(int newSize)
   return true;
 }
 
-bool SynapticResynthesis::HandleSetBufferWindowSizeMsg(int newSize)
-{
-  // Deprecated from UI; ignore but keep for compatibility
-  return true;
-}
-
 bool SynapticResynthesis::HandleSetOutputWindowMsg(int mode)
 {
   // mode carries an integer enum: 1=Hann,2=Hamming,3=Blackman,4=Rectangular

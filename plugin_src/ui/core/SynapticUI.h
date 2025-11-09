@@ -1,3 +1,18 @@
+/**
+ * @file SynapticUI.h
+ * @brief Main UI coordinator and layout manager for the Synaptic Resynthesis plugin
+ *
+ * Responsibilities:
+ * - Builds and manages the complete UI hierarchy (header, tabs, controls)
+ * - Coordinates tab switching between DSP and Brain views
+ * - Manages dynamic parameter control lifecycle (creation, removal, resizing)
+ * - Handles UI rebuild when transformers or morphs change
+ * - Synchronizes control states with plugin parameters
+ * - Resizes window to fit content dynamically
+ *
+ * This is the top-level UI class that orchestrates all other UI components.
+ */
+
 #pragma once
 
 #include <vector>
@@ -23,6 +38,10 @@ namespace ui {
 
 enum class Tab { DSP, Brain };
 
+enum class DynamicParamType { Transformer, Morph };
+
+enum class ControlGroup { Global, DSP, Brain };
+
 // Context for rebuilding dynamic parameters
 struct RebuildContext {
   const synaptic::IChunkBufferTransformer* transformer { nullptr };
@@ -42,14 +61,10 @@ public:
   void rebuild();
   void setActiveTab(Tab tab);
 
-  // Dynamic parameter management
-  void rebuildTransformerParams(
-    const synaptic::IChunkBufferTransformer* transformer,
-    const synaptic::ParameterManager& paramManager,
-    iplug::Plugin* plugin);
-
-  void rebuildMorphParams(
-    const synaptic::IMorph* morph,
+  // Dynamic parameter rebuild (used internally)
+  void rebuildDynamicParams(
+    DynamicParamType type,
+    const void* owner,
     const synaptic::ParameterManager& paramManager,
     iplug::Plugin* plugin);
 
@@ -66,10 +81,8 @@ public:
     mRebuildContext.plugin = plugin;
   }
 
-  // Attachment helpers
-  ig::IControl* attachGlobal(ig::IControl* ctrl);
-  ig::IControl* attachDSP(ig::IControl* ctrl);
-  ig::IControl* attachBrain(ig::IControl* ctrl);
+  // Attachment helper
+  ig::IControl* attach(ig::IControl* ctrl, ControlGroup group = ControlGroup::Global);
 
   // Accessors
   ig::IGraphics* graphics() const { return mGraphics; }
@@ -95,12 +108,8 @@ public:
 
 private:
   void buildHeader(const ig::IRECT& bounds);
-  void buildDSP(const ig::IRECT& bounds, float startY);
-  void buildBrain(const ig::IRECT& bounds, float startY);
 
   // Helper methods for dynamic layout
-  void repositionCardsAfterTransformer(float heightDelta);
-  void repositionCardsAfterMorph(float heightDelta);
   void repositionSubsequentCards(ig::IControl* startCard, float heightDelta);
   void anchorMorphLayoutToCard();
 
@@ -110,6 +119,12 @@ private:
                              std::vector<ig::IControl*>& dspControls, iplug::Plugin* plugin);
   float ResizeCardToFitContent(ig::IControl* cardPanel, const ig::IRECT& paramBounds,
                                const std::vector<ig::IControl*>& controls, float minHeight);
+
+  // Bulk control visibility helper
+  void SetControlGroupVisibility(std::vector<ig::IControl*>& controls, bool visible);
+
+  // Sync control with its parameter value
+  void SyncControlWithParam(ig::IControl* ctrl, iplug::Plugin* plugin);
 
   ig::IGraphics* mGraphics;
   UILayout mLayout;

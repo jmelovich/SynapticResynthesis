@@ -1,6 +1,17 @@
+/**
+ * @file SynapticUI.cpp
+ * @brief Implementation of the main UI coordinator for Synaptic Resynthesis
+ *
+ * Implements the core UI management logic including:
+ * - Initial UI construction and rebuild operations
+ * - Dynamic parameter control creation and positioning
+ * - Card panel resizing and layout adjustment
+ * - Control visibility management for tab switching
+ * - Window resize-to-fit calculations
+ */
+
 #include "SynapticUI.h"
-#include "../tabs/DSPTabView.h"
-#include "../tabs/BrainTabView.h"
+#include "../tabs/TabViews.h"
 #include "../styles/UITheme.h"
 #include "../controls/BrainFileListControl.h"
 
@@ -46,8 +57,8 @@ void SynapticUI::build()
   yPos = headerRow.B + mLayout.sectionGap;
 
   // Tabs
-  buildDSP(bounds, yPos);
-  buildBrain(bounds, yPos);
+  tabs::BuildDSPTab(*this, bounds, mLayout, yPos);
+  tabs::BuildBrainTab(*this, bounds, mLayout, yPos);
 
   setActiveTab(Tab::DSP);
 #endif
@@ -88,8 +99,8 @@ void SynapticUI::rebuild()
   yPos = headerRow.B + mLayout.sectionGap;
 
   // Tabs
-  buildDSP(bounds, yPos);
-  buildBrain(bounds, yPos);
+  tabs::BuildDSPTab(*this, bounds, mLayout, yPos);
+  tabs::BuildBrainTab(*this, bounds, mLayout, yPos);
 
   setActiveTab(previousTab);
 
@@ -98,28 +109,18 @@ void SynapticUI::rebuild()
   {
     for (auto* ctrl : mDSPControls)
     {
-      if (ctrl)
-      {
-        const int paramIdx = ctrl->GetParamIdx();
-        if (paramIdx > kNoParameter)
-        {
-          if (const IParam* pParam = mRebuildContext.plugin->GetParam(paramIdx))
-          {
-            ctrl->SetValueFromDelegate(pParam->GetNormalized());
-          }
-        }
-      }
+      SyncControlWithParam(ctrl, mRebuildContext.plugin);
     }
   }
 
   // Rebuild dynamic params using cached context if available
   if (mRebuildContext.transformer && mRebuildContext.paramManager && mRebuildContext.plugin)
   {
-    rebuildTransformerParams(mRebuildContext.transformer, *mRebuildContext.paramManager, mRebuildContext.plugin);
+    rebuildDynamicParams(DynamicParamType::Transformer, mRebuildContext.transformer, *mRebuildContext.paramManager, mRebuildContext.plugin);
   }
   if (mRebuildContext.morph && mRebuildContext.paramManager && mRebuildContext.plugin)
   {
-    rebuildMorphParams(mRebuildContext.morph, *mRebuildContext.paramManager, mRebuildContext.plugin);
+    rebuildDynamicParams(DynamicParamType::Morph, mRebuildContext.morph, *mRebuildContext.paramManager, mRebuildContext.plugin);
   }
 
   // Resize window to fit content
@@ -133,22 +134,11 @@ void SynapticUI::setActiveTab(Tab tab)
 
   mCurrentTab = tab;
 
-  for (size_t i = 0; i < mDSPControls.size(); ++i)
-  {
-    if (mDSPControls[i]) {
-      mDSPControls[i]->Hide(tab != Tab::DSP);
-      mDSPControls[i]->SetDisabled(tab != Tab::DSP);
-    }
-  }
+  // Set visibility for each control group
+  SetControlGroupVisibility(mDSPControls, tab == Tab::DSP);
+  SetControlGroupVisibility(mBrainControls, tab == Tab::Brain);
 
-  for (size_t i = 0; i < mBrainControls.size(); ++i)
-  {
-    if (mBrainControls[i]) {
-      mBrainControls[i]->Hide(tab != Tab::Brain);
-      mBrainControls[i]->SetDisabled(tab != Tab::Brain);
-    }
-  }
-
+  // Update tab buttons
   if (mDSPTabButton) mDSPTabButton->SetActive(tab == Tab::DSP);
   if (mBrainTabButton) mBrainTabButton->SetActive(tab == Tab::Brain);
 
@@ -156,42 +146,32 @@ void SynapticUI::setActiveTab(Tab tab)
   resizeWindowToFitContent();
 }
 
-void SynapticUI::rebuildTransformerParams(
-  const synaptic::IChunkBufferTransformer* transformer,
-  const synaptic::ParameterManager& paramManager,
-  Plugin* plugin)
+void SynapticUI::SetControlGroupVisibility(std::vector<IControl*>& controls, bool visible)
 {
-#if IPLUG_EDITOR
-  if (!mGraphics || !transformer || !plugin)
-    return;
-
-  // Cache context for future rebuilds
-  mRebuildContext.transformer = transformer;
-  mRebuildContext.paramManager = &paramManager;
-  mRebuildContext.plugin = plugin;
-
-  // Remove old controls
-  RemoveAndClearControls(mTransformerParamControls, mDSPControls);
-
-  // Build new controls
-  auto newControls = mDynamicParamMgr.BuildTransformerParams(
-    mGraphics, mTransformerParamBounds, mLayout, transformer, paramManager, plugin);
-
-  // Attach and sync new controls
-  AttachAndSyncControls(newControls, mTransformerParamControls, mDSPControls, plugin);
-
-  // Resize card and reposition subsequent cards
-  float heightDelta = ResizeCardToFitContent(mTransformerCardPanel, mTransformerParamBounds,
-                                              mTransformerParamControls, 120.f);
-  if (heightDelta != 0.f)
+  for (auto* ctrl : controls)
   {
-    repositionCardsAfterTransformer(heightDelta);
+    if (ctrl)
+    {
+      ctrl->Hide(!visible);
+      ctrl->SetDisabled(!visible);
+    }
   }
-
-  // Force full UI redraw to clear old card outline
-  mGraphics->SetAllControlsDirty();
-#endif
 }
+
+void SynapticUI::SyncControlWithParam(IControl* ctrl, Plugin* plugin)
+{
+  if (!ctrl || !plugin) return;
+
+  const int paramIdx = ctrl->GetParamIdx();
+  if (paramIdx > kNoParameter)
+  {
+    if (const IParam* pParam = plugin->GetParam(paramIdx))
+    {
+      ctrl->SetValueFromDelegate(pParam->GetNormalized());
+    }
+  }
+}
+
 
 void SynapticUI::RemoveAndClearControls(std::vector<IControl*>& paramControls, std::vector<IControl*>& dspControls)
 {
@@ -222,18 +202,11 @@ void SynapticUI::AttachAndSyncControls(std::vector<IControl*>& newControls, std:
   {
     if (ctrl)
     {
-      auto* attached = attachDSP(ctrl);
+      auto* attached = attach(ctrl, ControlGroup::DSP);
       paramControls.push_back(attached);
 
       // Sync control with current parameter value
-      const int paramIdx = attached->GetParamIdx();
-      if (paramIdx > kNoParameter && plugin)
-      {
-        if (const IParam* pParam = plugin->GetParam(paramIdx))
-        {
-          attached->SetValueFromDelegate(pParam->GetNormalized());
-        }
-      }
+      SyncControlWithParam(attached, plugin);
     }
   }
 #endif
@@ -278,36 +251,69 @@ float SynapticUI::ResizeCardToFitContent(IControl* cardPanel, const IRECT& param
   return 0.f;
 }
 
-void SynapticUI::rebuildMorphParams(
-  const synaptic::IMorph* morph,
+
+void SynapticUI::rebuildDynamicParams(
+  DynamicParamType type,
+  const void* owner,
   const synaptic::ParameterManager& paramManager,
   Plugin* plugin)
 {
 #if IPLUG_EDITOR
-  if (!mGraphics || !morph || !plugin)
+  if (!mGraphics || !owner || !plugin)
     return;
 
   // Cache context for future rebuilds
-  mRebuildContext.morph = morph;
-  if (!mRebuildContext.paramManager) mRebuildContext.paramManager = &paramManager;
-  if (!mRebuildContext.plugin) mRebuildContext.plugin = plugin;
+  if (type == DynamicParamType::Transformer)
+  {
+    mRebuildContext.transformer = static_cast<const synaptic::IChunkBufferTransformer*>(owner);
+  }
+  else // Morph
+  {
+    mRebuildContext.morph = static_cast<const synaptic::IMorph*>(owner);
+  }
+  mRebuildContext.paramManager = &paramManager;
+  mRebuildContext.plugin = plugin;
+
+  // Select appropriate control list and bounds
+  std::vector<IControl*>& paramControls = (type == DynamicParamType::Transformer)
+    ? mTransformerParamControls : mMorphParamControls;
+  const IRECT& bounds = (type == DynamicParamType::Transformer)
+    ? mTransformerParamBounds : mMorphParamBounds;
+  IControl* cardPanel = (type == DynamicParamType::Transformer)
+    ? mTransformerCardPanel : mMorphCardPanel;
 
   // Remove old controls
-  RemoveAndClearControls(mMorphParamControls, mDSPControls);
+  RemoveAndClearControls(paramControls, mDSPControls);
 
   // Build new controls
-  auto newControls = mDynamicParamMgr.BuildMorphParams(
-    mGraphics, mMorphParamBounds, mLayout, morph, paramManager, plugin);
+  std::vector<IControl*> newControls;
+  if (type == DynamicParamType::Transformer)
+  {
+    newControls = mDynamicParamMgr.BuildTransformerParams(
+      mGraphics, bounds, mLayout,
+      static_cast<const synaptic::IChunkBufferTransformer*>(owner),
+      paramManager, plugin);
+  }
+  else // Morph
+  {
+    newControls = mDynamicParamMgr.BuildMorphParams(
+      mGraphics, bounds, mLayout,
+      static_cast<const synaptic::IMorph*>(owner),
+      paramManager, plugin);
+  }
 
   // Attach and sync new controls
-  AttachAndSyncControls(newControls, mMorphParamControls, mDSPControls, plugin);
+  AttachAndSyncControls(newControls, paramControls, mDSPControls, plugin);
 
   // Resize card and reposition subsequent cards
-  float heightDelta = ResizeCardToFitContent(mMorphCardPanel, mMorphParamBounds,
-                                              mMorphParamControls, 120.f);
+  float heightDelta = ResizeCardToFitContent(cardPanel, bounds, paramControls, 120.f);
   if (heightDelta != 0.f)
   {
-    repositionCardsAfterMorph(heightDelta);
+    repositionSubsequentCards(cardPanel, heightDelta);
+    if (type == DynamicParamType::Transformer || type == DynamicParamType::Morph)
+    {
+      anchorMorphLayoutToCard(); // Re-anchor morph layout
+    }
   }
 
   // Force full UI redraw to clear old card outline
@@ -315,36 +321,35 @@ void SynapticUI::rebuildMorphParams(
 #endif
 }
 
-IControl* SynapticUI::attachGlobal(IControl* ctrl)
-{
-  return mGraphics->AttachControl(ctrl);
-}
-
-IControl* SynapticUI::attachDSP(IControl* ctrl)
+IControl* SynapticUI::attach(IControl* ctrl, ControlGroup group)
 {
   IControl* added = mGraphics->AttachControl(ctrl);
-  if (added)
-  {
-    mDSPControls.push_back(added);
-    if (mCurrentTab != Tab::DSP) {
-      added->Hide(true);
-      added->SetDisabled(true);
-    }
-  }
-  return added;
-}
+  if (!added) return nullptr;
 
-IControl* SynapticUI::attachBrain(IControl* ctrl)
-{
-  IControl* added = mGraphics->AttachControl(ctrl);
-  if (added)
+  // Add to appropriate control group and set visibility
+  switch (group)
   {
-    mBrainControls.push_back(added);
-    if (mCurrentTab != Tab::Brain) {
-      added->Hide(true);
-      added->SetDisabled(true);
-    }
+    case ControlGroup::DSP:
+      mDSPControls.push_back(added);
+      if (mCurrentTab != Tab::DSP) {
+        added->Hide(true);
+        added->SetDisabled(true);
+      }
+      break;
+
+    case ControlGroup::Brain:
+      mBrainControls.push_back(added);
+      if (mCurrentTab != Tab::Brain) {
+        added->Hide(true);
+        added->SetDisabled(true);
+      }
+      break;
+
+    case ControlGroup::Global:
+      // Global controls are always visible
+      break;
   }
+
   return added;
 }
 
@@ -372,25 +377,6 @@ void SynapticUI::repositionSubsequentCards(IControl* startCard, float heightDelt
 #endif
 }
 
-void SynapticUI::repositionCardsAfterTransformer(float heightDelta)
-{
-#if IPLUG_EDITOR
-  if (!mGraphics || !mTransformerCardPanel) return;
-
-  repositionSubsequentCards(mTransformerCardPanel, heightDelta);
-  anchorMorphLayoutToCard(); // Re-anchor morph dropdown and param bounds to morph card
-#endif
-}
-
-void SynapticUI::repositionCardsAfterMorph(float heightDelta)
-{
-#if IPLUG_EDITOR
-  if (!mGraphics || !mMorphCardPanel) return;
-
-  repositionSubsequentCards(mMorphCardPanel, heightDelta);
-  anchorMorphLayoutToCard(); // Re-anchor morph layout to card
-#endif
-}
 
 void SynapticUI::anchorMorphLayoutToCard()
 {
@@ -478,26 +464,16 @@ void SynapticUI::buildHeader(const IRECT& bounds)
   IRECT headerRow = GetHeaderRowBounds(bounds, mLayout);
 
   IRECT titleRect = GetTitleBounds(headerRow);
-  attachGlobal(new ITextControl(titleRect, "Synaptic Resynthesis", kTitleText));
+  attach(new ITextControl(titleRect, "Synaptic Resynthesis", kTitleText), ControlGroup::Global);
 
   IRECT dspTabRect = GetDSPTabBounds(headerRow);
   IRECT brainTabRect = GetBrainTabBounds(headerRow);
 
   mDSPTabButton = new TabButton(dspTabRect, "DSP", [this]() { setActiveTab(Tab::DSP); });
-  attachGlobal(mDSPTabButton);
+  attach(mDSPTabButton, ControlGroup::Global);
 
   mBrainTabButton = new TabButton(brainTabRect, "Brain", [this]() { setActiveTab(Tab::Brain); });
-  attachGlobal(mBrainTabButton);
-}
-
-void SynapticUI::buildDSP(const IRECT& bounds, float startY)
-{
-  tabs::BuildDSPTab(*this, bounds, mLayout, startY);
-}
-
-void SynapticUI::buildBrain(const IRECT& bounds, float startY)
-{
-  tabs::BuildBrainTab(*this, bounds, mLayout, startY);
+  attach(mBrainTabButton, ControlGroup::Global);
 }
 
 void SynapticUI::setBrainFileListControl(BrainFileListControl* ctrl)

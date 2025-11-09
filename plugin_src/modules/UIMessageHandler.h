@@ -34,9 +34,6 @@ namespace synaptic
         case ::kMsgTagSetChunkSize:
           return plugin->HandleSetChunkSizeMsg(ctrlTag);
 
-        case ::kMsgTagSetBufferWindowSize:
-          return plugin->HandleSetBufferWindowSizeMsg(ctrlTag);
-
         case ::kMsgTagSetOutputWindowMode:
           return plugin->HandleSetOutputWindowMsg(ctrlTag);
 

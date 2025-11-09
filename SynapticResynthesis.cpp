@@ -321,48 +321,14 @@ void SynapticResynthesis::OnIdle()
 #if !SR_USE_WEB_UI && IPLUG_EDITOR
   if (mNeedsInitialUIRebuild && GetUI())
   {
-    if (auto* ui = synaptic::GetSynapticUI())
-    {
-      // Rebuild dynamic params
-      ui->rebuildTransformerParams(mTransformer.get(), mParamManager, this);
-      ui->rebuildMorphParams(mMorph.get(), mParamManager, this);
-
-      // Update brain file list
-      auto brainSummary = mBrain.GetSummary();
-      std::vector<synaptic::ui::BrainFileEntry> uiEntries;
-      for (const auto& s : brainSummary)
-      {
-        uiEntries.push_back({s.id, s.name, s.chunkCount});
-      }
-      ui->updateBrainFileList(uiEntries);
-
-      // Update storage info
-      ui->updateBrainStorage(mBrainManager.UseExternal(), mBrainManager.ExternalPath());
-
-      // Resize window to fit content after initial dynamic params are built
-      ui->resizeWindowToFitContent();
-
-      mNeedsInitialUIRebuild = false;
-    }
+    SyncAllUIState();
+    mNeedsInitialUIRebuild = false;
   }
 
   // Update C++ UI brain file list if needed
   if (CheckAndClearPendingUpdate(PendingUpdate::BrainSummary))
   {
-    if (auto* ui = synaptic::GetSynapticUI())
-    {
-      // Convert Brain summary to UI format
-      auto brainSummary = mBrain.GetSummary();
-      std::vector<synaptic::ui::BrainFileEntry> uiEntries;
-      for (const auto& s : brainSummary)
-      {
-        uiEntries.push_back({s.id, s.name, s.chunkCount});
-      }
-      ui->updateBrainFileList(uiEntries);
-
-      // Also update storage info
-      ui->updateBrainStorage(mBrainManager.UseExternal(), mBrainManager.ExternalPath());
-    }
+    SyncBrainUIState();
   }
 
   // Handle transformer/morph parameter UI rebuild on UI thread
@@ -397,25 +363,7 @@ void SynapticResynthesis::OnRestoreState()
   mUIBridge.SendBrainSummary(mBrain);
 #else
   // For C++ UI, rebuild dynamic parameter controls and brain file list
-  #if IPLUG_EDITOR
-  if (auto* ui = synaptic::GetSynapticUI())
-  {
-    ui->rebuildTransformerParams(mTransformer.get(), mParamManager, this);
-    ui->rebuildMorphParams(mMorph.get(), mParamManager, this);
-
-    // Update brain file list
-    auto brainSummary = mBrain.GetSummary();
-    std::vector<synaptic::ui::BrainFileEntry> uiEntries;
-    for (const auto& s : brainSummary)
-    {
-      uiEntries.push_back({s.id, s.name, s.chunkCount});
-    }
-    ui->updateBrainFileList(uiEntries);
-
-    // Update storage info
-    ui->updateBrainStorage(mBrainManager.UseExternal(), mBrainManager.ExternalPath());
-  }
-  #endif
+  SyncAllUIState();
 #endif
 }
 
@@ -589,6 +537,44 @@ void SynapticResynthesis::UpdateBrainAnalysisWindow()
 {
   mAnalysisWindow.Set(synaptic::Window::IntToType(mDSPConfig.analysisWindowMode), mDSPConfig.chunkSize);
   mBrain.SetWindow(&mAnalysisWindow);
+}
+
+void SynapticResynthesis::SyncBrainUIState()
+{
+#if !SR_USE_WEB_UI && IPLUG_EDITOR
+  auto* ui = synaptic::GetSynapticUI();
+  if (!ui) return;
+
+  // Convert Brain summary to UI format
+  auto brainSummary = mBrain.GetSummary();
+  std::vector<synaptic::ui::BrainFileEntry> uiEntries;
+  for (const auto& s : brainSummary)
+  {
+    uiEntries.push_back({s.id, s.name, s.chunkCount});
+  }
+  ui->updateBrainFileList(uiEntries);
+
+  // Update storage info
+  ui->updateBrainStorage(mBrainManager.UseExternal(), mBrainManager.ExternalPath());
+#endif
+}
+
+void SynapticResynthesis::SyncAllUIState()
+{
+#if !SR_USE_WEB_UI && IPLUG_EDITOR
+  auto* ui = synaptic::GetSynapticUI();
+  if (!ui) return;
+
+  // Rebuild dynamic params
+  ui->rebuildDynamicParams(synaptic::ui::DynamicParamType::Transformer, mTransformer.get(), mParamManager, this);
+  ui->rebuildDynamicParams(synaptic::ui::DynamicParamType::Morph, mMorph.get(), mParamManager, this);
+
+  // Sync brain state
+  SyncBrainUIState();
+
+  // Resize to fit
+  ui->resizeWindowToFitContent();
+#endif
 }
 
 bool SynapticResynthesis::SerializeState(IByteChunk& chunk) const

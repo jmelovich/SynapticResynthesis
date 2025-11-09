@@ -1,3 +1,17 @@
+/**
+ * @file UILayout.h
+ * @brief Layout constants and geometry helper functions
+ *
+ * Responsibilities:
+ * - Defines UILayout struct with padding, spacing, and size constants
+ * - Provides Calculate() function to compute layout from window bounds
+ * - Provides helper functions for header geometry (title, tabs)
+ * - Provides utility function for centered box calculation
+ *
+ * All layout values are computed dynamically from the window size to support
+ * different screen scales and potential future resizing.
+ */
+
 #pragma once
 
 #include "IPlug_include_in_plug_hdr.h"
@@ -5,7 +19,7 @@
 
 namespace synaptic {
 namespace ui {
-// Short alias for iplug::igraphics in headers
+// Note: namespace ig alias is defined in UITheme.h (but we forward-declare it for standalone use)
 namespace ig = iplug::igraphics;
 
 struct UILayout

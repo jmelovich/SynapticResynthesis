@@ -1,3 +1,19 @@
+/**
+ * @file DynamicParamManager.h
+ * @brief Creates and layouts UI controls for dynamic transformer/morph parameters
+ *
+ * Responsibilities:
+ * - Queries transformers and morphs for their exposed parameters
+ * - Creates appropriate IPlug controls based on parameter type (number, boolean, enum)
+ * - Layouts controls in a 2-column grid
+ * - Calculates required height for parameter sections
+ * - Maps parameter IDs to IParam indices
+ *
+ * This class bridges the dynamic parameter system (ExposedParamDesc) with
+ * IPlug's static control system, generating UI controls on-the-fly as
+ * transformers and morphs are switched.
+ */
+
 #pragma once
 
 #include "IPlug_include_in_plug_hdr.h"
@@ -11,8 +27,7 @@
 
 namespace synaptic {
 namespace ui {
-
-namespace ig = iplug::igraphics;
+// Note: namespace ig alias is defined in UITheme.h
 
 /**
  * @brief Manages dynamic parameter control generation and lifecycle

@@ -1,3 +1,16 @@
+/**
+ * @file BrainFileListControl.h
+ * @brief Scrollable list control for brain file management
+ *
+ * Responsibilities:
+ * - Displays a list of audio files currently loaded in the Brain
+ * - Shows file names and chunk counts for each entry
+ * - Provides remove buttons (X) for each file
+ * - Handles mouse wheel scrolling for long lists
+ * - Accepts drag-and-drop of additional audio files
+ * - Sends messages to plugin for add/remove operations
+ */
+
 #pragma once
 
 #include "IPlug_include_in_plug_hdr.h"
@@ -9,8 +22,7 @@
 
 namespace synaptic {
 namespace ui {
-
-namespace ig = iplug::igraphics;
+// Note: namespace ig alias is defined in UITheme.h
 
 /**
  * @brief File entry in the brain file list

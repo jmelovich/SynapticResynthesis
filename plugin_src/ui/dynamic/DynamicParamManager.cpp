@@ -1,3 +1,15 @@
+/**
+ * @file DynamicParamManager.cpp
+ * @brief Implementation of dynamic parameter control generation
+ *
+ * Implements:
+ * - Control type selection (slider, number box, toggle, tab switch, menu button)
+ * - 2-column grid layout with proper spacing
+ * - Height calculation for card resizing
+ * - Parameter ID to IParam index mapping
+ * - Label and control creation from ExposedParamDesc schema
+ */
+
 #include "DynamicParamManager.h"
 #include "../styles/UITheme.h"
 #include "plugin_src/ChunkBufferTransformer.h"

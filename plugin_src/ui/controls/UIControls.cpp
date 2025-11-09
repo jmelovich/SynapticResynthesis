@@ -1,3 +1,14 @@
+/**
+ * @file UIControls.cpp
+ * @brief Implementation of custom UI control drawing and interaction logic
+ *
+ * Implements the rendering and behavior for:
+ * - CardPanel: Draws rounded card backgrounds with borders and titles
+ * - WarningBox: Draws warning boxes with icons and styled text
+ * - TabButton: Handles drawing, mouse interaction, and active state visualization
+ * - BrainStatusControl: Renders file count and storage mode status text
+ */
+
 #include "UIControls.h"
 #include "../styles/UIStyles.h"
 #include "../IconsForkAwesome.h"
@@ -45,7 +56,8 @@ void WarningBox::Draw(IGraphics& g)
   IRECT textRect = mRECT;
   textRect.L += 32.f;
   textRect.R -= 8.f;
-  IText textStyle = IText(12.f, IColor(255, 255, 230, 140), "Roboto-Regular", EAlign::Near, EVAlign::Middle, 0);
+  IText textStyle = kWarnTextStyle;
+  textStyle.mAlign = EAlign::Near;
   g.DrawText(textStyle, mText, textRect);
 }
 
@@ -106,8 +118,7 @@ void BrainStatusControl::Draw(IGraphics& g)
   char statusText[256];
   snprintf(statusText, sizeof(statusText), "Files: %d | Storage: %s", mFileCount, mStorageMode.c_str());
 
-  IText text = IText(12.f, kTextSecond, "Roboto-Regular", EAlign::Near, EVAlign::Middle, 0);
-  g.DrawText(text, statusText, mRECT);
+  g.DrawText(kSmallText, statusText, mRECT);
 }
 
 } // namespace ui

@@ -69,7 +69,7 @@ enum EParams
 enum EMsgTags
 {
   kMsgTagSetChunkSize = 4,
-  kMsgTagSetBufferWindowSize = 5,
+  // kMsgTagSetBufferWindowSize = 5, // DEPRECATED - removed
   kMsgTagSetAlgorithm = 6,
   kMsgTagSetOutputWindowMode = 7,
   // Analysis window used for offline brain analysis (non-automatable IParam mirrors this)
@@ -116,7 +116,6 @@ private:
   // === Message Handlers (called by UIMessageRouter) ===
   bool HandleUiReadyMsg();
   bool HandleSetChunkSizeMsg(int newSize);
-  bool HandleSetBufferWindowSizeMsg(int newSize);
   bool HandleSetOutputWindowMsg(int mode);
   bool HandleSetAnalysisWindowMsg(int mode);
   bool HandleSetAlgorithmMsg(int algorithmId);
@@ -136,6 +135,10 @@ private:
   void SyncAndSendDSPConfig();
   void SetParameterFromUI(int paramIdx, double value);
   void UpdateBrainAnalysisWindow();
+
+  // UI state synchronization helpers (C++ UI only)
+  void SyncBrainUIState();
+  void SyncAllUIState();
 
   // === Brain State (must be declared before BrainManager) ===
   synaptic::Brain mBrain;

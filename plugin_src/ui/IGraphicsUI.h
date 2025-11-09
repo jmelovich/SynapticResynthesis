@@ -1,3 +1,15 @@
+/**
+ * @file IGraphicsUI.h
+ * @brief Entry point for IGraphics-based UI initialization
+ *
+ * Responsibilities:
+ * - Provides BuildIGraphicsLayout() function called by the plugin to create the UI
+ * - Manages the global SynapticUI instance lifecycle
+ * - Provides accessor functions for other plugin components to access the UI
+ *
+ * This is the bridge between the plugin's IGraphics system and our custom UI implementation.
+ */
+
 #pragma once
 
 #include "IPlug_include_in_plug_hdr.h"

@@ -1,8 +1,21 @@
+/**
+ * @file BrainFileListControl.cpp
+ * @brief Implementation of scrollable brain file list with interactive remove buttons
+ *
+ * Implements:
+ * - Row-based layout with background, text, and remove button per file
+ * - Hover effects for rows and buttons
+ * - Mouse wheel scrolling with bounds checking
+ * - Row hit testing for click detection
+ * - Message sending for file removal
+ * - Empty state rendering
+ */
+
 #include "BrainFileListControl.h"
+#include "BrainFileHelpers.h"
 #include "../../SynapticResynthesis.h"
 #include <algorithm>
-#include <fstream>
-#include <cstring>
+
 
 using namespace iplug;
 using namespace igraphics;
@@ -21,14 +34,13 @@ BrainFileListControl::BrainFileListControl(const IRECT& bounds)
 void BrainFileListControl::Draw(IGraphics& g)
 {
   // Draw background - dark theme to match plugin
-  g.FillRect(IColor(255, 35, 35, 38), mRECT);
+  g.FillRect(kPanelDark, mRECT);
   g.DrawRect(kControlBorder, mRECT);
 
   if (mFiles.empty())
   {
     // Draw empty state message
-    IText text = IText(13.f, kTextSecond, "Roboto-Regular", EAlign::Center, EVAlign::Middle, 0);
-    g.DrawText(text, "No files in Brain", mRECT);
+    g.DrawText(kSmallText, "No files in Brain", mRECT);
     return;
   }
 
@@ -49,7 +61,7 @@ void BrainFileListControl::Draw(IGraphics& g)
     bool isHovered = (i == mHoveredRow);
 
     // Draw row background - slightly lighter on hover
-    IColor bgColor = isHovered ? IColor(255, 50, 50, 55) : IColor(255, 40, 40, 43);
+    IColor bgColor = isHovered ? kControlBG : kPanelDark;
     g.FillRect(bgColor, rowRect);
 
     // Draw row border
@@ -62,7 +74,10 @@ void BrainFileListControl::Draw(IGraphics& g)
     IRECT textRect = rowRect.GetPadded(-mPadding);
     textRect.R -= 70.f; // Leave space for remove button
 
-    IText text = IText(13.f, IColor(255, 220, 220, 220), "Roboto-Regular", EAlign::Near, EVAlign::Middle, 0);
+    IText text = kSmallText;
+    text.mAlign = EAlign::Near;
+    text.mVAlign = EVAlign::Middle;
+    text.mSize = 13.f;
     g.DrawText(text, label, textRect);
 
     // Draw remove button
@@ -70,11 +85,13 @@ void BrainFileListControl::Draw(IGraphics& g)
     bool btnHovered = isHovered && mHoveringRemoveButton;
 
     IColor btnColor = btnHovered ? IColor(255, 220, 53, 69) : IColor(255, 239, 68, 68);
-    IColor btnTextColor = COLOR_WHITE;
-
     g.FillRoundRect(btnColor, btnRect, 4.f);
 
-    IText btnText = IText(11.f, btnTextColor, "Roboto-Regular", EAlign::Center, EVAlign::Middle, 0);
+    IText btnText = kSmallText;
+    btnText.mAlign = EAlign::Center;
+    btnText.mVAlign = EVAlign::Middle;
+    btnText.mSize = 11.f;
+    btnText.mFGColor = COLOR_WHITE;
     g.DrawText(btnText, "X", btnRect);
   }
 }
@@ -186,60 +203,12 @@ bool BrainFileListControl::IsInRemoveButton(float x, float y, int rowIndex) cons
 
 void BrainFileListControl::SendRemoveFileMessage(int fileId)
 {
-  auto* pGraphics = GetUI();
-  if (!pGraphics)
-    return;
-
-  auto* pDelegate = dynamic_cast<IEditorDelegate*>(pGraphics->GetDelegate());
-  if (!pDelegate)
-    return;
-
-  pDelegate->SendArbitraryMsgFromUI(kMsgTagBrainRemoveFile, fileId, 0, nullptr);
+  BrainFileHelpers::SendMessageToPlugin(GetUI(), kMsgTagBrainRemoveFile, fileId, 0, nullptr);
 }
 
 void BrainFileListControl::SendAddFileMessage(const char* path)
 {
-  // Reuse the same file loading logic from BrainFileDropControl
-  std::ifstream file(path, std::ios::binary | std::ios::ate);
-  if (!file.is_open())
-    return;
-
-  std::streamsize fileSize = file.tellg();
-  file.seekg(0, std::ios::beg);
-
-  // Extract filename
-  std::string pathStr(path);
-  size_t lastSlash = pathStr.find_last_of("/\\");
-  std::string filename = (lastSlash != std::string::npos)
-    ? pathStr.substr(lastSlash + 1)
-    : pathStr;
-
-  // Build message: [uint16 nameLen][name bytes][file data]
-  uint16_t nameLen = static_cast<uint16_t>(filename.size());
-  size_t totalSize = 2 + nameLen + fileSize;
-  std::vector<uint8_t> buffer(totalSize);
-
-  buffer[0] = nameLen & 0xFF;
-  buffer[1] = (nameLen >> 8) & 0xFF;
-  std::memcpy(buffer.data() + 2, filename.c_str(), nameLen);
-
-  if (!file.read(reinterpret_cast<char*>(buffer.data() + 2 + nameLen), fileSize))
-  {
-    file.close();
-    return;
-  }
-  file.close();
-
-  auto* pGraphics = GetUI();
-  if (!pGraphics)
-    return;
-
-  auto* pDelegate = dynamic_cast<IEditorDelegate*>(pGraphics->GetDelegate());
-  if (!pDelegate)
-    return;
-
-  pDelegate->SendArbitraryMsgFromUI(kMsgTagBrainAddFile, kNoTag,
-                                    static_cast<int>(totalSize), buffer.data());
+  BrainFileHelpers::LoadAndSendFile(path, GetUI());
 }
 
 void BrainFileListControl::OnDrop(const char* str)

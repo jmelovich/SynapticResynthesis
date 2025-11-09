@@ -1,3 +1,16 @@
+/**
+ * @file BrainFileDropControl.h
+ * @brief Drag-and-drop target for importing audio files into the Brain
+ *
+ * Responsibilities:
+ * - Provides a visual drop zone for audio file import
+ * - Opens file browser dialog when clicked
+ * - Accepts drag-and-drop of single or multiple audio files
+ * - Validates file types (WAV, MP3, FLAC)
+ * - Sends file data to plugin for brain analysis
+ * - Shows hover feedback to indicate interactivity
+ */
+
 #pragma once
 
 #include "IPlug_include_in_plug_hdr.h"
@@ -9,8 +22,7 @@
 
 namespace synaptic {
 namespace ui {
-
-namespace ig = iplug::igraphics;
+// Note: namespace ig alias is defined in UITheme.h
 
 /**
  * @brief Control that accepts drag-and-drop audio files for Brain import
@@ -28,24 +40,7 @@ public:
   void OnDropMultiple(const std::vector<const char*>& paths) override;
 
 private:
-  /**
-   * @brief Check if file extension is a supported audio format
-   */
-  bool IsSupportedAudioFile(const std::string& path) const;
-
-  /**
-   * @brief Send file to plugin for processing
-   */
-  void SendFileToPlugin(const char* path);
-
-  /**
-   * @brief Load file into memory and send to plugin via message
-   */
-  bool LoadAndSendFile(const char* path);
-
-private:
   bool mIsHovered;
-  bool mIsDragOver;
 };
 
 } // namespace ui

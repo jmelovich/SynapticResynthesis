@@ -1,3 +1,18 @@
+/**
+ * @file UIControls.h
+ * @brief Custom UI control classes for the Synaptic Resynthesis interface
+ *
+ * Defines custom control types:
+ * - CardPanel: Rounded rectangle container with optional title
+ * - WarningBox: Styled warning message box with icon
+ * - TabButton: Clickable tab selector with hover and active states
+ * - BrainStatusControl: Display-only status line showing file count and storage mode
+ *
+ * Also includes brain-specific controls via their own headers:
+ * - BrainFileDropControl: Drag-and-drop zone for audio files
+ * - BrainFileListControl: Scrollable list of brain files with remove buttons
+ */
+
 #pragma once
 
 #include "IPlug_include_in_plug_hdr.h"
@@ -7,8 +22,7 @@
 
 namespace synaptic {
 namespace ui {
-// Local alias to shorten iplug::igraphics qualifiers in headers
-namespace ig = iplug::igraphics;
+// Note: namespace ig alias is defined in UITheme.h
 
 class CardPanel : public ig::IControl
 {
