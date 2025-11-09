@@ -71,7 +71,6 @@ std::vector<IControl*> DynamicParamManager::BuildParamControls(
     return controls;
 
   // Layout parameters in 2-column grid
-  const float labelWidth = 160.f;
   const float rowHeight = layout.controlHeight;
   const float rowGap = 10.f;
   const float colGap = 20.f;
@@ -97,15 +96,8 @@ std::vector<IControl*> DynamicParamManager::BuildParamControls(
       y + rowHeight
     );
 
-    // Create label
-    IRECT labelRect = cellRect.GetFromLeft(labelWidth);
-    IControl* label = new ITextControl(labelRect, desc.label.c_str(), kLabelText);
-    controls.push_back(label);
-
-    // Create control
-    IRECT controlRect = cellRect;
-    controlRect.L = labelRect.R + 8.f;
-    IControl* control = CreateControlForParam(controlRect, desc, paramIdx, layout);
+    // Create control with label (no separate label control needed)
+    IControl* control = CreateControlForParam(cellRect, desc, paramIdx, layout);
     if (control)
       controls.push_back(control);
 
@@ -148,17 +140,17 @@ IControl* DynamicParamManager::CreateControlForParam(
       if (desc.control == ControlType::Slider)
       {
         // Create horizontal slider for slider-type parameters
-        return new IVSliderControl(bounds, paramIdx, "", kSynapticStyle, true, EDirection::Horizontal);
+        return new IVSliderControl(bounds, paramIdx, desc.label.c_str(), kSynapticStyle, true, EDirection::Horizontal);
       }
       else // NumberBox
       {
-        return new IVNumberBoxControl(bounds, paramIdx, nullptr, "", kSynapticStyle);
+        return new IVNumberBoxControl(bounds, paramIdx, nullptr, desc.label.c_str(), kSynapticStyle);
       }
     }
 
     case ParamType::Boolean:
     {
-      return new IVToggleControl(bounds, paramIdx, "", kSynapticStyle, "OFF", "ON");
+      return new IVToggleControl(bounds, paramIdx, desc.label.c_str(), kSynapticStyle, "OFF", "ON");
     }
 
     case ParamType::Enum:
@@ -170,13 +162,13 @@ IControl* DynamicParamManager::CreateControlForParam(
         for (const auto& opt : desc.options)
           labels.push_back(opt.label.c_str());
         return new IVTabSwitchControl(
-          bounds, paramIdx, labels, "", kSynapticStyle,
+          bounds, paramIdx, labels, desc.label.c_str(), kSynapticStyle,
           EVShape::Rectangle, EDirection::Horizontal);
       }
       else
       {
         // Use menu button for many options
-        return new IVMenuButtonControl(bounds, paramIdx, "", kSynapticStyle);
+        return new IVMenuButtonControl(bounds, paramIdx, desc.label.c_str(), kSynapticStyle);
       }
     }
 
