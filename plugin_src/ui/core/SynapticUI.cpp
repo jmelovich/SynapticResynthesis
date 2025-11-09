@@ -71,6 +71,7 @@ void SynapticUI::rebuild()
   mDSPTabButton = nullptr;
   mBrainTabButton = nullptr;
   mBrainFileListControl = nullptr;
+  mBrainStatusControl = nullptr;
   mTransformerCardPanel = nullptr;
   mMorphCardPanel = nullptr;
   mAudioProcessingCardPanel = nullptr;
@@ -150,6 +151,9 @@ void SynapticUI::setActiveTab(Tab tab)
 
   if (mDSPTabButton) mDSPTabButton->SetActive(tab == Tab::DSP);
   if (mBrainTabButton) mBrainTabButton->SetActive(tab == Tab::Brain);
+
+  // Auto-resize window to fit content when switching tabs
+  resizeWindowToFitContent();
 }
 
 void SynapticUI::rebuildTransformerParams(
@@ -426,23 +430,29 @@ void SynapticUI::resizeWindowToFitContent()
   if (!mGraphics) return;
 
   // Find the bottom-most control to determine required height
+  // Only check controls for the ACTIVE tab
   float maxBottom = 0.f;
 
-  // Check DSP tab controls
-  for (auto* ctrl : mDSPControls)
+  if (mCurrentTab == Tab::DSP)
   {
-    if (ctrl)
+    // Check DSP tab controls
+    for (auto* ctrl : mDSPControls)
     {
-      maxBottom = std::max(maxBottom, ctrl->GetRECT().B);
+      if (ctrl)
+      {
+        maxBottom = std::max(maxBottom, ctrl->GetRECT().B);
+      }
     }
   }
-
-  // Check Brain tab controls
-  for (auto* ctrl : mBrainControls)
+  else if (mCurrentTab == Tab::Brain)
   {
-    if (ctrl)
+    // Check Brain tab controls
+    for (auto* ctrl : mBrainControls)
     {
-      maxBottom = std::max(maxBottom, ctrl->GetRECT().B);
+      if (ctrl)
+      {
+        maxBottom = std::max(maxBottom, ctrl->GetRECT().B);
+      }
     }
   }
 
@@ -495,12 +505,45 @@ void SynapticUI::setBrainFileListControl(BrainFileListControl* ctrl)
   mBrainFileListControl = ctrl;
 }
 
+void SynapticUI::setBrainStatusControl(BrainStatusControl* ctrl)
+{
+  mBrainStatusControl = ctrl;
+}
+
 void SynapticUI::updateBrainFileList(const std::vector<BrainFileEntry>& files)
 {
 #if IPLUG_EDITOR
   if (mBrainFileListControl)
   {
     mBrainFileListControl->UpdateList(files);
+  }
+
+  // Update file count in status line
+  if (mBrainStatusControl)
+  {
+    mBrainStatusControl->SetFileCount((int)files.size());
+  }
+#endif
+}
+
+void SynapticUI::updateBrainStorage(bool useExternal, const std::string& externalPath)
+{
+#if IPLUG_EDITOR
+  if (mBrainStatusControl)
+  {
+    if (useExternal && !externalPath.empty())
+    {
+      // Extract filename from full path for display
+      size_t lastSlash = externalPath.find_last_of("/\\");
+      std::string filename = (lastSlash != std::string::npos)
+        ? externalPath.substr(lastSlash + 1)
+        : externalPath;
+      mBrainStatusControl->SetStorageMode(filename);
+    }
+    else
+    {
+      mBrainStatusControl->SetStorageMode("(inline)");
+    }
   }
 #endif
 }

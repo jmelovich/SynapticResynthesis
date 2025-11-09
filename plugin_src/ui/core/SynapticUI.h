@@ -81,7 +81,9 @@ public:
 
   // Brain file list management
   void setBrainFileListControl(class BrainFileListControl* ctrl);
+  void setBrainStatusControl(class BrainStatusControl* ctrl);
   void updateBrainFileList(const std::vector<struct BrainFileEntry>& files);
+  void updateBrainStorage(bool useExternal, const std::string& externalPath);
 
   // Window management
   void resizeWindowToFitContent();
@@ -126,6 +128,7 @@ private:
 
   // Brain file list control
   class BrainFileListControl* mBrainFileListControl { nullptr };
+  class BrainStatusControl* mBrainStatusControl { nullptr };
 
   // Cached context for rebuilding dynamic params on resize
   RebuildContext mRebuildContext;

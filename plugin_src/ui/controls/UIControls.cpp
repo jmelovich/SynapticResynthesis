@@ -95,6 +95,21 @@ void TabButton::SetActive(bool active)
   }
 }
 
+BrainStatusControl::BrainStatusControl(const IRECT& bounds)
+: IControl(bounds)
+{
+  SetIgnoreMouse(true);
+}
+
+void BrainStatusControl::Draw(IGraphics& g)
+{
+  char statusText[256];
+  snprintf(statusText, sizeof(statusText), "Files: %d | Storage: %s", mFileCount, mStorageMode.c_str());
+
+  IText text = IText(12.f, kTextSecond, "Roboto-Regular", EAlign::Near, EVAlign::Middle, 0);
+  g.DrawText(text, statusText, mRECT);
+}
+
 } // namespace ui
 } // namespace synaptic
 

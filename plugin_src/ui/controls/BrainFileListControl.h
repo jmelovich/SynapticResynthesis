@@ -29,17 +29,20 @@ class BrainFileListControl : public ig::IControl
 {
 public:
   BrainFileListControl(const ig::IRECT& bounds);
-  
+
   void Draw(ig::IGraphics& g) override;
   void OnMouseDown(float x, float y, const ig::IMouseMod& mod) override;
   void OnMouseOver(float x, float y, const ig::IMouseMod& mod) override;
   void OnMouseOut() override;
-  
+  void OnMouseWheel(float x, float y, const ig::IMouseMod& mod, float d) override;
+  void OnDrop(const char* str) override;
+  void OnDropMultiple(const std::vector<const char*>& paths) override;
+
   /**
    * @brief Update the file list from Brain summary
    */
   void UpdateList(const std::vector<BrainFileEntry>& files);
-  
+
   /**
    * @brief Get current file count
    */
@@ -50,26 +53,31 @@ private:
    * @brief Get row rect for a file entry
    */
   ig::IRECT GetRowRect(int index) const;
-  
+
   /**
    * @brief Get remove button rect for a row
    */
   ig::IRECT GetRemoveButtonRect(const ig::IRECT& rowRect) const;
-  
+
   /**
    * @brief Find which row index is at y coordinate (or -1 if none)
    */
   int FindRowAtY(float y) const;
-  
+
   /**
    * @brief Check if point is in remove button for given row
    */
   bool IsInRemoveButton(float x, float y, int rowIndex) const;
-  
+
   /**
    * @brief Send remove file message to plugin
    */
   void SendRemoveFileMessage(int fileId);
+
+  /**
+   * @brief Send add file message to plugin
+   */
+  void SendAddFileMessage(const char* path);
 
 private:
   std::vector<BrainFileEntry> mFiles;

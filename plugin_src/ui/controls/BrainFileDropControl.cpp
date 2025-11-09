@@ -1,5 +1,6 @@
 #include "BrainFileDropControl.h"
 #include "../../SynapticResynthesis.h"
+#include "../../PlatformFileDialogs.h"
 #include <algorithm>
 #include <cctype>
 
@@ -44,27 +45,46 @@ void BrainFileDropControl::Draw(IGraphics& g)
   IText text = IText(14.f, textColor, "Roboto-Regular", EAlign::Center, EVAlign::Middle, 0);
   const char* message = mIsDragOver
     ? "Drop audio files here"
-    : "Drag and drop audio files (.wav, .mp3, .flac)";
+    : "Drag and drop audio files or click to browse";
   g.DrawText(text, message, mRECT);
+}
+
+void BrainFileDropControl::OnMouseDown(float x, float y, const IMouseMod& mod)
+{
+  // Open file browser dialog
+  std::string selectedPath;
+  const wchar_t* filter = L"Audio Files\0*.wav;*.wave;*.mp3;*.flac\0"
+                          L"WAV Files (*.wav)\0*.wav;*.wave\0"
+                          L"MP3 Files (*.mp3)\0*.mp3\0"
+                          L"FLAC Files (*.flac)\0*.flac\0"
+                          L"All Files (*.*)\0*.*\0\0";
+
+  if (platform::GetOpenFilePath(selectedPath, filter))
+  {
+    if (IsSupportedAudioFile(selectedPath))
+    {
+      LoadAndSendFile(selectedPath.c_str());
+    }
+  }
 }
 
 void BrainFileDropControl::OnMouseOver(float x, float y, const IMouseMod& mod)
 {
   mIsHovered = true;
-  SetDirty(false);
+  SetDirty(true); // Trigger redraw for hover effect
 }
 
 void BrainFileDropControl::OnMouseOut()
 {
   mIsHovered = false;
   mIsDragOver = false;
-  SetDirty(false);
+  SetDirty(true); // Trigger redraw to clear hover effect
 }
 
 void BrainFileDropControl::OnDrop(const char* str)
 {
   mIsDragOver = false;
-  SetDirty(false);
+  SetDirty(true);
 
   if (!str)
     return;
@@ -79,7 +99,7 @@ void BrainFileDropControl::OnDrop(const char* str)
 void BrainFileDropControl::OnDropMultiple(const std::vector<const char*>& paths)
 {
   mIsDragOver = false;
-  SetDirty(false);
+  SetDirty(true);
 
   for (const char* path : paths)
   {

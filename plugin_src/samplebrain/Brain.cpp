@@ -783,6 +783,15 @@ namespace synaptic
       }
     }
 
+    // Update nextFileId_ to be one more than the maximum file ID we just loaded
+    // This prevents duplicate IDs when adding new files after import
+    nextFileId_ = 1;
+    for (const auto& f : files_)
+    {
+      if (f.id >= nextFileId_)
+        nextFileId_ = f.id + 1;
+    }
+
     return pos;
   }
 }

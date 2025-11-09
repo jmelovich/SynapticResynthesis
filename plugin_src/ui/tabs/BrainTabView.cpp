@@ -18,7 +18,7 @@ void BuildBrainTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, 
   float yPos = startY;
 
   // SAMPLE LIBRARY CARD
-  float libraryCardHeight = 340.f; // Increased to accommodate file list
+  float libraryCardHeight = 510.f; // 50% taller (340 * 1.5 = 510)
   IRECT libraryCard = IRECT(layout.padding, yPos, bounds.W() - layout.padding, yPos + libraryCardHeight);
   ui.attachBrain(new CardPanel(libraryCard, "SAMPLE LIBRARY"));
 
@@ -28,8 +28,9 @@ void BuildBrainTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, 
 
   // Status line
   IRECT statusRect = IRECT(libraryCard.L + layout.cardPadding, dropArea.B + 8.f, libraryCard.R - layout.cardPadding, dropArea.B + 24.f);
-  IText statusText = IText(12.f, kTextSecond, "Roboto-Regular", EAlign::Near, EVAlign::Middle, 0);
-  ui.attachBrain(new ITextControl(statusRect, "Files: 0 | Storage: (inline)", statusText));
+  auto* statusControl = new BrainStatusControl(statusRect);
+  ui.attachBrain(statusControl);
+  ui.setBrainStatusControl(statusControl); // Store reference for updates
 
   // File list
   IRECT fileListRect = IRECT(

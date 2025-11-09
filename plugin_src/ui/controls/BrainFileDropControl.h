@@ -21,6 +21,7 @@ public:
   BrainFileDropControl(const ig::IRECT& bounds);
 
   void Draw(ig::IGraphics& g) override;
+  void OnMouseDown(float x, float y, const ig::IMouseMod& mod) override;
   void OnMouseOver(float x, float y, const ig::IMouseMod& mod) override;
   void OnMouseOut() override;
   void OnDrop(const char* str) override;

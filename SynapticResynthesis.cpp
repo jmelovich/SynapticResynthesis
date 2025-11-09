@@ -121,18 +121,18 @@ mEditorInitFunc = [this]() {
 void SynapticResynthesis::DrainUiQueueOnMainThread()
 {
   // Coalesce structured resend flags first
+#if SR_USE_WEB_UI
+  // For WebUI, handle BrainSummary here
   if (CheckAndClearPendingUpdate(PendingUpdate::BrainSummary))
   {
-#if SR_USE_WEB_UI
     mUIBridge.SendBrainSummary(mBrain);
-#endif
   }
   if (CheckAndClearPendingUpdate(PendingUpdate::DSPConfig))
   {
-#if SR_USE_WEB_UI
     SyncAndSendDSPConfig();
-#endif
   }
+#endif
+  // MarkDirty is shared by both UI modes
   if (CheckAndClearPendingUpdate(PendingUpdate::MarkDirty))
     MarkHostStateDirty();
 
@@ -336,6 +336,9 @@ void SynapticResynthesis::OnIdle()
       }
       ui->updateBrainFileList(uiEntries);
 
+      // Update storage info
+      ui->updateBrainStorage(mBrainManager.UseExternal(), mBrainManager.ExternalPath());
+
       // Resize window to fit content after initial dynamic params are built
       ui->resizeWindowToFitContent();
 
@@ -356,6 +359,9 @@ void SynapticResynthesis::OnIdle()
         uiEntries.push_back({s.id, s.name, s.chunkCount});
       }
       ui->updateBrainFileList(uiEntries);
+
+      // Also update storage info
+      ui->updateBrainStorage(mBrainManager.UseExternal(), mBrainManager.ExternalPath());
     }
   }
 
@@ -405,6 +411,9 @@ void SynapticResynthesis::OnRestoreState()
       uiEntries.push_back({s.id, s.name, s.chunkCount});
     }
     ui->updateBrainFileList(uiEntries);
+
+    // Update storage info
+    ui->updateBrainStorage(mBrainManager.UseExternal(), mBrainManager.ExternalPath());
   }
   #endif
 #endif

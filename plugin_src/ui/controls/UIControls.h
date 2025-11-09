@@ -44,6 +44,18 @@ private:
   bool mIsHovered;
 };
 
+class BrainStatusControl : public ig::IControl
+{
+public:
+  BrainStatusControl(const ig::IRECT& bounds);
+  void Draw(ig::IGraphics& g) override;
+  void SetFileCount(int count) { mFileCount = count; SetDirty(true); }
+  void SetStorageMode(const std::string& mode) { mStorageMode = mode; SetDirty(true); }
+private:
+  int mFileCount = 0;
+  std::string mStorageMode = "(inline)";
+};
+
 } // namespace ui
 } // namespace synaptic
 
