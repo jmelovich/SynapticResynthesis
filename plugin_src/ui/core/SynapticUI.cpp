@@ -116,11 +116,11 @@ void SynapticUI::rebuild()
   // Rebuild dynamic params using cached context if available
   if (mRebuildContext.transformer && mRebuildContext.paramManager && mRebuildContext.plugin)
   {
-    rebuildDynamicParams(DynamicParamType::Transformer, mRebuildContext.transformer, *mRebuildContext.paramManager, mRebuildContext.plugin);
+    rebuildDynamicParams(DynamicParamType::Transformer, mRebuildContext.transformer.get(), *mRebuildContext.paramManager, mRebuildContext.plugin);
   }
   if (mRebuildContext.morph && mRebuildContext.paramManager && mRebuildContext.plugin)
   {
-    rebuildDynamicParams(DynamicParamType::Morph, mRebuildContext.morph, *mRebuildContext.paramManager, mRebuildContext.plugin);
+    rebuildDynamicParams(DynamicParamType::Morph, mRebuildContext.morph.get(), *mRebuildContext.paramManager, mRebuildContext.plugin);
   }
 
   // Resize window to fit content
@@ -262,17 +262,8 @@ void SynapticUI::rebuildDynamicParams(
   if (!mGraphics || !owner || !plugin)
     return;
 
-  // Cache context for future rebuilds
-  if (type == DynamicParamType::Transformer)
-  {
-    mRebuildContext.transformer = static_cast<const synaptic::IChunkBufferTransformer*>(owner);
-  }
-  else // Morph
-  {
-    mRebuildContext.morph = static_cast<const synaptic::IMorph*>(owner);
-  }
-  mRebuildContext.paramManager = &paramManager;
-  mRebuildContext.plugin = plugin;
+  // Note: mRebuildContext is set via setDynamicParamContext with shared_ptr copies
+  // to prevent race conditions. We don't update it here with raw pointers.
 
   // Select appropriate control list and bounds
   std::vector<IControl*>& paramControls = (type == DynamicParamType::Transformer)

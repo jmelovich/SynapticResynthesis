@@ -139,7 +139,12 @@ bool SynapticResynthesis::HandleSetAlgorithmMsg(int algorithmId)
   UpdateChunkerWindowing();
 
   // Send transformer params and DSP config to UI (use pending transformer since swap hasn't happened yet)
+#if SR_USE_WEB_UI
   mUIBridge.SendTransformerParams(mPendingTransformer);
+#else
+  // For C++ UI, trigger rebuild on UI thread
+  SetPendingUpdate(PendingUpdate::RebuildTransformer);
+#endif
   SyncAndSendDSPConfig();
   // Note: SetLatency will be called in ProcessBlock after swap
   return true;
@@ -278,6 +283,7 @@ bool SynapticResynthesis::HandleBrainExportMsg()
 {
   mBrainManager.ExportToFileAsync([this]()
   {
+    SetPendingUpdate(PendingUpdate::BrainSummary);  // Update brain UI state (includes storage label)
     SetPendingUpdate(PendingUpdate::DSPConfig);
     SetPendingUpdate(PendingUpdate::MarkDirty);
   });
@@ -310,6 +316,12 @@ bool SynapticResynthesis::HandleBrainResetMsg()
 bool SynapticResynthesis::HandleBrainDetachMsg()
 {
   mBrainManager.Detach();
+#if SR_USE_WEB_UI
+  mUIBridge.SendBrainSummary(mBrain);
+#else
+  // For C++ UI, set flag to update in OnIdle (updates storage label back to inline)
+  SetPendingUpdate(PendingUpdate::BrainSummary);
+#endif
   MarkHostStateDirty();
   return true;
 }

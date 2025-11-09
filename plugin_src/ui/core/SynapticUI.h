@@ -43,9 +43,10 @@ enum class DynamicParamType { Transformer, Morph };
 enum class ControlGroup { Global, DSP, Brain };
 
 // Context for rebuilding dynamic parameters
+// Uses shared_ptr to keep objects alive during UI rebuild (prevents race with audio thread)
 struct RebuildContext {
-  const synaptic::IChunkBufferTransformer* transformer { nullptr };
-  const synaptic::IMorph* morph { nullptr };
+  std::shared_ptr<const synaptic::IChunkBufferTransformer> transformer;
+  std::shared_ptr<const synaptic::IMorph> morph;
   const synaptic::ParameterManager* paramManager { nullptr };
   iplug::Plugin* plugin { nullptr };
 };
@@ -69,9 +70,10 @@ public:
     iplug::Plugin* plugin);
 
   // Store references for rebuilding dynamic params on resize
+  // Takes shared_ptr to keep objects alive during UI operations
   void setDynamicParamContext(
-    const synaptic::IChunkBufferTransformer* transformer,
-    const synaptic::IMorph* morph,
+    std::shared_ptr<const synaptic::IChunkBufferTransformer> transformer,
+    std::shared_ptr<const synaptic::IMorph> morph,
     const synaptic::ParameterManager* paramManager,
     iplug::Plugin* plugin)
   {

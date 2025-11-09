@@ -185,6 +185,17 @@ void SynapticResynthesis::ProcessBlock(sample** inputs, sample** outputs, int nF
     mParamManager.ApplyBindingsToOwners(this, mTransformer.get(), mMorph.get());
   }
 
+  // Thread-safe morph swap: check if there's a pending morph and swap it on audio thread
+  if (mPendingMorph)
+  {
+    mMorph = std::move(mPendingMorph);
+    mPendingMorph.reset();
+    mChunker.SetMorph(mMorph);
+
+    // Also apply bindings to the newly swapped morph
+    mParamManager.ApplyBindingsToOwners(this, mTransformer.get(), mMorph.get());
+  }
+
   const double inGain = GetParam(kInGain)->DBToAmp();
   const double outGain = GetParam(kOutGain)->DBToAmp();
   const double agcEnabled = GetParam(kAGC)->Bool();
@@ -337,9 +348,19 @@ void SynapticResynthesis::OnIdle()
   {
     if (auto* ui = synaptic::GetSynapticUI())
     {
-      // Update cached context with current instances before rebuilding
-      ui->setDynamicParamContext(mTransformer.get(), mMorph.get(), &mParamManager, this);
+      // Use pending transformer/morph if available (swap hasn't happened yet), otherwise use current
+      // Pass shared_ptr copies to keep objects alive during UI rebuild (prevents race with audio thread)
+      std::shared_ptr<const synaptic::IChunkBufferTransformer> currentTransformer =
+        mPendingTransformer ? mPendingTransformer : mTransformer;
+      std::shared_ptr<const synaptic::IMorph> currentMorph =
+        mPendingMorph ? mPendingMorph : mMorph;
+
+      // Update cached context with shared_ptr copies before rebuilding
+      ui->setDynamicParamContext(currentTransformer, currentMorph, &mParamManager, this);
       ui->rebuild();
+
+      // After rebuild, sync brain state to newly created controls
+      SyncBrainUIState();
     }
     CheckAndClearPendingUpdate(PendingUpdate::RebuildTransformer);
     CheckAndClearPendingUpdate(PendingUpdate::RebuildMorph);
@@ -429,11 +450,11 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
   else if (paramIdx == mParamManager.GetMorphModeParamIdx())
   {
     // Create/reset new IMorph instance and apply bindings
-    mMorph = mParamManager.HandleMorphModeChange(paramIdx, GetParam(paramIdx), this,
+    mPendingMorph = mParamManager.HandleMorphModeChange(paramIdx, GetParam(paramIdx), this,
                                                  GetSampleRate(), mDSPConfig.chunkSize, NInChansConnected());
-    mChunker.SetMorph(mMorph);
+    // Note: mChunker.SetMorph will be called in ProcessBlock after swap
 #if SR_USE_WEB_UI
-    mUIBridge.SendMorphParams(mMorph);
+    mUIBridge.SendMorphParams(mPendingMorph);
 #else
     // Schedule morph parameter UI rebuild (must happen on UI thread)
     #if IPLUG_EDITOR
@@ -564,6 +585,9 @@ void SynapticResynthesis::SyncAllUIState()
 #if !SR_USE_WEB_UI && IPLUG_EDITOR
   auto* ui = synaptic::GetSynapticUI();
   if (!ui) return;
+
+  // Update context with shared_ptr copies to prevent race conditions
+  ui->setDynamicParamContext(mTransformer, mMorph, &mParamManager, this);
 
   // Rebuild dynamic params
   ui->rebuildDynamicParams(synaptic::ui::DynamicParamType::Transformer, mTransformer.get(), mParamManager, this);

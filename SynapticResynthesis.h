@@ -159,6 +159,7 @@ private:
   std::shared_ptr<synaptic::IChunkBufferTransformer> mPendingTransformer; // For thread-safe swapping
   synaptic::Window mOutputWindow;
   std::shared_ptr<synaptic::IMorph> mMorph; // dynamic morph owner (for params)
+  std::shared_ptr<synaptic::IMorph> mPendingMorph; // For thread-safe swapping
 
   // Utility methods
   int ComputeLatencySamples() const { return mDSPConfig.chunkSize + (mTransformer ? mTransformer->GetAdditionalLatencySamples(mDSPConfig.chunkSize, mDSPConfig.bufferWindowSize) : 0); }
