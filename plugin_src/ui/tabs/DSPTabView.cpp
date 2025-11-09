@@ -58,10 +58,14 @@ void BuildDSPTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, fl
 
   yPos = analysisCard.B + layout.sectionGap;
 
-  // TRANSFORMER CARD
-  float transformerCardHeight = 90.f;
-  IRECT transformerCard = IRECT(layout.padding, yPos, bounds.W() - layout.padding, yPos + transformerCardHeight);
-  ui.attachDSP(new CardPanel(transformerCard, "TRANSFORMER"));
+  // TRANSFORMER CARD (with space for dynamic params)
+  // Base height for dropdown, will be expanded by dynamic params if needed
+  float transformerCardBaseHeight = 120.f;
+  float transformerCardMaxHeight = 450.f; // Max space for dynamic params
+  IRECT transformerCard = IRECT(layout.padding, yPos, bounds.W() - layout.padding, yPos + transformerCardMaxHeight);
+  auto* transformerCardPanel = new CardPanel(transformerCard, "TRANSFORMER");
+  ui.attachDSP(transformerCardPanel);
+  ui.mTransformerCardPanel = transformerCardPanel; // Store reference for resizing
 
   rowY = transformerCard.T + layout.cardPadding + 24.f;
   float dropdownHeight = 48.f;
@@ -75,12 +79,25 @@ void BuildDSPTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, fl
     kSynapticStyle
   ));
 
+  // Reserve space for dynamic transformer parameters below dropdown
+  IRECT transformerParamBounds = IRECT(
+    transformerCard.L + layout.cardPadding,
+    transformerRow.B + 16.f,
+    transformerCard.R - layout.cardPadding,
+    transformerCard.B - layout.cardPadding
+  );
+  ui.setTransformerParamBounds(transformerParamBounds);
+
   yPos = transformerCard.B + layout.sectionGap;
 
-  // MORPH CARD
-  float morphCardHeight = 90.f;
-  IRECT morphCard = IRECT(layout.padding, yPos, bounds.W() - layout.padding, yPos + morphCardHeight);
-  ui.attachDSP(new CardPanel(morphCard, "MORPH"));
+  // MORPH CARD (with space for dynamic params)
+  // Base height for dropdown, will be expanded by dynamic params if needed
+  float morphCardBaseHeight = 120.f;
+  float morphCardMaxHeight = 450.f; // Max space for dynamic params
+  IRECT morphCard = IRECT(layout.padding, yPos, bounds.W() - layout.padding, yPos + morphCardMaxHeight);
+  auto* morphCardPanel = new CardPanel(morphCard, "MORPH");
+  ui.attachDSP(morphCardPanel);
+  ui.mMorphCardPanel = morphCardPanel; // Store reference for resizing
 
   rowY = morphCard.T + layout.cardPadding + 24.f;
   float morphDropdownHeight = 48.f;
@@ -94,12 +111,23 @@ void BuildDSPTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, fl
     kSynapticStyle
   ));
 
+  // Reserve space for dynamic morph parameters below dropdown
+  IRECT morphParamBounds = IRECT(
+    morphCard.L + layout.cardPadding,
+    morphRow.B + 16.f,
+    morphCard.R - layout.cardPadding,
+    morphCard.B - layout.cardPadding
+  );
+  ui.setMorphParamBounds(morphParamBounds);
+
   yPos = morphCard.B + layout.sectionGap;
 
   // AUDIO PROCESSING CARD
   float audioCardHeight = 225.f;
   IRECT audioCard = IRECT(layout.padding, yPos, bounds.W() - layout.padding, yPos + audioCardHeight);
-  ui.attachDSP(new CardPanel(audioCard, "AUDIO PROCESSING"));
+  auto* audioCardPanel = new CardPanel(audioCard, "AUDIO PROCESSING");
+  ui.attachDSP(audioCardPanel);
+  ui.mAudioProcessingCardPanel = audioCardPanel; // Store reference for repositioning
 
   rowY = audioCard.T + layout.cardPadding + 28.f;
 

@@ -57,8 +57,8 @@ bool SynapticResynthesis::HandleSetChunkSizeMsg(int newSize)
   // Trigger background rechunk using BrainManager
   mBrainManager.RechunkAllFilesAsync(mDSPConfig.chunkSize, (int)GetSampleRate(), [this]()
   {
-    mPendingSendBrainSummary = true;
-    mPendingMarkDirty = true;
+    SetPendingUpdate(PendingUpdate::BrainSummary);
+    SetPendingUpdate(PendingUpdate::MarkDirty);
   });
   return true;
 }
@@ -103,8 +103,8 @@ bool SynapticResynthesis::HandleSetAnalysisWindowMsg(int mode)
   // Trigger background reanalysis using BrainManager
   mBrainManager.ReanalyzeAllChunksAsync((int)GetSampleRate(), [this]()
   {
-    mPendingSendBrainSummary = true;
-    mPendingMarkDirty = true;
+    SetPendingUpdate(PendingUpdate::BrainSummary);
+    SetPendingUpdate(PendingUpdate::MarkDirty);
   });
 
   // Update and send DSP config to UI
@@ -255,7 +255,12 @@ bool SynapticResynthesis::HandleBrainAddFileMsg(int dataSize, const void* pData)
   int newId = mBrainManager.AddFileFromMemory(fileData, fileSize, name, (int)GetSampleRate(), NInChansConnected(), mDSPConfig.chunkSize);
   if (newId >= 0)
   {
+#if SR_USE_WEB_UI
     mUIBridge.SendBrainSummary(mBrain);
+#else
+    // For C++ UI, set flag to update in OnIdle
+    SetPendingUpdate(PendingUpdate::BrainSummary);
+#endif
     MarkHostStateDirty();
   }
   return newId >= 0;
@@ -265,7 +270,12 @@ bool SynapticResynthesis::HandleBrainRemoveFileMsg(int fileId)
 {
   DBGMSG("BrainRemoveFile: id=%d\n", fileId);
   mBrainManager.RemoveFile(fileId);
+#if SR_USE_WEB_UI
   mUIBridge.SendBrainSummary(mBrain);
+#else
+  // For C++ UI, set flag to update in OnIdle
+  SetPendingUpdate(PendingUpdate::BrainSummary);
+#endif
   MarkHostStateDirty();
   return true;
 }
@@ -274,8 +284,8 @@ bool SynapticResynthesis::HandleBrainExportMsg()
 {
   mBrainManager.ExportToFileAsync([this]()
   {
-    mPendingSendDSPConfig = true;
-    mPendingMarkDirty = true;
+    SetPendingUpdate(PendingUpdate::DSPConfig);
+    SetPendingUpdate(PendingUpdate::MarkDirty);
   });
   return true;
 }
@@ -284,8 +294,8 @@ bool SynapticResynthesis::HandleBrainImportMsg()
 {
   mBrainManager.ImportFromFileAsync([this]()
   {
-    mPendingSendBrainSummary = true;
-    mPendingMarkDirty = true;
+    SetPendingUpdate(PendingUpdate::BrainSummary);
+    SetPendingUpdate(PendingUpdate::MarkDirty);
   });
   return true;
 }
@@ -293,7 +303,12 @@ bool SynapticResynthesis::HandleBrainImportMsg()
 bool SynapticResynthesis::HandleBrainResetMsg()
 {
   mBrainManager.Reset();
+#if SR_USE_WEB_UI
   mUIBridge.SendBrainSummary(mBrain);
+#else
+  // For C++ UI, set flag to update in OnIdle
+  SetPendingUpdate(PendingUpdate::BrainSummary);
+#endif
   MarkHostStateDirty();
   return true;
 }

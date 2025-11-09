@@ -95,21 +95,6 @@ void TabButton::SetActive(bool active)
   }
 }
 
-SectionLabel::SectionLabel(const IRECT& bounds, const char* text)
-: IControl(bounds)
-, mText(text)
-{
-  SetIgnoreMouse(true);
-}
-
-void SectionLabel::Draw(IGraphics& g)
-{
-  g.DrawText(kSectionHeaderText, mText, mRECT);
-  IRECT lineRect = mRECT.GetFromBottom(1.f).GetTranslated(0.f, -8.f);
-  lineRect.R = lineRect.L + 40.f;
-  g.FillRect(kPanelBorder, lineRect);
-}
-
 } // namespace ui
 } // namespace synaptic
 

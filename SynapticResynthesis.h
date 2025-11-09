@@ -7,7 +7,6 @@
 #include "plugin_src/ChunkBufferTransformer.h"
 #include "plugin_src/samplebrain/Brain.h"
 #include "plugin_src/Window.h"
-// #include "plugin_src/Morph.h" // Legacy morph, only used by chunker now
 #include "plugin_src/morph/IMorph.h"
 #include "plugin_src/modules/DSPConfig.h"
 #include "plugin_src/modules/UIBridge.h"
@@ -20,6 +19,34 @@
 using namespace iplug;
 
 const int kNumPresets = 3;
+
+// Bitflags for pending deferred updates
+enum class PendingUpdate : uint32_t {
+  None = 0,
+  BrainSummary = 1 << 0,
+  DSPConfig = 1 << 1,
+  MarkDirty = 1 << 2,
+  RebuildTransformer = 1 << 3,
+  RebuildMorph = 1 << 4,
+  SuppressAnalysisReanalyze = 1 << 5
+};
+
+// Bitwise operators for PendingUpdate flags
+inline PendingUpdate operator|(PendingUpdate a, PendingUpdate b) {
+  return static_cast<PendingUpdate>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
+}
+inline PendingUpdate operator&(PendingUpdate a, PendingUpdate b) {
+  return static_cast<PendingUpdate>(static_cast<uint32_t>(a) & static_cast<uint32_t>(b));
+}
+inline PendingUpdate operator~(PendingUpdate a) {
+  return static_cast<PendingUpdate>(~static_cast<uint32_t>(a));
+}
+inline uint32_t operator|(uint32_t a, PendingUpdate b) {
+  return a | static_cast<uint32_t>(b);
+}
+inline uint32_t operator&(uint32_t a, PendingUpdate b) {
+  return a & static_cast<uint32_t>(b);
+}
 
 enum EParams
 {
@@ -133,9 +160,19 @@ private:
   // Utility methods
   int ComputeLatencySamples() const { return mDSPConfig.chunkSize + (mTransformer ? mTransformer->GetAdditionalLatencySamples(mDSPConfig.chunkSize, mDSPConfig.bufferWindowSize) : 0); }
 
-  // Atomic flags for deferred updates
-  std::atomic<bool> mPendingSendBrainSummary { false };
-  std::atomic<bool> mPendingSendDSPConfig { false };
-  std::atomic<bool> mPendingMarkDirty { false };
-  std::atomic<bool> mSuppressNextAnalysisReanalyze { false };
+  // Helper methods for pending update flags
+  void SetPendingUpdate(PendingUpdate flag) { mPendingUpdates.fetch_or(static_cast<uint32_t>(flag)); }
+  bool CheckAndClearPendingUpdate(PendingUpdate flag) {
+    uint32_t expected = mPendingUpdates.load();
+    uint32_t mask = static_cast<uint32_t>(flag);
+    while ((expected & mask) && !mPendingUpdates.compare_exchange_weak(expected, expected & ~mask));
+    return (expected & mask) != 0;
+  }
+  bool HasPendingUpdate(PendingUpdate flag) const { return (mPendingUpdates.load() & static_cast<uint32_t>(flag)) != 0; }
+
+  // Atomic bitfield for deferred updates
+  std::atomic<uint32_t> mPendingUpdates { 0 };
+
+  // C++ UI initialization flag
+  bool mNeedsInitialUIRebuild { true };
 };

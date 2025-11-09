@@ -44,16 +44,11 @@ private:
   bool mIsHovered;
 };
 
-class SectionLabel : public ig::IControl
-{
-public:
-  SectionLabel(const ig::IRECT& bounds, const char* text);
-  void Draw(ig::IGraphics& g) override;
-private:
-  const char* mText;
-};
-
 } // namespace ui
 } // namespace synaptic
+
+// Include Brain-specific controls
+#include "BrainFileDropControl.h"
+#include "BrainFileListControl.h"
 
 

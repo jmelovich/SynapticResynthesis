@@ -121,19 +121,19 @@ mEditorInitFunc = [this]() {
 void SynapticResynthesis::DrainUiQueueOnMainThread()
 {
   // Coalesce structured resend flags first
-  if (mPendingSendBrainSummary.exchange(false))
+  if (CheckAndClearPendingUpdate(PendingUpdate::BrainSummary))
   {
 #if SR_USE_WEB_UI
     mUIBridge.SendBrainSummary(mBrain);
 #endif
   }
-  if (mPendingSendDSPConfig.exchange(false))
+  if (CheckAndClearPendingUpdate(PendingUpdate::DSPConfig))
   {
 #if SR_USE_WEB_UI
     SyncAndSendDSPConfig();
 #endif
   }
-  if (mPendingMarkDirty.exchange(false))
+  if (CheckAndClearPendingUpdate(PendingUpdate::MarkDirty))
     MarkHostStateDirty();
 
   // Drain UIBridge queue
@@ -157,7 +157,7 @@ void SynapticResynthesis::DrainUiQueueOnMainThread()
       if (impAW > 0 && analysisWindowIdx >= 0)
       {
         const int idx = std::clamp(impAW - 1, 0, 3);
-        mSuppressNextAnalysisReanalyze = true;
+        SetPendingUpdate(PendingUpdate::SuppressAnalysisReanalyze);
         SetParameterFromUI(analysisWindowIdx, (double) idx);
         mDSPConfig.analysisWindowMode = impAW;
       }
@@ -302,6 +302,13 @@ void SynapticResynthesis::OnUIOpen()
   mUIBridge.SendMorphParams(mMorph);
   SyncAndSendDSPConfig();
   mUIBridge.SendBrainSummary(mBrain);
+#else
+  // For C++ UI, rebuild dynamic parameter controls and brain file list
+  #if IPLUG_EDITOR
+  // Small delay to ensure UI is fully initialized
+  static int initCounter = 0;
+  initCounter = 0; // Reset on UI open
+  #endif
 #endif
 }
 
@@ -309,6 +316,69 @@ void SynapticResynthesis::OnIdle()
 {
   // Drain any UI messages queued by background threads
   DrainUiQueueOnMainThread();
+
+  // Update C++ UI on first idle call after UI open
+#if !SR_USE_WEB_UI && IPLUG_EDITOR
+  if (mNeedsInitialUIRebuild && GetUI())
+  {
+    if (auto* ui = synaptic::GetSynapticUI())
+    {
+      // Rebuild dynamic params
+      ui->rebuildTransformerParams(mTransformer.get(), mParamManager, this);
+      ui->rebuildMorphParams(mMorph.get(), mParamManager, this);
+
+      // Update brain file list
+      auto brainSummary = mBrain.GetSummary();
+      std::vector<synaptic::ui::BrainFileEntry> uiEntries;
+      for (const auto& s : brainSummary)
+      {
+        uiEntries.push_back({s.id, s.name, s.chunkCount});
+      }
+      ui->updateBrainFileList(uiEntries);
+
+      // Resize window to fit content after initial dynamic params are built
+      ui->resizeWindowToFitContent();
+
+      mNeedsInitialUIRebuild = false;
+    }
+  }
+
+  // Update C++ UI brain file list if needed
+  if (CheckAndClearPendingUpdate(PendingUpdate::BrainSummary))
+  {
+    if (auto* ui = synaptic::GetSynapticUI())
+    {
+      // Convert Brain summary to UI format
+      auto brainSummary = mBrain.GetSummary();
+      std::vector<synaptic::ui::BrainFileEntry> uiEntries;
+      for (const auto& s : brainSummary)
+      {
+        uiEntries.push_back({s.id, s.name, s.chunkCount});
+      }
+      ui->updateBrainFileList(uiEntries);
+    }
+  }
+
+  // Handle transformer/morph parameter UI rebuild on UI thread
+  // Simply rebuild the entire UI - this is reliable and always works correctly
+  if (HasPendingUpdate(PendingUpdate::RebuildTransformer) || HasPendingUpdate(PendingUpdate::RebuildMorph))
+  {
+    if (auto* ui = synaptic::GetSynapticUI())
+    {
+      // Update cached context with current instances before rebuilding
+      ui->setDynamicParamContext(mTransformer.get(), mMorph.get(), &mParamManager, this);
+      ui->rebuild();
+    }
+    CheckAndClearPendingUpdate(PendingUpdate::RebuildTransformer);
+    CheckAndClearPendingUpdate(PendingUpdate::RebuildMorph);
+  }
+
+  // Reset init flag when UI is closed
+  if (!GetUI())
+  {
+    mNeedsInitialUIRebuild = true;
+  }
+#endif
 }
 
 void SynapticResynthesis::OnRestoreState()
@@ -319,6 +389,24 @@ void SynapticResynthesis::OnRestoreState()
   mUIBridge.SendMorphParams(mMorph);
   SyncAndSendDSPConfig();
   mUIBridge.SendBrainSummary(mBrain);
+#else
+  // For C++ UI, rebuild dynamic parameter controls and brain file list
+  #if IPLUG_EDITOR
+  if (auto* ui = synaptic::GetSynapticUI())
+  {
+    ui->rebuildTransformerParams(mTransformer.get(), mParamManager, this);
+    ui->rebuildMorphParams(mMorph.get(), mParamManager, this);
+
+    // Update brain file list
+    auto brainSummary = mBrain.GetSummary();
+    std::vector<synaptic::ui::BrainFileEntry> uiEntries;
+    for (const auto& s : brainSummary)
+    {
+      uiEntries.push_back({s.id, s.name, s.chunkCount});
+    }
+    ui->updateBrainFileList(uiEntries);
+  }
+  #endif
 #endif
 }
 
@@ -345,6 +433,11 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
                                                                this, mBrain, GetSampleRate(), NInChansConnected());
     UpdateChunkerWindowing();
     // Note: SetLatency will be called in ProcessBlock after swap
+
+    // Schedule transformer parameter UI rebuild (must happen on UI thread)
+#if !SR_USE_WEB_UI && IPLUG_EDITOR
+    SetPendingUpdate(PendingUpdate::RebuildTransformer);
+#endif
   }
   // Handle output window
   else if (paramIdx == mParamManager.GetOutputWindowParamIdx())
@@ -359,15 +452,15 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
     UpdateBrainAnalysisWindow();
 
     // Kick background reanalysis when analysis window changes via host/restore, unless suppressed
-    if (!mSuppressNextAnalysisReanalyze.exchange(false))
+    if (!CheckAndClearPendingUpdate(PendingUpdate::SuppressAnalysisReanalyze))
     {
       mBrainManager.ReanalyzeAllChunksAsync((int)GetSampleRate(), [this]()
       {
-        mPendingSendBrainSummary = true;
-        mPendingMarkDirty = true;
+        SetPendingUpdate(PendingUpdate::BrainSummary);
+        SetPendingUpdate(PendingUpdate::MarkDirty);
       });
     }
-    mPendingSendDSPConfig = true;
+    SetPendingUpdate(PendingUpdate::DSPConfig);
   }
   // Handle overlap enable
   else if (paramIdx == mParamManager.GetEnableOverlapParamIdx())
@@ -382,7 +475,14 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
     mMorph = mParamManager.HandleMorphModeChange(paramIdx, GetParam(paramIdx), this,
                                                  GetSampleRate(), mDSPConfig.chunkSize, NInChansConnected());
     mChunker.SetMorph(mMorph);
+#if SR_USE_WEB_UI
     mUIBridge.SendMorphParams(mMorph);
+#else
+    // Schedule morph parameter UI rebuild (must happen on UI thread)
+    #if IPLUG_EDITOR
+    SetPendingUpdate(PendingUpdate::RebuildMorph);
+    #endif
+#endif
   }
   // Handle dynamic parameters using ParameterManager
   else if (mParamManager.HandleDynamicParameterChange(paramIdx, GetParam(paramIdx), mTransformer.get(), mMorph.get()))

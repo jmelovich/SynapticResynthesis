@@ -419,7 +419,10 @@
     <ClCompile Include="..\plugin_src\ui\controls\UIControls.cpp">
       <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="..\plugin_src\ui\layout\UILayout.cpp">
+    <ClCompile Include="..\plugin_src\ui\controls\BrainFileDropControl.cpp">
+      <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\plugin_src\ui\controls\BrainFileListControl.cpp">
       <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\plugin_src\ui\tabs\DSPTabView.cpp">
@@ -428,7 +431,7 @@
     <ClCompile Include="..\plugin_src\ui\tabs\BrainTabView.cpp">
       <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="..\plugin_src\ui\dynamic\ParamUI.cpp">
+    <ClCompile Include="..\plugin_src\ui\dynamic\DynamicParamManager.cpp">
       <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
     </ClCompile>
   </ItemGroup>

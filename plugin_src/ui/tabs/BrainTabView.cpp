@@ -18,17 +18,29 @@ void BuildBrainTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, 
   float yPos = startY;
 
   // SAMPLE LIBRARY CARD
-  float libraryCardHeight = 195.f;
+  float libraryCardHeight = 340.f; // Increased to accommodate file list
   IRECT libraryCard = IRECT(layout.padding, yPos, bounds.W() - layout.padding, yPos + libraryCardHeight);
   ui.attachBrain(new CardPanel(libraryCard, "SAMPLE LIBRARY"));
 
-  IRECT dropArea = libraryCard.GetPadded(-layout.cardPadding).GetFromTop(85.f).GetTranslated(0.f, 28.f);
-  IText largerText = IText(13.f, kTextSecond, "Roboto-Regular", EAlign::Near, EVAlign::Middle, 0);
-  ui.attachBrain(new ITextControl(dropArea, "Drag audio files here or use Brain management buttons below\n\n(File management will be implemented in Phase 3)", largerText));
+  // File drop zone
+  IRECT dropArea = libraryCard.GetPadded(-layout.cardPadding).GetFromTop(100.f).GetTranslated(0.f, 28.f);
+  ui.attachBrain(new BrainFileDropControl(dropArea));
 
+  // Status line
   IRECT statusRect = IRECT(libraryCard.L + layout.cardPadding, dropArea.B + 8.f, libraryCard.R - layout.cardPadding, dropArea.B + 24.f);
-  IText statusText = IText(13.f, kTextSecond, "Roboto-Regular", EAlign::Near, EVAlign::Middle, 0);
-  ui.attachBrain(new ITextControl(statusRect, "Brain Status: Ready | Files: 0 | Chunks: 0", statusText));
+  IText statusText = IText(12.f, kTextSecond, "Roboto-Regular", EAlign::Near, EVAlign::Middle, 0);
+  ui.attachBrain(new ITextControl(statusRect, "Files: 0 | Storage: (inline)", statusText));
+
+  // File list
+  IRECT fileListRect = IRECT(
+    libraryCard.L + layout.cardPadding,
+    statusRect.B + 8.f,
+    libraryCard.R - layout.cardPadding,
+    libraryCard.B - layout.cardPadding
+  );
+  auto* fileList = new BrainFileListControl(fileListRect);
+  ui.attachBrain(fileList);
+  ui.setBrainFileListControl(fileList); // Store reference for updates
 
   yPos = libraryCard.B + layout.sectionGap;
 
