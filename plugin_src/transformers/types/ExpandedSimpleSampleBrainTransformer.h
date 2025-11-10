@@ -1,8 +1,8 @@
 #pragma once
 
-#include "../ChunkBufferTransformer.h"
-#include "../FeatureAnalysis.h"
-#include "../FFT.h"
+#include "../BaseTransformer.h"
+#include "../plugin_src/audio/FeatureAnalysis.h"
+#include "../plugin_src/audio/FFT.h"
 
 namespace synaptic
 {

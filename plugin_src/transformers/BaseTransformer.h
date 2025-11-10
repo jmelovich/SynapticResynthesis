@@ -1,8 +1,8 @@
 #pragma once
 
-#include "AudioStreamChunker.h"
-#include "samplebrain/Brain.h"
-#include "params/DynamicParamSchema.h"
+#include "plugin_src/modules/AudioStreamChunker.h"
+#include "plugin_src/brain/Brain.h"
+#include "../params/DynamicParamSchema.h"
 #include <cmath>
 #include <string>
 #include <vector>

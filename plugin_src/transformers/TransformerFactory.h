@@ -5,9 +5,9 @@
 #include <vector>
 #include <functional>
 
-#include "ChunkBufferTransformer.h"
-#include "transformers/SimpleSampleBrainTransformer.h"
-#include "transformers/ExpandedSimpleSampleBrainTransformer.h"
+#include "BaseTransformer.h"
+#include "types/SimpleSampleBrainTransformer.h"
+#include "types/ExpandedSimpleSampleBrainTransformer.h"
 
 namespace synaptic
 {

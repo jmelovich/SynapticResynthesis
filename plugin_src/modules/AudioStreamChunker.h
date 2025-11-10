@@ -6,11 +6,11 @@
 #include <cmath>
 
 #include "IPlug_include_in_plug_hdr.h"
-#include "Window.h"
+#include "plugin_src/audio/Window.h"
 
-#include "FFT.h"
-#include "Structs.h"
-#include "morph/IMorph.h"
+#include "plugin_src/audio/FFT.h"
+#include "../Structs.h"
+#include "../morph/IMorph.h"
 
 namespace synaptic
 {

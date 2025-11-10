@@ -1,9 +1,9 @@
 #pragma once
 
-#include "../ChunkBufferTransformer.h"
-#include "../samplebrain/Brain.h"
-#include "../Window.h"
-#include "../FFT.h"
+#include "plugin_src/transformers/BaseTransformer.h"
+#include "plugin_src/brain/Brain.h"
+#include "plugin_src/audio/Window.h"
+#include "plugin_src/audio/FFT.h"
 
 namespace synaptic
 {

@@ -16,9 +16,9 @@
 #include "../controls/BrainFileListControl.h"
 
 #include "../../SynapticResynthesis.h"
-#include "plugin_src/ChunkBufferTransformer.h"
+#include "plugin_src/transformers/BaseTransformer.h"
 #include "plugin_src/morph/IMorph.h"
-#include "plugin_src/modules/ParameterManager.h"
+#include "plugin_src/params/ParameterManager.h"
 #include "config.h"
 
 using namespace iplug;

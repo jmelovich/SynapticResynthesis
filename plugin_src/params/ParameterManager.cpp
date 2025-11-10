@@ -1,5 +1,5 @@
 #include "ParameterManager.h"
-#include "plugin_src/TransformerFactory.h"
+#include "plugin_src/transformers/TransformerFactory.h"
 #include "plugin_src/morph/MorphFactory.h"
 #include "plugin_src/params/DynamicParamSchema.h"
 #include "SynapticResynthesis.h"  // For EParams enum

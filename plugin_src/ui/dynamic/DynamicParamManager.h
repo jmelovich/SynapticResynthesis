@@ -19,7 +19,7 @@
 #include "IPlug_include_in_plug_hdr.h"
 #include "IControls.h"
 #include "plugin_src/params/DynamicParamSchema.h"
-#include "plugin_src/modules/ParameterManager.h"
+#include "plugin_src/params/ParameterManager.h"
 #include "../layout/UILayout.h"
 #include "../styles/UIStyles.h"
 #include <vector>

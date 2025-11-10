@@ -6,7 +6,7 @@
 #include <mutex>
 #include <functional>
 
-#include "plugin_src/AudioStreamChunker.h"
+#include "plugin_src/modules/AudioStreamChunker.h"
 #include "IPlugStructs.h"
 
 // Forward declare miniaudio types to avoid including the large header here.

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "json.hpp"
-#include "DSPConfig.h"
+#include "plugin_src/modules/DSPConfig.h"
 #include "IPlug_include_in_plug_hdr.h"
 #include <string>
 #include <vector>

@@ -1,8 +1,8 @@
 #pragma once
 
-#include "plugin_src/samplebrain/Brain.h"
-#include "plugin_src/Window.h"
-#include "UIBridge.h"
+#include "plugin_src/brain/Brain.h"
+#include "plugin_src/audio/Window.h"
+#include "plugin_src/ui_bridge/UIBridge.h"
 #include <atomic>
 #include <string>
 #include <functional>

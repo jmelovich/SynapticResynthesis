@@ -3,7 +3,7 @@
 
 #include "SynapticResynthesis.h"
 #include "json.hpp"
-#include "plugin_src/TransformerFactory.h"
+#include "plugin_src/transformers/TransformerFactory.h"
 
 // NOTE: Do NOT include "IPlug_include_in_plug_src.h" here - it defines global symbols
 // that should only be included in the main SynapticResynthesis.cpp file

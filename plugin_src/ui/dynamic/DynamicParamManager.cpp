@@ -12,7 +12,7 @@
 
 #include "DynamicParamManager.h"
 #include "../styles/UITheme.h"
-#include "plugin_src/ChunkBufferTransformer.h"
+#include "plugin_src/transformers/BaseTransformer.h"
 #include "plugin_src/morph/IMorph.h"
 
 using namespace iplug;

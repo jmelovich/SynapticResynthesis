@@ -9,9 +9,9 @@
 #include "../../exdeps/miniaudio/miniaudio.h"
 // Use PFFFT for FFT analysis
 #include "../../exdeps/pffft/pffft.h"
-#include "../Window.h"
-#include "../FeatureAnalysis.h"
-#include "../FFT.h"
+#include "plugin_src/audio/Window.h"
+#include "plugin_src/audio/FeatureAnalysis.h"
+#include "plugin_src/audio/FFT.h"
 
 namespace synaptic
 {

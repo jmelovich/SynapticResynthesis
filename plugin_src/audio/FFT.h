@@ -4,7 +4,7 @@
 #include <cmath>
 
 #include "Window.h"
-#include "Structs.h" // for synaptic::AudioChunk
+#include "../Structs.h" // for synaptic::AudioChunk
 
 // PFFFT ordered API
 #include "../exdeps/pffft/pffft.h"

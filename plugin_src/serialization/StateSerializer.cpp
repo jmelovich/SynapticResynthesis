@@ -1,6 +1,6 @@
 #include "StateSerializer.h"
-#include "BrainManager.h"
-#include "plugin_src/samplebrain/Brain.h"
+#include "plugin_src/brain/BrainManager.h"
+#include "plugin_src/brain/Brain.h"
 #include "IPlugPaths.h"
 #include <cstdio>
 #include <cstring>

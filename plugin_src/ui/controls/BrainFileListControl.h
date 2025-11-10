@@ -15,7 +15,7 @@
 
 #include "IPlug_include_in_plug_hdr.h"
 #include "IControls.h"
-#include "plugin_src/samplebrain/Brain.h"
+#include "plugin_src/brain/Brain.h"
 #include "../styles/UITheme.h"
 #include <vector>
 #include <string>

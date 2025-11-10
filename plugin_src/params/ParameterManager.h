@@ -2,10 +2,10 @@
 
 #include "IPlug_include_in_plug_hdr.h"
 #include "plugin_src/params/DynamicParamSchema.h"
-#include "plugin_src/ChunkBufferTransformer.h"
-#include "plugin_src/transformers/ExpandedSimpleSampleBrainTransformer.h"
+#include "plugin_src/transformers/BaseTransformer.h"
+#include "plugin_src/transformers/types/ExpandedSimpleSampleBrainTransformer.h"
 #include "plugin_src/morph/IMorph.h"
-#include "DSPConfig.h"
+#include "plugin_src/modules/DSPConfig.h"
 #include <vector>
 #include <string>
 

@@ -7,7 +7,7 @@
 #else
 #include "plugin_src/ui/IGraphicsUI.h"
 #endif
-#include "plugin_src/TransformerFactory.h"
+#include "plugin_src/transformers/TransformerFactory.h"
 #include "plugin_src/PlatformFileDialogs.h"
 #include "plugin_src/params/DynamicParamSchema.h"
 #include "plugin_src/morph/MorphFactory.h"
@@ -302,7 +302,7 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
   return synaptic::UIMessageRouter::Route(this, msgTag, ctrlTag, dataSize, pData);
 }
 
-// Message handler implementations are in plugin_src/modules/MessageHandlers.cpp
+// Message handler implementations are in plugin_src/ui_bridge/MessageHandlers.cpp
 
 void SynapticResynthesis::OnUIOpen()
 {
