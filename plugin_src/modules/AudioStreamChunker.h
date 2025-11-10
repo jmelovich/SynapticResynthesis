@@ -134,6 +134,16 @@ namespace synaptic
       mOutput.Init(mPoolCapacity);
       mWindow.Init(mBufferWindowSize);
 
+      // IMPORTANT: since we reset rings and drop all outstanding references,
+      // ensure pool entries' refCounts are cleared even if we didn't reallocate.
+      for (int i = 0; i < (int) mPool.size(); ++i)
+      {
+        mPool[i].refCount = 0;
+        // Keep chunk metadata consistent with current config
+        mPool[i].inputChunk.numFrames = mChunkSize;
+        mPool[i].outputChunk.numFrames = mChunkSize;
+      }
+
       // All indices free initially
       for (int i = 0; i < mPoolCapacity; ++i)
         mFree.Push(i);
