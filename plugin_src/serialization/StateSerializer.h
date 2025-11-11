@@ -24,6 +24,15 @@ namespace synaptic
     StateSerializer() = default;
 
     /**
+     * @brief Global flag to enable/disable inline brain serialization
+     *
+     * When false (default), inline brain data will not be serialized/deserialized.
+     * This prevents freezes caused by large inline brains during parameter changes.
+     * Deprecated feature - kept for backwards compatibility only.
+     */
+    static bool sEnableInlineBrains;
+
+    /**
      * @brief Serialize brain state to chunk
      *
      * Called after Plugin::SerializeState() to append brain section.

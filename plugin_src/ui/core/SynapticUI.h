@@ -100,8 +100,7 @@ public:
   void setBrainDropControl(class BrainFileDropControl* ctrl);
   void setCreateNewBrainButton(ig::IControl* ctrl);
   void updateBrainFileList(const std::vector<struct BrainFileEntry>& files);
-  void updateBrainStorage(bool useExternal, const std::string& externalPath);
-  void updateBrainLoadedState(bool hasBrainLoaded);
+  void updateBrainState(bool useExternal, const std::string& externalPath);
 
   // Progress overlay management
   void ShowProgressOverlay(const std::string& title, const std::string& message, float progress = 0.0f);
@@ -159,6 +158,7 @@ private:
   class BrainStatusControl* mBrainStatusControl { nullptr };
   class BrainFileDropControl* mBrainDropControl { nullptr };
   ig::IControl* mCreateNewBrainButton { nullptr };
+  bool mHasBrainLoaded { false }; // Tracks if brain is loaded (for Create New Brain button visibility)
 
   // Progress overlay
   class ProgressOverlay* mProgressOverlay { nullptr };

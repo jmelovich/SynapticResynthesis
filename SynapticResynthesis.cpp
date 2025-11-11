@@ -366,6 +366,9 @@ void SynapticResynthesis::OnIdle()
       // Update cached context with shared_ptr copies before rebuilding
       ui->setDynamicParamContext(currentTransformer, currentMorph, &mParamManager, this);
       ui->rebuild();
+
+      // Re-sync brain UI state after rebuild (brain controls were wiped and need to be repopulated)
+      SyncBrainUIState();
     }
 
     CheckAndClearPendingUpdate(PendingUpdate::RebuildTransformer);
@@ -659,11 +662,9 @@ void SynapticResynthesis::SyncBrainUIState()
   }
   ui->updateBrainFileList(uiEntries);
 
-  // Update storage info
-  ui->updateBrainStorage(mBrainManager.UseExternal(), mBrainManager.ExternalPath());
-
-  // Update brain loaded state (show/hide Create New Brain button, enable/disable controls)
-  ui->updateBrainLoadedState(mBrainManager.UseExternal());
+  // Update brain state (storage info, button visibility, control states)
+  // Single source of truth: all UI state is derived from UseExternal()
+  ui->updateBrainState(mBrainManager.UseExternal(), mBrainManager.ExternalPath());
 #endif
 }
 

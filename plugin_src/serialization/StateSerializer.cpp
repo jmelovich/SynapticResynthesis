@@ -8,6 +8,8 @@
 
 namespace synaptic
 {
+  // Initialize inline brain feature flag (disabled by default to prevent freezes)
+  bool StateSerializer::sEnableInlineBrains = false;
   bool StateSerializer::SerializeBrainState(iplug::IByteChunk& chunk,
                                            const Brain& brain,
                                            const BrainManager& brainMgr) const
@@ -47,14 +49,24 @@ namespace synaptic
     }
     else
     {
-      // Inline mode: store full brain snapshot
-      iplug::IByteChunk brainChunk;
-      brain.SerializeSnapshotToChunk(brainChunk);
+      // Inline mode: check if inline brains are enabled
+      if (sEnableInlineBrains)
+      {
+        // Store full brain snapshot
+        iplug::IByteChunk brainChunk;
+        brain.SerializeSnapshotToChunk(brainChunk);
 
-      int32_t sz = brainChunk.Size();
-      chunk.Put(&sz);
-      if (sz > 0)
-        chunk.PutBytes(brainChunk.GetData(), sz);
+        int32_t sz = brainChunk.Size();
+        chunk.Put(&sz);
+        if (sz > 0)
+          chunk.PutBytes(brainChunk.GetData(), sz);
+      }
+      else
+      {
+        // Inline brains disabled - write empty brain data
+        int32_t sz = 0;
+        chunk.Put(&sz);
+      }
     }
 
     // Fill in section size
@@ -137,11 +149,21 @@ namespace synaptic
       pos = chunk.Get(&sz, pos);
       if (pos < 0 || sz < 0) return start + sectionSize;
 
-      int consumed = brain.DeserializeSnapshotFromChunk(chunk, pos);
-      if (consumed >= 0)
-        pos = consumed;
+      // Check if inline brains are enabled
+      if (sEnableInlineBrains && sz > 0)
+      {
+        int consumed = brain.DeserializeSnapshotFromChunk(chunk, pos);
+        if (consumed >= 0)
+          pos = consumed;
+        else
+          pos = start + sectionSize;
+      }
       else
-        pos = start + sectionSize;
+      {
+        // Inline brains disabled - skip loading inline brain data
+        // Just advance position by the stored size
+        pos += sz;
+      }
     }
 
     return pos;

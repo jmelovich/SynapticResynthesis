@@ -155,6 +155,13 @@ void SynapticUI::setActiveTab(Tab tab)
   if (mDSPTabButton) mDSPTabButton->SetActive(tab == Tab::DSP);
   if (mBrainTabButton) mBrainTabButton->SetActive(tab == Tab::Brain);
 
+  // Re-hide Create New Brain button if brain is loaded (SetControlGroupVisibility shows all Brain controls)
+  if (tab == Tab::Brain && mCreateNewBrainButton && mHasBrainLoaded)
+  {
+    mCreateNewBrainButton->Hide(true);
+    mCreateNewBrainButton->SetDisabled(true);
+  }
+
   // Auto-resize window to fit content when switching tabs
   resizeWindowToFitContent();
 }
@@ -527,9 +534,13 @@ void SynapticUI::updateBrainFileList(const std::vector<BrainFileEntry>& files)
 #endif
 }
 
-void SynapticUI::updateBrainStorage(bool useExternal, const std::string& externalPath)
+void SynapticUI::updateBrainState(bool useExternal, const std::string& externalPath)
 {
 #if IPLUG_EDITOR
+  // Store state for tab switching and button visibility (single source of truth)
+  mHasBrainLoaded = useExternal;
+
+  // Update brain storage status display
   if (mBrainStatusControl)
   {
     if (useExternal && !externalPath.empty())
@@ -547,55 +558,29 @@ void SynapticUI::updateBrainStorage(bool useExternal, const std::string& externa
     }
   }
 
-  // Update external brain flag in controls (affects message and interaction gating)
+  // Update file list control
   if (mBrainFileListControl)
   {
     mBrainFileListControl->SetHasExternalBrain(useExternal);
+    mBrainFileListControl->SetDisabled(!useExternal);
+    mBrainFileListControl->SetBlend(IBlend(EBlend::Default, useExternal ? 1.0f : 0.3f));
+    mBrainFileListControl->SetDirty(true);
   }
+
+  // Update drop control
   if (mBrainDropControl)
   {
     mBrainDropControl->SetHasExternalBrain(useExternal);
-  }
-#endif
-}
-
-void SynapticUI::updateBrainLoadedState(bool hasBrainLoaded)
-{
-#if IPLUG_EDITOR
-  // Show/hide "Create New Brain" button based on brain loaded state
-  // Only affects visibility within the Brain tab (tab switching handles cross-tab visibility)
-  if (mCreateNewBrainButton)
-  {
-    // Only hide/show if we're on the Brain tab (otherwise tab switching handles it)
-    if (mCurrentTab == Tab::Brain)
-    {
-      mCreateNewBrainButton->Hide(hasBrainLoaded);
-    }
-    // Always update disabled state for consistency
-    mCreateNewBrainButton->SetDisabled(hasBrainLoaded);
-  }
-
-  // Grey out drop control and file list when no brain is loaded
-  if (mBrainDropControl)
-  {
-    mBrainDropControl->SetDisabled(!hasBrainLoaded);
-    // Reduce opacity when disabled by setting grayed out state
-    if (!hasBrainLoaded)
-      mBrainDropControl->SetBlend(IBlend(EBlend::Default, 0.3f));
-    else
-      mBrainDropControl->SetBlend(IBlend(EBlend::Default, 1.0f));
+    mBrainDropControl->SetDisabled(!useExternal);
+    mBrainDropControl->SetBlend(IBlend(EBlend::Default, useExternal ? 1.0f : 0.3f));
     mBrainDropControl->SetDirty(true);
   }
 
-  if (mBrainFileListControl)
+  // Show/hide "Create New Brain" button
+  if (mCreateNewBrainButton)
   {
-    mBrainFileListControl->SetDisabled(!hasBrainLoaded);
-    // Reduce opacity when disabled by setting grayed out state
-    if (!hasBrainLoaded)
-      mBrainFileListControl->SetBlend(IBlend(EBlend::Default, 0.3f));
-    else
-      mBrainFileListControl->SetBlend(IBlend(EBlend::Default, 1.0f));
-    mBrainFileListControl->SetDirty(true);
+    mCreateNewBrainButton->Hide(useExternal);
+    mCreateNewBrainButton->SetDisabled(useExternal);
   }
 #endif
 }
