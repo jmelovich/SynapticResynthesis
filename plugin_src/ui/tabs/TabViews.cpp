@@ -12,6 +12,7 @@
 #include "TabViews.h"
 #include "../styles/UIStyles.h"
 #include "../controls/UIControls.h"
+#include "../controls/DeferredNumberBoxControl.h"
 #include "../styles/UITheme.h"
 #include "../layout/UILayout.h"
 #include "../SynapticResynthesis.h"
@@ -40,10 +41,10 @@ void BuildDSPTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, fl
   float labelWidth = 180.f;
   float controlWidth = 200.f;
 
-  // Chunk Size
+  // Chunk Size - Using deferred control to prevent triggering rechunking during drag
   IRECT chunkSizeRow = IRECT(analysisCard.L + layout.cardPadding, rowY, analysisCard.R - layout.cardPadding, rowY + layout.controlHeight);
   ui.attach(new ITextControl(chunkSizeRow.GetFromLeft(labelWidth), "Chunk Size", kLabelText), ControlGroup::DSP);
-  ui.attach(new IVNumberBoxControl(
+  ui.attach(new DeferredNumberBoxControl(
     chunkSizeRow.GetFromLeft(controlWidth).GetTranslated(labelWidth + 8.f, 0.f),
     kChunkSize,
     nullptr,
