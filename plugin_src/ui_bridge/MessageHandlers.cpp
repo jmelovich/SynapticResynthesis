@@ -305,8 +305,10 @@ bool SynapticResynthesis::HandleBrainExportMsg()
   mBrainManager.ExportToFileAsync(
     [this](const std::string& message, int current, int total)
     {
-      // Progress callback - show indeterminate progress
-      mProgressOverlayMgr.Show("Exporting Brain", message, 50.0f);
+      // Progress callback - calculate progress percentage from current/total
+      // Starts at 0% (waiting for file selection), then jumps to 50% after selection
+      const float progress = (total > 0) ? ((float)current / (float)total * 100.0f) : 0.0f;
+      mProgressOverlayMgr.Show("Exporting Brain", message, progress);
     },
     [this]()
     {
@@ -324,8 +326,10 @@ bool SynapticResynthesis::HandleBrainImportMsg()
   mBrainManager.ImportFromFileAsync(
     [this](const std::string& message, int current, int total)
     {
-      // Progress callback - show indeterminate progress
-      mProgressOverlayMgr.Show("Importing Brain", message, 50.0f);
+      // Progress callback - calculate progress percentage from current/total
+      // Starts at 0% (waiting for file selection), then jumps to 50% after selection
+      const float progress = (total > 0) ? ((float)current / (float)total * 100.0f) : 0.0f;
+      mProgressOverlayMgr.Show("Importing Brain", message, progress);
     },
     [this]()
     {

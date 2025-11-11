@@ -157,7 +157,7 @@ namespace synaptic
     std::thread([this, newChunkSize, sampleRate, totalFiles, onProgress, onComplete]()
     {
       int currentFile = 0;
-      
+
       auto stats = mBrain->RechunkAllFiles(newChunkSize, sampleRate, [&currentFile, totalFiles, onProgress](const std::string& displayName)
       {
         if (onProgress)
@@ -166,7 +166,7 @@ namespace synaptic
           onProgress(displayName, currentFile, totalFiles);
         }
       });
-      
+
       DBGMSG("Brain Rechunk: processed=%d, rechunked=%d, totalChunks=%d\n",
              stats.filesProcessed, stats.filesRechunked, stats.newTotalChunks);
 
@@ -208,7 +208,7 @@ namespace synaptic
     std::thread([this, sampleRate, totalFiles, onProgress, onComplete]()
     {
       int currentFile = 0;
-      
+
       auto stats = mBrain->ReanalyzeAllChunks(sampleRate, [&currentFile, totalFiles, onProgress](const std::string& displayName)
       {
         if (onProgress)
@@ -217,7 +217,7 @@ namespace synaptic
           onProgress(displayName, currentFile, totalFiles);
         }
       });
-      
+
       DBGMSG("Brain Reanalyze: files=%d chunks=%d\n", stats.filesProcessed, stats.chunksProcessed);
 
       mBrainDirty = true;
@@ -240,9 +240,9 @@ namespace synaptic
     // Move to background thread to avoid WebView2 re-entrancy when showing native dialogs
     std::thread([this, onProgress, onComplete]()
     {
-      // Show indeterminate progress (0 of 1)
+      // Show initial progress (0 of 2) - waiting for file selection
       if (onProgress)
-        onProgress("Exporting brain...", 0, 1);
+        onProgress("Waiting for file selection...", 0, 2);
 
       std::string savePath;
       const bool chose = platform::GetSaveFilePath(savePath,
@@ -255,6 +255,10 @@ namespace synaptic
           onComplete();
         return;
       }
+
+      // File selected - update progress (1 of 2 = 50%)
+      if (onProgress)
+        onProgress("Exporting brain...", 1, 2);
 
       // Serialize brain to chunk
       iplug::IByteChunk blob;
@@ -294,9 +298,9 @@ namespace synaptic
     // Native Open dialog; C++ reads file directly
     std::thread([this, onProgress, onComplete]()
     {
-      // Show indeterminate progress (0 of 1)
+      // Show initial progress (0 of 2) - waiting for file selection
       if (onProgress)
-        onProgress("Importing brain...", 0, 1);
+        onProgress("Waiting for file selection...", 0, 2);
 
       std::string openPath;
       if (!platform::GetOpenFilePath(openPath, L"Synaptic Brain (*.sbrain)\0*.sbrain\0All Files (*.*)\0*.*\0\0"))
@@ -306,6 +310,10 @@ namespace synaptic
           onComplete();
         return;
       }
+
+      // File selected - update progress (1 of 2 = 50%)
+      if (onProgress)
+        onProgress("Importing brain...", 1, 2);
 
       // Read file
       FILE* fp = fopen(openPath.c_str(), "rb");
@@ -354,11 +362,11 @@ namespace synaptic
     }).detach();
   }
 
-  void BrainManager::AddMultipleFilesAsync(std::vector<FileData> files, int sampleRate, int channels, 
+  void BrainManager::AddMultipleFilesAsync(std::vector<FileData> files, int sampleRate, int channels,
                                            int chunkSize, ProgressFn onProgress, CompletionFn onComplete)
   {
     if (!mBrain) return;
-    
+
     const int totalFiles = (int)files.size();
     if (totalFiles == 0)
     {
@@ -376,32 +384,32 @@ namespace synaptic
     std::thread([this, files = std::move(files), sampleRate, channels, chunkSize, totalFiles, onProgress, onComplete]() mutable
     {
       int currentFile = 0;
-      
+
       for (auto& fileData : files)
       {
         currentFile++;
-        
+
         // Report progress
         if (onProgress)
         {
           onProgress(fileData.name, currentFile, totalFiles);
         }
-        
+
         // Import file
         int newId = mBrain->AddAudioFileFromMemory(
-          fileData.data.data(), 
-          fileData.data.size(), 
-          fileData.name, 
-          sampleRate, 
-          channels, 
+          fileData.data.data(),
+          fileData.data.size(),
+          fileData.name,
+          sampleRate,
+          channels,
           chunkSize
         );
-        
+
         if (newId >= 0)
         {
           mBrainDirty = true;
         }
-        
+
         DBGMSG("Imported file %d/%d: %s (id=%d)\n", currentFile, totalFiles, fileData.name.c_str(), newId);
       }
 

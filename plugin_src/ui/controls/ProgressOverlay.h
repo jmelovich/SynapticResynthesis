@@ -71,6 +71,15 @@ public:
    */
   float GetProgress() const { return mProgress; }
   
+  /**
+   * @brief Update overlay bounds to match window size
+   * Should be called when window is resized to ensure proper coverage and centering
+   */
+  void UpdateBounds(const ig::IRECT& bounds)
+  {
+    SetTargetAndDrawRECTs(bounds);
+  }
+  
 private:
   bool mIsVisible;
   bool mIndeterminate;

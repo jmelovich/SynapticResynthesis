@@ -28,15 +28,18 @@ void ProgressOverlay::Draw(IGraphics& g)
   if (!mIsVisible)
     return;
 
+  // Always use current graphics bounds to ensure correct positioning after window resizes
+  const IRECT currentBounds = g.GetBounds();
+
   // Draw semi-transparent dark overlay covering entire UI
   IColor overlayBG = IColor(200, 0, 0, 0); // 78% opacity black
-  g.FillRect(overlayBG, mRECT);
+  g.FillRect(overlayBG, currentBounds);
 
-  // Calculate centered modal card bounds
+  // Calculate centered modal card bounds using current window size
   const float cardWidth = 400.f;
   const float cardHeight = 160.f;
-  const float centerX = mRECT.MW();
-  const float centerY = mRECT.MH();
+  const float centerX = currentBounds.MW();
+  const float centerY = currentBounds.MH();
   IRECT cardRect(centerX - cardWidth/2.f, centerY - cardHeight/2.f,
                  centerX + cardWidth/2.f, centerY + cardHeight/2.f);
 

@@ -461,6 +461,14 @@ void SynapticUI::resizeWindowToFitContent()
   {
     mGraphics->Resize(currentWidth, static_cast<int>(requiredHeight), currentScale, true);
   }
+
+  // Always update progress overlay bounds to ensure it covers the entire window
+  // (regardless of whether we resized or not, in case previous resizes were missed)
+  if (mProgressOverlay)
+  {
+    const IRECT currentBounds = mGraphics->GetBounds();
+    mProgressOverlay->UpdateBounds(currentBounds);
+  }
 #endif
 }
 
