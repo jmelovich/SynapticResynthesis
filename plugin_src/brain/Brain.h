@@ -65,14 +65,19 @@ namespace synaptic
     // Set the window to use for FFT analysis
     void SetWindow(const class Window* window) { mWindow = window; }
 
+    // Progress callback: (fileName, currentChunk, totalChunks)
+    using ProgressFn = std::function<void(const std::string& /*fileName*/, int /*current*/, int /*total*/)>;
+
     // Decode an entire audio file from memory and split into chunks.
     // Returns the new fileId on success, or -1 on failure.
+    // Optional progress callback reports per-chunk progress.
     int AddAudioFileFromMemory(const void* data,
                                size_t dataSize,
                                const std::string& displayName,
                                int targetSampleRate,
                                int targetChannels,
-                               int chunkSizeSamples);
+                               int chunkSizeSamples,
+                               ProgressFn onProgress = nullptr);
 
     // Remove a previously-added file and all of its chunks.
     void RemoveFile(int fileId);
@@ -87,13 +92,20 @@ namespace synaptic
 
     // Re-chunk all files to a new chunk size
     struct RechunkStats { int filesProcessed = 0; int filesRechunked = 0; int newTotalChunks = 0; };
-    using RechunkProgressFn = std::function<void(const std::string& /*displayName*/)>;
-    RechunkStats RechunkAllFiles(int newChunkSizeSamples, int targetSampleRate, RechunkProgressFn onProgress = nullptr);
+    RechunkStats RechunkAllFiles(int newChunkSizeSamples, int targetSampleRate, ProgressFn onProgress = nullptr);
     int GetChunkSize() const { return mChunkSize; }
 
     // Re-analyze all existing chunks (no rechunking). Uses current window (SetWindow) and provided sampleRate.
     struct ReanalyzeStats { int filesProcessed = 0; int chunksProcessed = 0; };
-    ReanalyzeStats ReanalyzeAllChunks(int targetSampleRate, RechunkProgressFn onProgress = nullptr);
+    ReanalyzeStats ReanalyzeAllChunks(int targetSampleRate, ProgressFn onProgress = nullptr);
+
+    // Helper: Estimate chunk count from audio length
+    // Formula: (totalFrames * 2) / chunkSize - 1 (accounts for 50% overlap)
+    static int EstimateChunkCount(int totalFrames, int chunkSize)
+    {
+      if (chunkSize <= 0) return 0;
+      return std::max(1, (totalFrames * 2) / chunkSize - 1);
+    }
 
     // Snapshot serialization (unified for project state and .sbrain files)
     bool SerializeSnapshotToChunk(iplug::IByteChunk& out) const;

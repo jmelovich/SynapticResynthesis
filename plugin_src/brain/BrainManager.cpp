@@ -3,8 +3,10 @@
 #include "SynapticResynthesis.h"
 #include "IPlugStructs.h"
 #include "json.hpp"
+#include "../../exdeps/miniaudio/miniaudio.h"
 #include <thread>
 #include <cstdio>
+#include <algorithm>
 
 namespace synaptic
 {
@@ -160,21 +162,15 @@ namespace synaptic
       return;
     }
 
-    // Get initial file count for progress tracking
-    const int totalFiles = (int)mBrain->GetSummary().size();
-
-    std::thread([this, newChunkSize, sampleRate, totalFiles, onProgress, onComplete]()
+    std::thread([this, newChunkSize, sampleRate, onProgress, onComplete]()
     {
-      int currentFile = 0;
-
-      auto stats = mBrain->RechunkAllFiles(newChunkSize, sampleRate, [&currentFile, totalFiles, onProgress](const std::string& displayName)
-      {
-        if (onProgress)
+      // Brain's RechunkAllFiles now reports per-chunk progress with (fileName, currentChunk, totalChunks)
+      auto stats = mBrain->RechunkAllFiles(newChunkSize, sampleRate,
+        [onProgress](const std::string& displayName, int current, int total)
         {
-          currentFile++;
-          onProgress(displayName, currentFile, totalFiles);
-        }
-      });
+          if (onProgress)
+            onProgress(displayName, current, total);
+        });
 
       DBGMSG("Brain Rechunk: processed=%d, rechunked=%d, totalChunks=%d\n",
              stats.filesProcessed, stats.filesRechunked, stats.newTotalChunks);
@@ -211,21 +207,15 @@ namespace synaptic
       return;
     }
 
-    // Get initial file count for progress tracking
-    const int totalFiles = (int)mBrain->GetSummary().size();
-
-    std::thread([this, sampleRate, totalFiles, onProgress, onComplete]()
+    std::thread([this, sampleRate, onProgress, onComplete]()
     {
-      int currentFile = 0;
-
-      auto stats = mBrain->ReanalyzeAllChunks(sampleRate, [&currentFile, totalFiles, onProgress](const std::string& displayName)
-      {
-        if (onProgress)
+      // Brain's ReanalyzeAllChunks now reports per-chunk progress with (fileName, currentChunk, totalChunks)
+      auto stats = mBrain->ReanalyzeAllChunks(sampleRate,
+        [onProgress](const std::string& displayName, int current, int total)
         {
-          currentFile++;
-          onProgress(displayName, currentFile, totalFiles);
-        }
-      });
+          if (onProgress)
+            onProgress(displayName, current, total);
+        });
 
       DBGMSG("Brain Reanalyze: files=%d chunks=%d\n", stats.filesProcessed, stats.chunksProcessed);
 
@@ -454,26 +444,56 @@ namespace synaptic
 
     std::thread([this, files = std::move(files), sampleRate, channels, chunkSize, totalFiles, onProgress, onComplete]() mutable
     {
-      int currentFile = 0;
+      // Pre-scan files to estimate total chunks for cumulative progress tracking
+      int estimatedTotalChunks = 0;
 
       for (auto& fileData : files)
       {
-        currentFile++;
+        // Decode to get length without full processing
+        ma_decoder_config config = ma_decoder_config_init(ma_format_f32, (ma_uint32)channels, (ma_uint32)sampleRate);
+        ma_decoder decoder;
+        ma_uint64 frameCount = 0;
 
-        // Report progress
-        if (onProgress)
+        if (ma_decoder_init_memory(fileData.data.data(), fileData.data.size(), &config, &decoder) == MA_SUCCESS)
         {
-          onProgress(fileData.name, currentFile, totalFiles);
+          if (ma_decoder_get_length_in_pcm_frames(&decoder, &frameCount) == MA_SUCCESS)
+          {
+            estimatedTotalChunks += Brain::EstimateChunkCount((int)frameCount, chunkSize);
+          }
+          else
+          {
+            estimatedTotalChunks += 10; // fallback estimate if frame count unavailable
+          }
+          ma_decoder_uninit(&decoder);
         }
+        else
+        {
+          estimatedTotalChunks += 10; // fallback estimate if decode fails
+        }
+      }
 
-        // Import file
+      int cumulativeChunks = 0;
+
+      // Import files with cumulative progress tracking
+      for (auto& fileData : files)
+      {
+        // Import file with per-chunk progress callback that reports cumulative progress
         int newId = mBrain->AddAudioFileFromMemory(
           fileData.data.data(),
           fileData.data.size(),
           fileData.name,
           sampleRate,
           channels,
-          chunkSize
+          chunkSize,
+          [&fileData, &cumulativeChunks, estimatedTotalChunks, onProgress](const std::string& fileName, int currentChunk, int totalChunksInFile)
+          {
+            // Report cumulative progress across all files
+            if (onProgress)
+            {
+              ++cumulativeChunks;
+              onProgress(fileData.name, cumulativeChunks, estimatedTotalChunks);
+            }
+          }
         );
 
         if (newId >= 0)
@@ -481,7 +501,7 @@ namespace synaptic
           mBrainDirty = true;
         }
 
-        DBGMSG("Imported file %d/%d: %s (id=%d)\n", currentFile, totalFiles, fileData.name.c_str(), newId);
+        DBGMSG("Imported file: %s (id=%d)\n", fileData.name.c_str(), newId);
       }
 
       // Queue UI updates

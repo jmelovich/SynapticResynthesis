@@ -58,11 +58,13 @@ bool SynapticResynthesis::HandleSetChunkSizeMsg(int newSize)
   mProgressOverlayMgr.Show("Rechunking", "Starting...", 0.0f);
 
   mBrainManager.RechunkAllFilesAsync(mDSPConfig.chunkSize, (int)GetSampleRate(),
-    [this](const std::string& fileName, int current, int total)
+    [this](const std::string& fileName, int currentChunk, int totalChunks)
     {
-      // Progress callback - update overlay
-      float progress = (total > 0) ? ((float)current / (float)total * 100.0f) : 50.0f;
-      mProgressOverlayMgr.Update(fileName, progress);
+      // Now reports per-chunk progress across all files
+      float progress = (totalChunks > 0) ? ((float)currentChunk / (float)totalChunks * 100.0f) : 50.0f;
+      char buf[256];
+      snprintf(buf, sizeof(buf), "%s (chunk %d/%d)", fileName.c_str(), currentChunk, totalChunks);
+      mProgressOverlayMgr.Update(buf, progress);
     },
     [this]()
     {
@@ -109,11 +111,13 @@ bool SynapticResynthesis::HandleSetAnalysisWindowMsg(int mode)
   mProgressOverlayMgr.Show("Reanalyzing", "Starting...", 0.0f);
 
   mBrainManager.ReanalyzeAllChunksAsync((int)GetSampleRate(),
-    [this](const std::string& fileName, int current, int total)
+    [this](const std::string& fileName, int currentChunk, int totalChunks)
     {
-      // Progress callback - update overlay
-      float progress = (total > 0) ? ((float)current / (float)total * 100.0f) : 50.0f;
-      mProgressOverlayMgr.Update(fileName, progress);
+      // Now reports per-chunk progress across all files
+      float progress = (totalChunks > 0) ? ((float)currentChunk / (float)totalChunks * 100.0f) : 50.0f;
+      char buf[256];
+      snprintf(buf, sizeof(buf), "%s (chunk %d/%d)", fileName.c_str(), currentChunk, totalChunks);
+      mProgressOverlayMgr.Update(buf, progress);
     },
     [this]()
     {

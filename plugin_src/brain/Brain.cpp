@@ -223,12 +223,11 @@ namespace synaptic
 
   int Brain::AddAudioFileFromMemory(const void* data,
                                     size_t dataSize,
-
-
                                     const std::string& displayName,
                                     int targetSampleRate,
                                     int targetChannels,
-                                    int chunkSizeSamples)
+                                    int chunkSizeSamples,
+                                    ProgressFn onProgress)
   {
     if (!data || dataSize == 0 || targetSampleRate <= 0 || targetChannels <= 0 || chunkSizeSamples <= 0)
       return -1;
@@ -259,6 +258,10 @@ namespace synaptic
     std::vector<std::vector<iplug::sample>> planar;
     InterleaveToPlanar(interleaved.data(), (int) framesRead, targetChannels, planar);
 
+    // Estimate expected chunks for progress reporting
+    const int totalFrames = (int) framesRead;
+    const int expectedChunks = EstimateChunkCount(totalFrames, chunkSizeSamples);
+
     // Prepare file record
     std::lock_guard<std::mutex> lock(mutex_);
     mChunkSize = chunkSizeSamples;
@@ -267,9 +270,8 @@ namespace synaptic
     fileRec.id = fileId;
     fileRec.displayName = displayName;
 
-    // Chunking
-    const int totalFrames = (int) framesRead;
-    int numChunks = 2*totalFrames / chunkSizeSamples - 1;
+    // Chunking with progress reporting
+    int numChunks = expectedChunks;
     fileRec.chunkIndices.reserve(numChunks);
 
     for (int c = 0; c < numChunks; ++c)
@@ -302,6 +304,10 @@ namespace synaptic
       const int chunkGlobalIndex = (int) chunks_.size();
       chunks_.push_back(std::move(chunk));
       fileRec.chunkIndices.push_back(chunkGlobalIndex);
+
+      // Report progress per chunk (if callback provided)
+      if (onProgress)
+        onProgress(displayName, c + 1, expectedChunks);
     }
 
     fileRec.chunkCount = (int) fileRec.chunkIndices.size();
@@ -383,7 +389,7 @@ namespace synaptic
     return v;
   }
 
-  Brain::RechunkStats Brain::RechunkAllFiles(int newChunkSizeSamples, int targetSampleRate, RechunkProgressFn onProgress)
+  Brain::RechunkStats Brain::RechunkAllFiles(int newChunkSizeSamples, int targetSampleRate, ProgressFn onProgress)
   {
     RechunkStats stats;
     if (newChunkSizeSamples <= 0 || targetSampleRate <= 0) return stats;
@@ -400,6 +406,23 @@ namespace synaptic
       oldChunkSize = (mChunkSize > 0) ? mChunkSize : newChunkSizeSamples;
     }
 
+    // Estimate total NEW chunks for progress tracking
+    // First, calculate total valid frames across all files
+    int totalValidFramesAllFiles = 0;
+    for (const auto& f : filesSnapshot)
+    {
+      const int hop = std::max(1, oldChunkSize / 2);
+      const int lastValidFrames = std::max(0, oldChunkSize - f.tailPaddingFrames);
+      const int fileLen = (int)f.chunkIndices.size() > 0
+        ? (int)((int)f.chunkIndices.size() - 1) * hop + lastValidFrames
+        : 0;
+      totalValidFramesAllFiles += fileLen;
+    }
+
+    // Use helper to estimate new chunk count
+    const int estimatedNewChunks = EstimateChunkCount(totalValidFramesAllFiles, newChunkSizeSamples);
+    int currentChunk = 0;
+
     // Rebuild each file by concatenating its chunks' valid frames, then rechunk
     std::vector<BrainFile> newFiles = filesSnapshot; // will mutate per-file indices/counts/padding
     std::vector<BrainChunk> newChunks;
@@ -408,7 +431,6 @@ namespace synaptic
     for (auto& f : newFiles)
     {
       ++stats.filesProcessed;
-      if (onProgress) onProgress(f.displayName);
 
       // Concatenate valid frames across this file's chunks
       int totalValidFrames = 0;
@@ -499,6 +521,11 @@ namespace synaptic
         const int globalIdx = (int) newChunks.size();
         newChunks.push_back(std::move(out));
         f.chunkIndices.push_back(globalIdx);
+
+        // Report progress per chunk against estimated total
+        ++currentChunk;
+        if (onProgress)
+          onProgress(f.displayName, currentChunk, estimatedNewChunks);
       }
 
       f.chunkCount = (int) f.chunkIndices.size();
@@ -531,21 +558,25 @@ namespace synaptic
     return stats;
   }
 
-  Brain::ReanalyzeStats Brain::ReanalyzeAllChunks(int targetSampleRate, RechunkProgressFn onProgress)
+  Brain::ReanalyzeStats Brain::ReanalyzeAllChunks(int targetSampleRate, ProgressFn onProgress)
   {
     ReanalyzeStats stats;
     if (targetSampleRate <= 0) return stats;
-    // Snapshot file list under lock
+    // Snapshot file list and calculate total chunks under lock
     std::vector<BrainFile> filesSnapshot;
+    int totalChunks = 0;
     {
       std::unique_lock<std::mutex> lock(mutex_);
       filesSnapshot = files_;
+      totalChunks = (int)chunks_.size();
     }
+
+    int currentChunk = 0;
+
     // Iterate files and re-run analysis on their chunks
     for (const auto& f : filesSnapshot)
     {
       ++stats.filesProcessed;
-      if (onProgress) onProgress(f.displayName);
       // For each chunk index, reanalyze its audio
       std::vector<int> idxs = f.chunkIndices;
       for (int gi : idxs)
@@ -568,6 +599,11 @@ namespace synaptic
           if (gi >= 0 && gi < (int) chunks_.size()) chunks_[gi] = std::move(local);
         }
         ++stats.chunksProcessed;
+
+        // Report progress per chunk
+        ++currentChunk;
+        if (onProgress)
+          onProgress(f.displayName, currentChunk, totalChunks);
       }
     }
     return stats;
