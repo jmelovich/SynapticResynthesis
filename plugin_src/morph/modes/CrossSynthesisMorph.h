@@ -25,7 +25,7 @@ namespace synaptic
 
       if (mDomain == MorphDomain::Log)
       {
-        CrossSynthesisApply(a.complexSpectrum, b.complexSpectrum, b.fftSize,
+        LogApply(a.complexSpectrum, b.complexSpectrum, b.fftSize,
                             (float) mMorphAmount, (float) mPhaseMorphAmount);
       }
       else

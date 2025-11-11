@@ -32,7 +32,7 @@ namespace synaptic
   };
 
   // Shared cross-synthesis implementation, migrated from legacy Morph class
-  inline void CrossSynthesisApply(
+  inline void LogApply(
     std::vector<std::vector<float>>& a,
     std::vector<std::vector<float>>& b,
     int fftSize, float morphAmount, float phaseMorphAmount)

@@ -66,7 +66,7 @@ namespace synaptic
       // Apply cross synthesis after removing harmonics
       if (mDomain == MorphDomain::Log)
       {
-        CrossSynthesisApply(a.complexSpectrum, b.complexSpectrum, fftSize, (float)mMorphAmount, (float)mPhaseMorphAmount);
+        LogApply(a.complexSpectrum, b.complexSpectrum, fftSize, (float)mMorphAmount, (float)mPhaseMorphAmount);
       }
       else
       {
