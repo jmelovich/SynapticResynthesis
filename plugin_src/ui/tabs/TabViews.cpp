@@ -212,7 +212,11 @@ void BuildBrainTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, 
 
   // File drop zone
   IRECT dropArea = libraryCard.GetPadded(-layout.cardPadding).GetFromTop(100.f).GetTranslated(0.f, 28.f);
-  ui.attach(new BrainFileDropControl(dropArea), ControlGroup::Brain);
+  auto* dropControl = new BrainFileDropControl(dropArea);
+  dropControl->SetDisabled(true); // Start disabled until brain is loaded
+  dropControl->SetBlend(IBlend(EBlend::Default, 0.3f)); // Start grayed out
+  ui.attach(dropControl, ControlGroup::Brain);
+  ui.setBrainDropControl(dropControl); // Store reference for state updates
 
   // Status line
   IRECT statusRect = IRECT(libraryCard.L + layout.cardPadding, dropArea.B + 8.f, libraryCard.R - layout.cardPadding, dropArea.B + 24.f);
@@ -228,8 +232,29 @@ void BuildBrainTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, 
     libraryCard.B - layout.cardPadding
   );
   auto* fileList = new BrainFileListControl(fileListRect);
+  fileList->SetDisabled(true); // Start disabled until brain is loaded
+  fileList->SetBlend(IBlend(EBlend::Default, 0.3f)); // Start grayed out
   ui.attach(fileList, ControlGroup::Brain);
   ui.setBrainFileListControl(fileList); // Store reference for updates
+
+  // "Create New Brain" button - centered on drop area, shown only when no brain is loaded
+  float createBtnWidth = 220.f;
+  float createBtnHeight = 50.f;
+  IRECT createBtnRect = IRECT(
+    dropArea.MW() - createBtnWidth / 2.f,
+    dropArea.MH() - createBtnHeight / 2.f,
+    dropArea.MW() + createBtnWidth / 2.f,
+    dropArea.MH() + createBtnHeight / 2.f
+  );
+  auto* createButton = new IVButtonControl(createBtnRect, [](IControl* pCaller) {
+    auto* pGraphics = pCaller->GetUI();
+    auto* pDelegate = dynamic_cast<iplug::IEditorDelegate*>(pGraphics->GetDelegate());
+    if (pDelegate) {
+      pDelegate->SendArbitraryMsgFromUI(kMsgTagBrainCreateNew, kNoTag, 0, nullptr);
+    }
+  }, "Create New Brain", kButtonStyle);
+  ui.attach(createButton, ControlGroup::Brain);
+  ui.setCreateNewBrainButton(createButton); // Store reference for state updates
 
   yPos = libraryCard.B + layout.sectionGap;
 
@@ -274,15 +299,6 @@ void BuildBrainTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, 
       pDelegate->SendArbitraryMsgFromUI(kMsgTagBrainReset, kNoTag, 0, nullptr);
     }
   }, "Reset Brain", kButtonStyle), ControlGroup::Brain);
-
-  IRECT detachBtnRect = IRECT(btnStartX + btnWidth + btnGapH, btnY, btnStartX + btnWidth + btnGapH + btnWidth, btnY + btnHeight);
-  ui.attach(new IVButtonControl(detachBtnRect, [](IControl* pCaller) {
-    auto* pGraphics = pCaller->GetUI();
-    auto* pDelegate = dynamic_cast<iplug::IEditorDelegate*>(pGraphics->GetDelegate());
-    if (pDelegate) {
-      pDelegate->SendArbitraryMsgFromUI(kMsgTagBrainDetach, kNoTag, 0, nullptr);
-    }
-  }, "Detach File Ref", kButtonStyle), ControlGroup::Brain);
 }
 
 } // namespace tabs

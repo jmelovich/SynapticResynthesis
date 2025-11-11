@@ -47,6 +47,9 @@ void BrainFileDropControl::Draw(IGraphics& g)
 
 void BrainFileDropControl::OnMouseDown(float x, float y, const IMouseMod& mod)
 {
+  // Don't open file browser if no external brain loaded
+  if (!mHasExternalBrain) return;
+
   // Open file browser dialog
   std::string selectedPath;
   const wchar_t* filter = L"Audio Files\0*.wav;*.wave;*.mp3;*.flac\0"
@@ -66,6 +69,9 @@ void BrainFileDropControl::OnMouseDown(float x, float y, const IMouseMod& mod)
 
 void BrainFileDropControl::OnMouseOver(float x, float y, const IMouseMod& mod)
 {
+  // Don't show hover effect if no external brain loaded
+  if (!mHasExternalBrain) return;
+
   mIsHovered = true;
   SetDirty(true); // Trigger redraw for hover effect
 }
@@ -78,6 +84,9 @@ void BrainFileDropControl::OnMouseOut()
 
 void BrainFileDropControl::OnDrop(const char* str)
 {
+  // Don't accept drops if no external brain loaded
+  if (!mHasExternalBrain) return;
+
   if (!str)
     return;
 
@@ -90,6 +99,9 @@ void BrainFileDropControl::OnDrop(const char* str)
 
 void BrainFileDropControl::OnDropMultiple(const std::vector<const char*>& paths)
 {
+  // Don't accept drops if no external brain loaded
+  if (!mHasExternalBrain) return;
+
   for (const char* path : paths)
   {
     if (path && BrainFileHelpers::IsSupportedAudioFile(std::string(path)))

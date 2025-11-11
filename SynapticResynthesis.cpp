@@ -661,6 +661,9 @@ void SynapticResynthesis::SyncBrainUIState()
 
   // Update storage info
   ui->updateBrainStorage(mBrainManager.UseExternal(), mBrainManager.ExternalPath());
+
+  // Update brain loaded state (show/hide Create New Brain button, enable/disable controls)
+  ui->updateBrainLoadedState(mBrainManager.UseExternal());
 #endif
 }
 

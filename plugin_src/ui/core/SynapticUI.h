@@ -97,8 +97,11 @@ public:
   // Brain file list management
   void setBrainFileListControl(class BrainFileListControl* ctrl);
   void setBrainStatusControl(class BrainStatusControl* ctrl);
+  void setBrainDropControl(class BrainFileDropControl* ctrl);
+  void setCreateNewBrainButton(ig::IControl* ctrl);
   void updateBrainFileList(const std::vector<struct BrainFileEntry>& files);
   void updateBrainStorage(bool useExternal, const std::string& externalPath);
+  void updateBrainLoadedState(bool hasBrainLoaded);
 
   // Progress overlay management
   void ShowProgressOverlay(const std::string& title, const std::string& message, float progress = 0.0f);
@@ -154,6 +157,8 @@ private:
   // Brain file list control
   class BrainFileListControl* mBrainFileListControl { nullptr };
   class BrainStatusControl* mBrainStatusControl { nullptr };
+  class BrainFileDropControl* mBrainDropControl { nullptr };
+  ig::IControl* mCreateNewBrainButton { nullptr };
 
   // Progress overlay
   class ProgressOverlay* mProgressOverlay { nullptr };

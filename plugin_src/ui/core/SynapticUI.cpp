@@ -88,6 +88,8 @@ void SynapticUI::rebuild()
   mBrainTabButton = nullptr;
   mBrainFileListControl = nullptr;
   mBrainStatusControl = nullptr;
+  mBrainDropControl = nullptr;
+  mCreateNewBrainButton = nullptr;
   mProgressOverlay = nullptr;
   mTransformerCardPanel = nullptr;
   mMorphCardPanel = nullptr;
@@ -499,6 +501,16 @@ void SynapticUI::setBrainStatusControl(BrainStatusControl* ctrl)
   mBrainStatusControl = ctrl;
 }
 
+void SynapticUI::setBrainDropControl(BrainFileDropControl* ctrl)
+{
+  mBrainDropControl = ctrl;
+}
+
+void SynapticUI::setCreateNewBrainButton(IControl* ctrl)
+{
+  mCreateNewBrainButton = ctrl;
+}
+
 void SynapticUI::updateBrainFileList(const std::vector<BrainFileEntry>& files)
 {
 #if IPLUG_EDITOR
@@ -533,6 +545,57 @@ void SynapticUI::updateBrainStorage(bool useExternal, const std::string& externa
     {
       mBrainStatusControl->SetStorageMode("(inline)");
     }
+  }
+
+  // Update external brain flag in controls (affects message and interaction gating)
+  if (mBrainFileListControl)
+  {
+    mBrainFileListControl->SetHasExternalBrain(useExternal);
+  }
+  if (mBrainDropControl)
+  {
+    mBrainDropControl->SetHasExternalBrain(useExternal);
+  }
+#endif
+}
+
+void SynapticUI::updateBrainLoadedState(bool hasBrainLoaded)
+{
+#if IPLUG_EDITOR
+  // Show/hide "Create New Brain" button based on brain loaded state
+  // Only affects visibility within the Brain tab (tab switching handles cross-tab visibility)
+  if (mCreateNewBrainButton)
+  {
+    // Only hide/show if we're on the Brain tab (otherwise tab switching handles it)
+    if (mCurrentTab == Tab::Brain)
+    {
+      mCreateNewBrainButton->Hide(hasBrainLoaded);
+    }
+    // Always update disabled state for consistency
+    mCreateNewBrainButton->SetDisabled(hasBrainLoaded);
+  }
+
+  // Grey out drop control and file list when no brain is loaded
+  if (mBrainDropControl)
+  {
+    mBrainDropControl->SetDisabled(!hasBrainLoaded);
+    // Reduce opacity when disabled by setting grayed out state
+    if (!hasBrainLoaded)
+      mBrainDropControl->SetBlend(IBlend(EBlend::Default, 0.3f));
+    else
+      mBrainDropControl->SetBlend(IBlend(EBlend::Default, 1.0f));
+    mBrainDropControl->SetDirty(true);
+  }
+
+  if (mBrainFileListControl)
+  {
+    mBrainFileListControl->SetDisabled(!hasBrainLoaded);
+    // Reduce opacity when disabled by setting grayed out state
+    if (!hasBrainLoaded)
+      mBrainFileListControl->SetBlend(IBlend(EBlend::Default, 0.3f));
+    else
+      mBrainFileListControl->SetBlend(IBlend(EBlend::Default, 1.0f));
+    mBrainFileListControl->SetDirty(true);
   }
 #endif
 }

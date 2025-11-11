@@ -107,6 +107,13 @@ namespace synaptic
      */
     void ImportFromFileAsync(ProgressFn onProgress, CompletionFn onComplete);
 
+    /**
+     * @brief Create new empty brain file with native save dialog (background thread)
+     * @param onProgress Progress callback (message, current, total)
+     * @param onComplete Callback when creation completes
+     */
+    void CreateNewBrainAsync(ProgressFn onProgress, CompletionFn onComplete);
+
     // === State Management ===
 
     /**

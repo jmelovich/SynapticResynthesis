@@ -42,6 +42,8 @@ class BrainFileListControl : public ig::IControl
 public:
   BrainFileListControl(const ig::IRECT& bounds);
 
+  void SetHasExternalBrain(bool hasExternal) { mHasExternalBrain = hasExternal; SetDirty(true); }
+
   void Draw(ig::IGraphics& g) override;
   void OnMouseDown(float x, float y, const ig::IMouseMod& mod) override;
   void OnMouseOver(float x, float y, const ig::IMouseMod& mod) override;
@@ -98,6 +100,7 @@ private:
   float mScrollOffset;
   const float mRowHeight = 32.f;
   const float mPadding = 8.f;
+  bool mHasExternalBrain = false;
 };
 
 } // namespace ui

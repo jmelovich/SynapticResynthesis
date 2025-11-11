@@ -32,6 +32,8 @@ class BrainFileDropControl : public ig::IControl
 public:
   BrainFileDropControl(const ig::IRECT& bounds);
 
+  void SetHasExternalBrain(bool hasExternal) { mHasExternalBrain = hasExternal; SetDirty(true); }
+
   void Draw(ig::IGraphics& g) override;
   void OnMouseDown(float x, float y, const ig::IMouseMod& mod) override;
   void OnMouseOver(float x, float y, const ig::IMouseMod& mod) override;
@@ -41,6 +43,7 @@ public:
 
 private:
   bool mIsHovered;
+  bool mHasExternalBrain = false;
 };
 
 } // namespace ui

@@ -258,6 +258,13 @@ bool SynapticResynthesis::HandleTransformerSetParamMsg(const void* jsonData, int
 
 bool SynapticResynthesis::HandleBrainAddFileMsg(int dataSize, const void* pData)
 {
+  // Reject drops/imports unless an external brain file reference is set
+  if (!mBrainManager.UseExternal())
+  {
+    DBGMSG("BrainAddFile ignored: external brain not set\n");
+    return true; // treated as handled but intentionally ignored
+  }
+
   // pData holds raw bytes: [uint16_t nameLenLE][name bytes UTF-8][file bytes]
   if (!pData || dataSize <= 2)
     return false;
@@ -364,6 +371,26 @@ bool SynapticResynthesis::HandleBrainDetachMsg()
   SetPendingUpdate(PendingUpdate::BrainSummary);
 #endif
   MarkHostStateDirty();
+  return true;
+}
+
+bool SynapticResynthesis::HandleBrainCreateNewMsg()
+{
+  mBrainManager.CreateNewBrainAsync(
+    [this](const std::string& message, int current, int total)
+    {
+      // Progress callback - calculate progress percentage from current/total
+      const float progress = (total > 0) ? ((float)current / (float)total * 100.0f) : 0.0f;
+      mProgressOverlayMgr.Show("Creating New Brain", message, progress);
+    },
+    [this]()
+    {
+      // Completion callback
+      mProgressOverlayMgr.Hide();
+      SetPendingUpdate(PendingUpdate::BrainSummary);  // Update brain UI state (includes storage label and loaded state)
+      SetPendingUpdate(PendingUpdate::DSPConfig);
+      SetPendingUpdate(PendingUpdate::MarkDirty);
+    });
   return true;
 }
 

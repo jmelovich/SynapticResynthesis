@@ -87,6 +87,7 @@ enum EMsgTags
   kMsgTagBrainImport = 105,
   kMsgTagBrainReset = 106,
   kMsgTagBrainDetach = 107,
+  kMsgTagBrainCreateNew = 109,
   // Window resize
   kMsgTagResizeToFit = 108,
   // C++ -> UI JSON updates use msgTag = -1, with id fields "brainSummary"
@@ -127,6 +128,7 @@ private:
   bool HandleBrainImportMsg();
   bool HandleBrainResetMsg();
   bool HandleBrainDetachMsg();
+  bool HandleBrainCreateNewMsg();
   bool HandleResizeToFitMsg(int dataSize, const void* pData);
 
   // === Helper Methods ===

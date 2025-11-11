@@ -2,6 +2,7 @@
 #include "plugin_src/PlatformFileDialogs.h"
 #include "SynapticResynthesis.h"
 #include "IPlugStructs.h"
+#include "json.hpp"
 #include <thread>
 #include <cstdio>
 
@@ -117,10 +118,18 @@ namespace synaptic
 
   void BrainManager::Detach()
   {
-    // Stop referencing the external file; keep current in-memory brain and save inline next
+    // Stop referencing the external file and reset brain to empty state
     mUseExternalBrain = false;
     mExternalBrainPath.clear();
-    mBrainDirty = true;
+
+    // Reset brain to empty state (clear all files and chunks)
+    if (mBrain)
+    {
+      mBrain->Reset();
+      mBrain->SetWindow(mAnalysisWindow);
+    }
+
+    mBrainDirty = false;
 
     // Send external ref update to UI
     mUIBridge->SendExternalRefInfo(false, std::string());
@@ -355,6 +364,68 @@ namespace synaptic
       j["id"] = "brainExternalRef";
       j["info"] = {{"path", mExternalBrainPath}};
       mUIBridge->EnqueueJSON(j);
+
+      if (onComplete)
+        onComplete();
+
+    }).detach();
+  }
+
+  void BrainManager::CreateNewBrainAsync(ProgressFn onProgress, CompletionFn onComplete)
+  {
+    if (!mBrain) return;
+
+    // Move to background thread to avoid WebView2 re-entrancy when showing native dialogs
+    std::thread([this, onProgress, onComplete]()
+    {
+      // Show initial progress (0 of 2) - waiting for file selection
+      if (onProgress)
+        onProgress("Waiting for file selection...", 0, 2);
+
+      std::string savePath;
+      const bool chose = platform::GetSaveFilePath(savePath,
+                                                   L"Synaptic Brain (*.sbrain)\0*.sbrain\0All Files (*.*)\0*.*\0\0",
+                                                   L"NewBrain.sbrain");
+      if (!chose)
+      {
+        // User cancelled - call completion without progress
+        if (onComplete)
+          onComplete();
+        return;
+      }
+
+      // File selected - update progress (1 of 2 = 50%)
+      if (onProgress)
+        onProgress("Creating empty brain...", 1, 2);
+
+      // Reset brain to empty state (clear all files and chunks)
+      mBrain->Reset();
+      mBrain->SetWindow(mAnalysisWindow);
+
+      // Serialize empty brain to chunk
+      iplug::IByteChunk blob;
+      mBrain->SerializeSnapshotToChunk(blob);
+
+      // Write to file
+      FILE* fp = fopen(savePath.c_str(), "wb");
+      if (fp)
+      {
+        fwrite(blob.GetData(), 1, (size_t)blob.Size(), fp);
+        fclose(fp);
+
+        mExternalBrainPath = savePath;
+        mUseExternalBrain = true;
+        mBrainDirty = false;
+
+        // Notify UI about new external ref
+        nlohmann::json j;
+        j["id"] = "brainExternalRef";
+        j["info"] = {{"path", mExternalBrainPath}};
+        mUIBridge->EnqueueJSON(j);
+
+        // Refresh DSP config to show storage indicator
+        mUIBridge->MarkDSPConfigPending();
+      }
 
       if (onComplete)
         onComplete();

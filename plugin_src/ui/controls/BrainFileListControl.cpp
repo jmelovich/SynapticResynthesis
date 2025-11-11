@@ -39,8 +39,16 @@ void BrainFileListControl::Draw(IGraphics& g)
 
   if (mFiles.empty())
   {
-    // Draw empty state message
-    g.DrawText(kSmallText, "No files in Brain", mRECT);
+    // Draw empty state message - different message when no external brain
+    const char* message = (!mHasExternalBrain)
+      ? "You must create or load a Brain before importing files"
+      : "No files in Brain";
+
+    // Use centered text style for empty state message
+    IText centeredText = kSmallText;
+    centeredText.mAlign = EAlign::Center;
+    centeredText.mVAlign = EVAlign::Middle;
+    g.DrawText(centeredText, message, mRECT);
     return;
   }
 
@@ -213,12 +221,18 @@ void BrainFileListControl::SendAddFileMessage(const char* path)
 
 void BrainFileListControl::OnDrop(const char* str)
 {
+  // Don't accept drops if no external brain loaded
+  if (!mHasExternalBrain) return;
+
   if (str)
     SendAddFileMessage(str);
 }
 
 void BrainFileListControl::OnDropMultiple(const std::vector<const char*>& paths)
 {
+  // Don't accept drops if no external brain loaded
+  if (!mHasExternalBrain) return;
+
   for (const char* path : paths)
   {
     if (path)

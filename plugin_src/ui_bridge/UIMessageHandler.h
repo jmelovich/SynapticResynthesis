@@ -66,6 +66,9 @@ namespace synaptic
         case ::kMsgTagBrainDetach:
           return plugin->HandleBrainDetachMsg();
 
+        case ::kMsgTagBrainCreateNew:
+          return plugin->HandleBrainCreateNewMsg();
+
         case ::kMsgTagResizeToFit:
           return plugin->HandleResizeToFitMsg(dataSize, pData);
 
