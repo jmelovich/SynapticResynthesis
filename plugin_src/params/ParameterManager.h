@@ -66,15 +66,18 @@ namespace synaptic
     /**
      * @brief Handle chunk size parameter change with side effects
      * Coordinates: config update, chunker resize, window resize, latency update
+     * @return true if chunk size changed (triggers rechunking)
      */
     template<typename PluginT>
-    void HandleChunkSizeChange(int paramIdx, iplug::IParam* param, DSPConfig& config,
+    bool HandleChunkSizeChange(int paramIdx, iplug::IParam* param, DSPConfig& config,
                               PluginT* plugin, synaptic::AudioStreamChunker& chunker,
                               synaptic::Window& analysisWindow)
     {
+      int oldChunkSize = config.chunkSize;
       HandleCoreParameterChange(paramIdx, param, config);
       chunker.SetChunkSize(config.chunkSize);
       analysisWindow.Set(synaptic::Window::IntToType(config.analysisWindowMode), config.chunkSize);
+      return config.chunkSize != oldChunkSize;
     }
 
     /**
@@ -135,10 +138,11 @@ namespace synaptic
     bool HandleAnalysisWindowChange(int paramIdx, iplug::IParam* param, DSPConfig& config,
                                    synaptic::Window& analysisWindow, synaptic::Brain& brain)
     {
+      int oldAnalysisWindowMode = config.analysisWindowMode;
       HandleCoreParameterChange(paramIdx, param, config);
       analysisWindow.Set(synaptic::Window::IntToType(config.analysisWindowMode), config.chunkSize);
       brain.SetWindow(&analysisWindow);
-      return true; // Signal caller to trigger reanalysis
+      return config.analysisWindowMode != oldAnalysisWindowMode; // Only trigger reanalysis if mode changed
     }
 
     /**

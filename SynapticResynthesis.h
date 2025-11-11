@@ -14,6 +14,7 @@
 #include "plugin_src/brain/BrainManager.h"
 #include "plugin_src/serialization/StateSerializer.h"
 #include "plugin_src/ui_bridge/UIMessageHandler.h"
+#include "plugin_src/ui/core/ProgressOverlayManager.h"
 #include <atomic>
 
 using namespace iplug;
@@ -179,4 +180,12 @@ private:
 
   // C++ UI initialization flag
   bool mNeedsInitialUIRebuild { true };
+
+  // === Pending file-drop batching for async import ===
+  std::vector<synaptic::BrainManager::FileData> mPendingImportFiles;
+  std::atomic<bool> mPendingImportScheduled { false };
+  int mPendingImportIdleTicks { 0 }; // countdown in idle ticks before starting batch
+
+  // === Progress overlay management ===
+  synaptic::ui::ProgressOverlayManager mProgressOverlayMgr;
 };

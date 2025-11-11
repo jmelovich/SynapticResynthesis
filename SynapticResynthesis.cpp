@@ -54,6 +54,11 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
 : Plugin(info, MakeConfig(ComputeTotalParams(), kNumPresets))
 , mUIBridge(this)
 , mBrainManager(&mBrain, &mAnalysisWindow, &mUIBridge)
+#if SR_USE_WEB_UI
+, mProgressOverlayMgr(&mUIBridge)
+#else
+, mProgressOverlayMgr(nullptr) // C++ UI mode - no UIBridge needed
+#endif
 {
   GetParam(kInGain)->InitGain("Input Gain", 0.0, -70, 0.);
   GetParam(kOutGain)->InitGain("Output Gain", 0.0, -70, 0.);
@@ -342,6 +347,9 @@ void SynapticResynthesis::OnIdle()
     SyncBrainUIState();
   }
 
+  // Process progress overlay updates from background threads
+  mProgressOverlayMgr.ProcessPendingUpdates(synaptic::GetSynapticUI());
+
   // Handle transformer/morph parameter UI rebuild on UI thread
   // Simply rebuild the entire UI - this is reliable and always works correctly
   if (HasPendingUpdate(PendingUpdate::RebuildTransformer) || HasPendingUpdate(PendingUpdate::RebuildMorph))
@@ -358,15 +366,53 @@ void SynapticResynthesis::OnIdle()
       // Update cached context with shared_ptr copies before rebuilding
       ui->setDynamicParamContext(currentTransformer, currentMorph, &mParamManager, this);
       ui->rebuild();
-
-      // After rebuild, sync brain state to newly created controls
-      SyncBrainUIState();
     }
+
     CheckAndClearPendingUpdate(PendingUpdate::RebuildTransformer);
     CheckAndClearPendingUpdate(PendingUpdate::RebuildMorph);
   }
 
-  // Reset init flag when UI is closed
+  // Coalesce pending dropped files and start async batch import
+  if (mPendingImportScheduled.load())
+  {
+    if (mPendingImportIdleTicks > 0)
+      --mPendingImportIdleTicks;
+
+    if (mPendingImportIdleTicks <= 0)
+    {
+      // Only launch if no other operation is in progress
+      if (!mBrainManager.IsOperationInProgress())
+      {
+        auto files = std::move(mPendingImportFiles);
+        mPendingImportFiles.clear();
+        mPendingImportScheduled = false;
+
+        if (!files.empty())
+        {
+          mProgressOverlayMgr.Show("Importing Files", "Starting...", 0.0f);
+          mBrainManager.AddMultipleFilesAsync(std::move(files), (int)GetSampleRate(), NInChansConnected(), mDSPConfig.chunkSize,
+            [this](const std::string& fileName, int current, int total)
+            {
+              const float p = (total > 0) ? ((float)current / (float)total * 100.0f) : 50.0f;
+              mProgressOverlayMgr.Update(fileName, p);
+            },
+            [this]()
+            {
+              mProgressOverlayMgr.Hide();
+              SetPendingUpdate(PendingUpdate::BrainSummary);
+              MarkHostStateDirty();
+            }
+          );
+        }
+      }
+      else
+      {
+        // Keep scheduled; try again next idle
+        mPendingImportIdleTicks = 1;
+      }
+    }
+  }
+
   if (!GetUI())
   {
     mNeedsInitialUIRebuild = true;
@@ -393,9 +439,30 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
   // Handle chunk size parameter (coordinated by ParameterManager)
   if (paramIdx == mParamManager.GetChunkSizeParamIdx())
   {
-    mParamManager.HandleChunkSizeChange(paramIdx, GetParam(paramIdx), mDSPConfig, this, mChunker, mAnalysisWindow);
+    bool chunkSizeChanged = mParamManager.HandleChunkSizeChange(paramIdx, GetParam(paramIdx), mDSPConfig, this, mChunker, mAnalysisWindow);
     UpdateChunkerWindowing();
     SetLatency(ComputeLatencySamples());
+
+#if !SR_USE_WEB_UI
+    // Only trigger background rechunk if chunk size actually changed (not just parameter editing)
+    if (chunkSizeChanged)
+    {
+      mProgressOverlayMgr.Show("Rechunking", "Starting...", 0.0f);
+      mBrainManager.RechunkAllFilesAsync(mDSPConfig.chunkSize, (int)GetSampleRate(),
+        [this](const std::string& fileName, int current, int total)
+        {
+          const float p = (total > 0) ? ((float)current / (float)total * 100.0f) : 50.0f;
+          mProgressOverlayMgr.Update(fileName, p);
+        },
+        [this]()
+        {
+          mProgressOverlayMgr.Hide();
+          SetPendingUpdate(PendingUpdate::BrainSummary);
+          SetPendingUpdate(PendingUpdate::MarkDirty);
+        }
+      );
+    }
+#endif
   }
   // Handle buffer window parameter
   else if (paramIdx == mParamManager.GetBufferWindowParamIdx())
@@ -426,17 +493,34 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
   // Handle analysis window (coordinated by ParameterManager, with background reanalysis)
   else if (paramIdx == mParamManager.GetAnalysisWindowParamIdx())
   {
-    mParamManager.HandleCoreParameterChange(paramIdx, GetParam(paramIdx), mDSPConfig);
-    UpdateBrainAnalysisWindow();
+    bool analysisWindowChanged = mParamManager.HandleAnalysisWindowChange(paramIdx, GetParam(paramIdx), mDSPConfig, mAnalysisWindow, mBrain);
 
-    // Kick background reanalysis when analysis window changes via host/restore, unless suppressed
-    if (!CheckAndClearPendingUpdate(PendingUpdate::SuppressAnalysisReanalyze))
+    // Only trigger reanalysis if window mode actually changed AND not suppressed
+    if (analysisWindowChanged && !CheckAndClearPendingUpdate(PendingUpdate::SuppressAnalysisReanalyze))
     {
-      mBrainManager.ReanalyzeAllChunksAsync((int)GetSampleRate(), [this]()
-      {
-        SetPendingUpdate(PendingUpdate::BrainSummary);
-        SetPendingUpdate(PendingUpdate::MarkDirty);
-      });
+#if SR_USE_WEB_UI
+      mBrainManager.ReanalyzeAllChunksAsync((int)GetSampleRate(),
+        [](const std::string&, int, int){},  // Empty progress callback (silent background operation)
+        [this]()
+        {
+          SetPendingUpdate(PendingUpdate::BrainSummary);
+          SetPendingUpdate(PendingUpdate::MarkDirty);
+        });
+#else
+      mProgressOverlayMgr.Show("Reanalyzing", "Starting...", 0.0f);
+      mBrainManager.ReanalyzeAllChunksAsync((int)GetSampleRate(),
+        [this](const std::string& fileName, int current, int total)
+        {
+          const float p = (total > 0) ? ((float)current / (float)total * 100.0f) : 50.0f;
+          mProgressOverlayMgr.Update(fileName, p);
+        },
+        [this]()
+        {
+          mProgressOverlayMgr.Hide();
+          SetPendingUpdate(PendingUpdate::BrainSummary);
+          SetPendingUpdate(PendingUpdate::MarkDirty);
+        });
+#endif
     }
     SetPendingUpdate(PendingUpdate::DSPConfig);
   }

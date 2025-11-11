@@ -100,6 +100,11 @@ public:
   void updateBrainFileList(const std::vector<struct BrainFileEntry>& files);
   void updateBrainStorage(bool useExternal, const std::string& externalPath);
 
+  // Progress overlay management
+  void ShowProgressOverlay(const std::string& title, const std::string& message, float progress = 0.0f);
+  void UpdateProgressOverlay(const std::string& message, float progress);
+  void HideProgressOverlay();
+
   // Window management
   void resizeWindowToFitContent();
 
@@ -128,6 +133,9 @@ private:
   // Sync control with its parameter value
   void SyncControlWithParam(ig::IControl* ctrl, iplug::Plugin* plugin);
 
+  // Ensure progress overlay is always on top
+  void EnsureOverlayOnTop();
+
   ig::IGraphics* mGraphics;
   UILayout mLayout;
   Tab mCurrentTab { Tab::DSP };
@@ -146,6 +154,9 @@ private:
   // Brain file list control
   class BrainFileListControl* mBrainFileListControl { nullptr };
   class BrainStatusControl* mBrainStatusControl { nullptr };
+
+  // Progress overlay
+  class ProgressOverlay* mProgressOverlay { nullptr };
 
   // Cached context for rebuilding dynamic params on resize
   RebuildContext mRebuildContext;

@@ -61,6 +61,11 @@ void SynapticUI::build()
   tabs::BuildBrainTab(*this, bounds, mLayout, yPos);
 
   setActiveTab(Tab::DSP);
+
+  // Progress overlay (attached last to be on top, initially hidden)
+  // Don't use attach() helper - manage this control completely independently
+  mProgressOverlay = new ProgressOverlay(bounds);
+  mGraphics->AttachControl(mProgressOverlay);
 #endif
 }
 
@@ -83,6 +88,7 @@ void SynapticUI::rebuild()
   mBrainTabButton = nullptr;
   mBrainFileListControl = nullptr;
   mBrainStatusControl = nullptr;
+  mProgressOverlay = nullptr;
   mTransformerCardPanel = nullptr;
   mMorphCardPanel = nullptr;
   mAudioProcessingCardPanel = nullptr;
@@ -122,6 +128,11 @@ void SynapticUI::rebuild()
   {
     rebuildDynamicParams(DynamicParamType::Morph, mRebuildContext.morph.get(), *mRebuildContext.paramManager, mRebuildContext.plugin);
   }
+
+  // Progress overlay (attached ABSOLUTELY LAST to be on top of everything, initially hidden)
+  // Don't use attach() helper - manage this control completely independently
+  mProgressOverlay = new ProgressOverlay(bounds);
+  mGraphics->AttachControl(mProgressOverlay);
 
   // Resize window to fit content
   resizeWindowToFitContent();
@@ -295,6 +306,9 @@ void SynapticUI::rebuildDynamicParams(
 
   // Attach and sync new controls
   AttachAndSyncControls(newControls, paramControls, mDSPControls, plugin);
+
+  // Ensure progress overlay stays on top after adding dynamic params
+  EnsureOverlayOnTop();
 
   // Resize card and reposition subsequent cards
   float heightDelta = ResizeCardToFitContent(cardPanel, bounds, paramControls, 120.f);
@@ -511,6 +525,60 @@ void SynapticUI::updateBrainStorage(bool useExternal, const std::string& externa
     {
       mBrainStatusControl->SetStorageMode("(inline)");
     }
+  }
+#endif
+}
+
+void SynapticUI::ShowProgressOverlay(const std::string& title, const std::string& message, float progress)
+{
+#if IPLUG_EDITOR
+  if (mProgressOverlay)
+  {
+    mProgressOverlay->Show(title, message, progress);
+  }
+#endif
+}
+
+void SynapticUI::UpdateProgressOverlay(const std::string& message, float progress)
+{
+#if IPLUG_EDITOR
+  if (mProgressOverlay)
+  {
+    mProgressOverlay->UpdateProgress(message, progress);
+  }
+#endif
+}
+
+void SynapticUI::HideProgressOverlay()
+{
+#if IPLUG_EDITOR
+  if (mProgressOverlay)
+  {
+    mProgressOverlay->Hide();
+  }
+#endif
+}
+
+void SynapticUI::EnsureOverlayOnTop()
+{
+#if IPLUG_EDITOR
+  if (!mGraphics || !mProgressOverlay) return;
+
+  // Store current state
+  bool wasVisible = mProgressOverlay->IsVisible();
+  std::string title = mProgressOverlay->GetTitle();
+  std::string message = mProgressOverlay->GetMessage();
+  float progress = mProgressOverlay->GetProgress();
+
+  // Remove and re-attach overlay to ensure it's last (on top)
+  mGraphics->RemoveControl(mProgressOverlay);
+  mProgressOverlay = new ProgressOverlay(mGraphics->GetBounds());
+  mGraphics->AttachControl(mProgressOverlay);
+
+  // Restore state if it was visible
+  if (wasVisible)
+  {
+    mProgressOverlay->Show(title, message, progress);
   }
 #endif
 }

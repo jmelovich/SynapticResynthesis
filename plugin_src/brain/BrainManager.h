@@ -73,35 +73,39 @@ namespace synaptic
     // === Asynchronous Operations (with callbacks) ===
 
     using CompletionFn = std::function<void()>;
-    using ProgressFn = std::function<void(const std::string& fileName)>;
+    using ProgressFn = std::function<void(const std::string& message, int current, int total)>;
 
     /**
      * @brief Rechunk all brain files to new chunk size (background thread)
      * @param newChunkSize New chunk size in samples
      * @param sampleRate Sample rate for analysis
+     * @param onProgress Progress callback (message, current, total)
      * @param onComplete Callback when rechunking completes (on main thread via OnIdle)
      */
-    void RechunkAllFilesAsync(int newChunkSize, int sampleRate, CompletionFn onComplete);
+    void RechunkAllFilesAsync(int newChunkSize, int sampleRate, ProgressFn onProgress, CompletionFn onComplete);
 
     /**
      * @brief Reanalyze all chunks with current window (background thread)
      * @param sampleRate Sample rate for analysis
+     * @param onProgress Progress callback (message, current, total)
      * @param onComplete Callback when reanalysis completes (on main thread via OnIdle)
      */
-    void ReanalyzeAllChunksAsync(int sampleRate, CompletionFn onComplete);
+    void ReanalyzeAllChunksAsync(int sampleRate, ProgressFn onProgress, CompletionFn onComplete);
 
     /**
      * @brief Export brain to file with native save dialog (background thread)
+     * @param onProgress Progress callback (message, current, total)
      * @param onComplete Callback when export completes
      */
-    void ExportToFileAsync(CompletionFn onComplete);
+    void ExportToFileAsync(ProgressFn onProgress, CompletionFn onComplete);
 
     /**
      * @brief Import brain from file with native open dialog (background thread)
+     * @param onProgress Progress callback (message, current, total)
      * @param onComplete Callback when import completes
      * @return Imported chunk size (for syncing UI params), or -1 if not imported
      */
-    void ImportFromFileAsync(CompletionFn onComplete);
+    void ImportFromFileAsync(ProgressFn onProgress, CompletionFn onComplete);
 
     // === State Management ===
 
@@ -148,6 +152,29 @@ namespace synaptic
      * @return Window mode (1-4), or -1 if none pending
      */
     int GetPendingImportedAnalysisWindow() { return mPendingImportedAnalysisWindow.exchange(-1); }
+
+    // === Multi-File Import ===
+
+    /**
+     * @brief Data for a single file to import
+     */
+    struct FileData
+    {
+      std::vector<uint8_t> data;
+      std::string name;
+    };
+
+    /**
+     * @brief Add multiple files asynchronously with progress reporting
+     * @param files Vector of file data to import
+     * @param sampleRate Target sample rate
+     * @param channels Target channel count
+     * @param chunkSize Chunk size in samples
+     * @param onProgress Progress callback (message, current, total)
+     * @param onComplete Callback when all files are imported
+     */
+    void AddMultipleFilesAsync(std::vector<FileData> files, int sampleRate, int channels,
+                               int chunkSize, ProgressFn onProgress, CompletionFn onComplete);
 
   private:
     // Core references (not owned)

@@ -49,13 +49,13 @@ namespace synaptic
 
       case ::kMsgTagBrainExport:
       {
-        ExportToFileAsync([](){});  // Empty completion callback
+        ExportToFileAsync([](const std::string&, int, int){}, [](){});  // Empty progress and completion callbacks
         return true;
       }
 
       case ::kMsgTagBrainImport:
       {
-        ImportFromFileAsync([](){});  // Empty completion callback
+        ImportFromFileAsync([](const std::string&, int, int){}, [](){});  // Empty progress and completion callbacks
         return true;
       }
 
@@ -132,7 +132,7 @@ namespace synaptic
     mUseExternalBrain = useExternal;
   }
 
-  void BrainManager::RechunkAllFilesAsync(int newChunkSize, int sampleRate, CompletionFn onComplete)
+  void BrainManager::RechunkAllFilesAsync(int newChunkSize, int sampleRate, ProgressFn onProgress, CompletionFn onComplete)
   {
     if (!mBrain) return;
 
@@ -151,11 +151,22 @@ namespace synaptic
       return;
     }
 
-    mUIBridge->ShowOverlay("Rechunking...");
+    // Get initial file count for progress tracking
+    const int totalFiles = (int)mBrain->GetSummary().size();
 
-    std::thread([this, newChunkSize, sampleRate, onComplete]()
+    std::thread([this, newChunkSize, sampleRate, totalFiles, onProgress, onComplete]()
     {
-      auto stats = mBrain->RechunkAllFiles(newChunkSize, sampleRate);
+      int currentFile = 0;
+      
+      auto stats = mBrain->RechunkAllFiles(newChunkSize, sampleRate, [&currentFile, totalFiles, onProgress](const std::string& displayName)
+      {
+        if (onProgress)
+        {
+          currentFile++;
+          onProgress(displayName, currentFile, totalFiles);
+        }
+      });
+      
       DBGMSG("Brain Rechunk: processed=%d, rechunked=%d, totalChunks=%d\n",
              stats.filesProcessed, stats.filesRechunked, stats.newTotalChunks);
 
@@ -163,7 +174,6 @@ namespace synaptic
 
       // Queue UI updates
       mUIBridge->MarkBrainSummaryPending();
-      mUIBridge->EnqueueJSON({{"id", "overlay"}, {"visible", false}});
 
       // Call completion callback
       if (onComplete)
@@ -173,7 +183,7 @@ namespace synaptic
     }).detach();
   }
 
-  void BrainManager::ReanalyzeAllChunksAsync(int sampleRate, CompletionFn onComplete)
+  void BrainManager::ReanalyzeAllChunksAsync(int sampleRate, ProgressFn onProgress, CompletionFn onComplete)
   {
     if (!mBrain) return;
 
@@ -192,18 +202,28 @@ namespace synaptic
       return;
     }
 
-    mUIBridge->ShowOverlay("Reanalyzing...");
+    // Get initial file count for progress tracking
+    const int totalFiles = (int)mBrain->GetSummary().size();
 
-    std::thread([this, sampleRate, onComplete]()
+    std::thread([this, sampleRate, totalFiles, onProgress, onComplete]()
     {
-      auto stats = mBrain->ReanalyzeAllChunks(sampleRate);
+      int currentFile = 0;
+      
+      auto stats = mBrain->ReanalyzeAllChunks(sampleRate, [&currentFile, totalFiles, onProgress](const std::string& displayName)
+      {
+        if (onProgress)
+        {
+          currentFile++;
+          onProgress(displayName, currentFile, totalFiles);
+        }
+      });
+      
       DBGMSG("Brain Reanalyze: files=%d chunks=%d\n", stats.filesProcessed, stats.chunksProcessed);
 
       mBrainDirty = true;
 
       // Queue UI updates
       mUIBridge->MarkBrainSummaryPending();
-      mUIBridge->EnqueueJSON({{"id", "overlay"}, {"visible", false}});
 
       // Call completion callback
       if (onComplete)
@@ -213,14 +233,16 @@ namespace synaptic
     }).detach();
   }
 
-  void BrainManager::ExportToFileAsync(CompletionFn onComplete)
+  void BrainManager::ExportToFileAsync(ProgressFn onProgress, CompletionFn onComplete)
   {
     if (!mBrain) return;
 
     // Move to background thread to avoid WebView2 re-entrancy when showing native dialogs
-    std::thread([this, onComplete]()
+    std::thread([this, onProgress, onComplete]()
     {
-      mUIBridge->EnqueueJSON({{"id", "overlay"}, {"visible", true}, {"text", "Exporting Brain..."}});
+      // Show indeterminate progress (0 of 1)
+      if (onProgress)
+        onProgress("Exporting brain...", 0, 1);
 
       std::string savePath;
       const bool chose = platform::GetSaveFilePath(savePath,
@@ -228,8 +250,9 @@ namespace synaptic
                                                    L"SynapticResynthesis-Brain.sbrain");
       if (!chose)
       {
-        // User cancelled
-        mUIBridge->EnqueueJSON({{"id", "overlay"}, {"visible", false}});
+        // User cancelled - call completion without progress
+        if (onComplete)
+          onComplete();
         return;
       }
 
@@ -258,27 +281,29 @@ namespace synaptic
         mUIBridge->MarkDSPConfigPending();
       }
 
-      mUIBridge->EnqueueJSON({{"id", "overlay"}, {"visible", false}});
-
       if (onComplete)
         onComplete();
 
     }).detach();
   }
 
-  void BrainManager::ImportFromFileAsync(CompletionFn onComplete)
+  void BrainManager::ImportFromFileAsync(ProgressFn onProgress, CompletionFn onComplete)
   {
     if (!mBrain) return;
 
     // Native Open dialog; C++ reads file directly
-    std::thread([this, onComplete]()
+    std::thread([this, onProgress, onComplete]()
     {
-      mUIBridge->EnqueueJSON({{"id", "overlay"}, {"visible", true}, {"text", "Importing Brain..."}});
+      // Show indeterminate progress (0 of 1)
+      if (onProgress)
+        onProgress("Importing brain...", 0, 1);
 
       std::string openPath;
       if (!platform::GetOpenFilePath(openPath, L"Synaptic Brain (*.sbrain)\0*.sbrain\0All Files (*.*)\0*.*\0\0"))
       {
-        mUIBridge->EnqueueJSON({{"id", "overlay"}, {"visible", false}});
+        // User cancelled
+        if (onComplete)
+          onComplete();
         return;
       }
 
@@ -286,7 +311,8 @@ namespace synaptic
       FILE* fp = fopen(openPath.c_str(), "rb");
       if (!fp)
       {
-        mUIBridge->EnqueueJSON({{"id", "overlay"}, {"visible", false}});
+        if (onComplete)
+          onComplete();
         return;
       }
 
@@ -321,11 +347,72 @@ namespace synaptic
       j["id"] = "brainExternalRef";
       j["info"] = {{"path", mExternalBrainPath}};
       mUIBridge->EnqueueJSON(j);
-      mUIBridge->EnqueueJSON({{"id", "overlay"}, {"visible", false}});
 
       if (onComplete)
         onComplete();
 
+    }).detach();
+  }
+
+  void BrainManager::AddMultipleFilesAsync(std::vector<FileData> files, int sampleRate, int channels, 
+                                           int chunkSize, ProgressFn onProgress, CompletionFn onComplete)
+  {
+    if (!mBrain) return;
+    
+    const int totalFiles = (int)files.size();
+    if (totalFiles == 0)
+    {
+      if (onComplete) onComplete();
+      return;
+    }
+
+    // Check if already running
+    if (mOperationInProgress.exchange(true))
+    {
+      DBGMSG("AddMultipleFiles request ignored: already running.\n");
+      return;
+    }
+
+    std::thread([this, files = std::move(files), sampleRate, channels, chunkSize, totalFiles, onProgress, onComplete]() mutable
+    {
+      int currentFile = 0;
+      
+      for (auto& fileData : files)
+      {
+        currentFile++;
+        
+        // Report progress
+        if (onProgress)
+        {
+          onProgress(fileData.name, currentFile, totalFiles);
+        }
+        
+        // Import file
+        int newId = mBrain->AddAudioFileFromMemory(
+          fileData.data.data(), 
+          fileData.data.size(), 
+          fileData.name, 
+          sampleRate, 
+          channels, 
+          chunkSize
+        );
+        
+        if (newId >= 0)
+        {
+          mBrainDirty = true;
+        }
+        
+        DBGMSG("Imported file %d/%d: %s (id=%d)\n", currentFile, totalFiles, fileData.name.c_str(), newId);
+      }
+
+      // Queue UI updates
+      mUIBridge->MarkBrainSummaryPending();
+
+      // Call completion callback
+      if (onComplete)
+        onComplete();
+
+      mOperationInProgress = false;
     }).detach();
   }
 }

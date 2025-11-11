@@ -76,5 +76,6 @@ private:
 // Include Brain-specific controls
 #include "BrainFileDropControl.h"
 #include "BrainFileListControl.h"
+#include "ProgressOverlay.h"
 
 

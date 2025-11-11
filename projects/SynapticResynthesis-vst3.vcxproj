@@ -416,6 +416,7 @@
     <ClCompile Include="..\plugin_src\ui\core\SynapticUI.cpp">
       <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
     </ClCompile>
+    <ClCompile Include="..\plugin_src\ui\core\ProgressOverlayManager.cpp" />
     <ClCompile Include="..\plugin_src\ui\controls\UIControls.cpp">
       <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
     </ClCompile>
@@ -426,6 +427,9 @@
       <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\plugin_src\ui\controls\BrainFileHelpers.cpp">
+      <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\plugin_src\ui\controls\ProgressOverlay.cpp">
       <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\plugin_src\ui\tabs\TabViews.cpp">

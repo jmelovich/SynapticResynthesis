@@ -311,6 +311,26 @@ namespace synaptic
     SendJSON(j);
   }
 
+  void UIBridge::ShowProgressOverlay(const std::string& title, const std::string& message, float progress)
+  {
+    // For WebUI, use the simple overlay message system
+    nlohmann::json j;
+    j["id"] = "overlay";
+    j["visible"] = true;
+    j["text"] = title + ": " + message;
+    EnqueueJSON(j);
+  }
+
+  void UIBridge::UpdateProgressOverlay(const std::string& message, float progress)
+  {
+    // For WebUI, re-send the overlay with updated text
+    nlohmann::json j;
+    j["id"] = "overlay";
+    j["visible"] = true;
+    j["text"] = message;
+    EnqueueJSON(j);
+  }
+
   void UIBridge::EnqueuePayload(const std::string& jsonPayload)
   {
     std::lock_guard<std::mutex> lock(mQueueMutex);

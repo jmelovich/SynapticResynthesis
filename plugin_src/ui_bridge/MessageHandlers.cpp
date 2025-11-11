@@ -54,12 +54,23 @@ bool SynapticResynthesis::HandleSetChunkSizeMsg(int newSize)
   // Update DSPConfig with current external brain state and send to UI
   SyncAndSendDSPConfig();
 
-  // Trigger background rechunk using BrainManager
-  mBrainManager.RechunkAllFilesAsync(mDSPConfig.chunkSize, (int)GetSampleRate(), [this]()
-  {
-    SetPendingUpdate(PendingUpdate::BrainSummary);
-    SetPendingUpdate(PendingUpdate::MarkDirty);
-  });
+  // Trigger background rechunk using BrainManager with progress tracking
+  mProgressOverlayMgr.Show("Rechunking", "Starting...", 0.0f);
+
+  mBrainManager.RechunkAllFilesAsync(mDSPConfig.chunkSize, (int)GetSampleRate(),
+    [this](const std::string& fileName, int current, int total)
+    {
+      // Progress callback - update overlay
+      float progress = (total > 0) ? ((float)current / (float)total * 100.0f) : 50.0f;
+      mProgressOverlayMgr.Update(fileName, progress);
+    },
+    [this]()
+    {
+      // Completion callback
+      mProgressOverlayMgr.Hide();
+      SetPendingUpdate(PendingUpdate::BrainSummary);
+      SetPendingUpdate(PendingUpdate::MarkDirty);
+    });
   return true;
 }
 
@@ -94,12 +105,23 @@ bool SynapticResynthesis::HandleSetAnalysisWindowMsg(int mode)
   // Update analysis window used by Brain
   UpdateBrainAnalysisWindow();
 
-  // Trigger background reanalysis using BrainManager
-  mBrainManager.ReanalyzeAllChunksAsync((int)GetSampleRate(), [this]()
-  {
-    SetPendingUpdate(PendingUpdate::BrainSummary);
-    SetPendingUpdate(PendingUpdate::MarkDirty);
-  });
+  // Trigger background reanalysis using BrainManager with progress tracking
+  mProgressOverlayMgr.Show("Reanalyzing", "Starting...", 0.0f);
+
+  mBrainManager.ReanalyzeAllChunksAsync((int)GetSampleRate(),
+    [this](const std::string& fileName, int current, int total)
+    {
+      // Progress callback - update overlay
+      float progress = (total > 0) ? ((float)current / (float)total * 100.0f) : 50.0f;
+      mProgressOverlayMgr.Update(fileName, progress);
+    },
+    [this]()
+    {
+      // Completion callback
+      mProgressOverlayMgr.Hide();
+      SetPendingUpdate(PendingUpdate::BrainSummary);
+      SetPendingUpdate(PendingUpdate::MarkDirty);
+    });
 
   // Update and send DSP config to UI
   SyncAndSendDSPConfig();
@@ -250,19 +272,18 @@ bool SynapticResynthesis::HandleBrainAddFileMsg(int dataSize, const void* pData)
 
   DBGMSG("BrainAddFile: name=%s size=%zu SR=%d CH=%d chunk=%d\n", name.c_str(), fileSize, (int)GetSampleRate(), NInChansConnected(), mDSPConfig.chunkSize);
 
-  // Use BrainManager to add file
-  int newId = mBrainManager.AddFileFromMemory(fileData, fileSize, name, (int)GetSampleRate(), NInChansConnected(), mDSPConfig.chunkSize);
-  if (newId >= 0)
-  {
-#if SR_USE_WEB_UI
-    mUIBridge.SendBrainSummary(mBrain);
-#else
-    // For C++ UI, set flag to update in OnIdle
-    SetPendingUpdate(PendingUpdate::BrainSummary);
-#endif
-    MarkHostStateDirty();
-  }
-  return newId >= 0;
+  // Enqueue into pending vector for batched async import (coalesced in OnIdle)
+  synaptic::BrainManager::FileData fd;
+  fd.name = name;
+  fd.data.resize(fileSize);
+  memcpy(fd.data.data(), fileData, fileSize);
+  mPendingImportFiles.push_back(std::move(fd));
+
+  // Schedule batch start after a brief idle window to catch multi-file drops
+  mPendingImportScheduled = true;
+  mPendingImportIdleTicks = 2; // ~100ms at IDLE_TIMER_RATE=50
+
+  return true;
 }
 
 bool SynapticResynthesis::HandleBrainRemoveFileMsg(int fileId)
@@ -281,22 +302,38 @@ bool SynapticResynthesis::HandleBrainRemoveFileMsg(int fileId)
 
 bool SynapticResynthesis::HandleBrainExportMsg()
 {
-  mBrainManager.ExportToFileAsync([this]()
-  {
-    SetPendingUpdate(PendingUpdate::BrainSummary);  // Update brain UI state (includes storage label)
-    SetPendingUpdate(PendingUpdate::DSPConfig);
-    SetPendingUpdate(PendingUpdate::MarkDirty);
-  });
+  mBrainManager.ExportToFileAsync(
+    [this](const std::string& message, int current, int total)
+    {
+      // Progress callback - show indeterminate progress
+      mProgressOverlayMgr.Show("Exporting Brain", message, 50.0f);
+    },
+    [this]()
+    {
+      // Completion callback
+      mProgressOverlayMgr.Hide();
+      SetPendingUpdate(PendingUpdate::BrainSummary);  // Update brain UI state (includes storage label)
+      SetPendingUpdate(PendingUpdate::DSPConfig);
+      SetPendingUpdate(PendingUpdate::MarkDirty);
+    });
   return true;
 }
 
 bool SynapticResynthesis::HandleBrainImportMsg()
 {
-  mBrainManager.ImportFromFileAsync([this]()
-  {
-    SetPendingUpdate(PendingUpdate::BrainSummary);
-    SetPendingUpdate(PendingUpdate::MarkDirty);
-  });
+  mBrainManager.ImportFromFileAsync(
+    [this](const std::string& message, int current, int total)
+    {
+      // Progress callback - show indeterminate progress
+      mProgressOverlayMgr.Show("Importing Brain", message, 50.0f);
+    },
+    [this]()
+    {
+      // Completion callback
+      mProgressOverlayMgr.Hide();
+      SetPendingUpdate(PendingUpdate::BrainSummary);
+      SetPendingUpdate(PendingUpdate::MarkDirty);
+    });
   return true;
 }
 

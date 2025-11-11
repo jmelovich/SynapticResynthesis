@@ -85,6 +85,7 @@ namespace synaptic
 
     /**
      * @brief Show overlay with text (for long operations like rechunking)
+     * Legacy method for WebUI - uses simple text message
      */
     void ShowOverlay(const std::string& text);
 
@@ -92,6 +93,17 @@ namespace synaptic
      * @brief Hide overlay
      */
     void HideOverlay();
+
+    /**
+     * @brief Show progress overlay with title, message, and progress (WebUI only)
+     * For C++ UI, use callback-based approach in message handlers
+     */
+    void ShowProgressOverlay(const std::string& title, const std::string& message, float progress);
+
+    /**
+     * @brief Update progress overlay (WebUI only)
+     */
+    void UpdateProgressOverlay(const std::string& message, float progress);
 
     // === Thread-Safe Queue Management ===
 
