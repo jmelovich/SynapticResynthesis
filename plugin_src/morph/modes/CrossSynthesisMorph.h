@@ -14,9 +14,12 @@ namespace synaptic
       Cepstral
     };
 
-    void OnReset(double /*sampleRate*/, int /*fftSize*/, int /*numChannels*/) override {}
+    void OnReset(double /*sampleRate*/, int fftSize, int /*numChannels*/) override
+    {
+      mCepstralScratch.EnsureSize(fftSize);
+    }
 
-    void Process(AudioChunk& a, AudioChunk& b, FFTProcessor& /*fft*/) override
+    void Process(AudioChunk& a, AudioChunk& b, FFTProcessor& fft) override
     {
       if (b.fftSize <= 0) return;
 
@@ -27,9 +30,9 @@ namespace synaptic
       }
       else
       {
-        // Cepstral mode placeholder: not implemented yet. For now, use Log behavior.
-        //CrossSynthesisApply(a.complexSpectrum, b.complexSpectrum, b.fftSize,
-        //                    (float) mMorphAmount, (float) mPhaseMorphAmount);
+        CepstralApply(a.complexSpectrum, b.complexSpectrum, b.fftSize,
+                      (float) mMorphAmount, (float) mPhaseMorphAmount,
+                      fft, mCepstralScratch);
       }
     }
 
@@ -102,6 +105,7 @@ namespace synaptic
     double mMorphAmount = 1.0;
     double mPhaseMorphAmount = 1.0;
     MorphDomain mDomain = MorphDomain::Log;
+    CepstralScratch mCepstralScratch;
   };
 }
 
