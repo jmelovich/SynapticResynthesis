@@ -8,13 +8,29 @@ namespace synaptic
   class CrossSynthesisMorph final : public IMorph
   {
   public:
+    enum class MorphDomain
+    {
+      Log,
+      Cepstral
+    };
+
     void OnReset(double /*sampleRate*/, int /*fftSize*/, int /*numChannels*/) override {}
 
     void Process(AudioChunk& a, AudioChunk& b, FFTProcessor& /*fft*/) override
     {
       if (b.fftSize <= 0) return;
-      CrossSynthesisApply(a.complexSpectrum, b.complexSpectrum, b.fftSize,
-                          (float) mMorphAmount, (float) mPhaseMorphAmount);
+
+      if (mDomain == MorphDomain::Log)
+      {
+        CrossSynthesisApply(a.complexSpectrum, b.complexSpectrum, b.fftSize,
+                            (float) mMorphAmount, (float) mPhaseMorphAmount);
+      }
+      else
+      {
+        // Cepstral mode placeholder: not implemented yet. For now, use Log behavior.
+        //CrossSynthesisApply(a.complexSpectrum, b.complexSpectrum, b.fftSize,
+        //                    (float) mMorphAmount, (float) mPhaseMorphAmount);
+      }
     }
 
     void GetParamDescs(std::vector<ExposedParamDesc>& out) const override
@@ -35,6 +51,16 @@ namespace synaptic
       p2.control = ControlType::Slider;
       p2.minValue = 0.0; p2.maxValue = 1.0; p2.step = 0.01; p2.defaultNumber = 1.0;
       out.push_back(p2);
+
+      ExposedParamDesc p3;
+      p3.id = "morphDomain";
+      p3.label = "Morph Domain";
+      p3.type = ParamType::Enum;
+      p3.control = ControlType::Select;
+      p3.options.push_back({"log", "Log"});
+      p3.options.push_back({"cepstral", "Cepstral"});
+      p3.defaultString = "log";
+      out.push_back(p3);
     }
 
     bool SetParamFromNumber(const std::string& id, double v) override
@@ -51,9 +77,31 @@ namespace synaptic
       return false;
     }
 
+    bool SetParamFromString(const std::string& id, const std::string& v) override
+    {
+      if (id == "morphDomain")
+      {
+        if (v == "log") mDomain = MorphDomain::Log;
+        else if (v == "cepstral") mDomain = MorphDomain::Cepstral;
+        return true;
+      }
+      return false;
+    }
+
+    bool GetParamAsString(const std::string& id, std::string& out) const override
+    {
+      if (id == "morphDomain")
+      {
+        out = (mDomain == MorphDomain::Log) ? "log" : "cepstral";
+        return true;
+      }
+      return false;
+    }
+
   private:
     double mMorphAmount = 1.0;
     double mPhaseMorphAmount = 1.0;
+    MorphDomain mDomain = MorphDomain::Log;
   };
 }
 

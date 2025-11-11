@@ -9,6 +9,12 @@ namespace synaptic
   class WaveMorph final : public IMorph
   {
   public:
+    enum class MorphDomain
+    {
+      Log,
+      Cepstral
+    };
+
     enum WaveMorphShape
     {
       Square,
@@ -55,7 +61,15 @@ namespace synaptic
       }
 
       // Apply cross synthesis after removing harmonics
-      CrossSynthesisApply(a.complexSpectrum, b.complexSpectrum, fftSize, (float)mMorphAmount, (float)mPhaseMorphAmount);
+      if (mDomain == MorphDomain::Log)
+      {
+        CrossSynthesisApply(a.complexSpectrum, b.complexSpectrum, fftSize, (float)mMorphAmount, (float)mPhaseMorphAmount);
+      }
+      else
+      {
+        // Cepstral mode placeholder: not implemented yet. For now, use Log behavior.
+        //CrossSynthesisApply(a.complexSpectrum, b.complexSpectrum, fftSize, (float)mMorphAmount, (float)mPhaseMorphAmount);
+      }
 
       for (int c = 0; c < numChannels; c++)
       {
@@ -121,6 +135,16 @@ namespace synaptic
       p5.options.push_back({"saw", "Sawtooth"});
       p5.options.push_back({"triangle", "Triangle"});
       out.push_back(p5);
+
+      ExposedParamDesc p6;
+      p6.id = "morphDomain";
+      p6.label = "Morph Domain";
+      p6.type = ParamType::Enum;
+      p6.control = ControlType::Select;
+      p6.options.push_back({"log", "Log"});
+      p6.options.push_back({"cepstral", "Cepstral"});
+      p6.defaultString = "log";
+      out.push_back(p6);
     }
 
     bool SetParamFromNumber(const std::string& id, double v) override
@@ -150,6 +174,12 @@ namespace synaptic
         else if (v == "triangle") mWaveShape = Triangle;
         return true;
       }
+      if (id == "morphDomain")
+      {
+        if (v == "log") mDomain = MorphDomain::Log;
+        else if (v == "cepstral") mDomain = MorphDomain::Cepstral;
+        return true;
+      }
       return false;
     }
 
@@ -160,6 +190,11 @@ namespace synaptic
         if (mWaveShape == Square) out = "square";
         else if (mWaveShape == Saw) out = "saw";
         else if (mWaveShape == Triangle) out = "triangle";
+        return true;
+      }
+      if (id == "morphDomain")
+      {
+        out = (mDomain == MorphDomain::Log) ? "log" : "cepstral";
         return true;
       }
       return false;
@@ -182,5 +217,6 @@ namespace synaptic
     int mWaveHarmonics = 20;
     double mMorphAmount = 1.0;
     double mPhaseMorphAmount = 1.0;
+    MorphDomain mDomain = MorphDomain::Log;
   };
 }

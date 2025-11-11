@@ -144,6 +144,15 @@
     <ClCompile Include="..\..\..\IGraphics\IGraphics.cpp" />
     <ClCompile Include="..\..\..\IGraphics\Platforms\IGraphicsWin.cpp" />
     <ClCompile Include="..\..\..\IGraphics\IGraphicsEditorDelegate.cpp" />
+    <ClCompile Include="..\plugin_src\ui\core\SynapticUI.cpp" />
+    <ClCompile Include="..\plugin_src\ui\core\ProgressOverlayManager.cpp" />
+    <ClCompile Include="..\plugin_src\ui\controls\UIControls.cpp" />
+    <ClCompile Include="..\plugin_src\ui\controls\BrainFileDropControl.cpp" />
+    <ClCompile Include="..\plugin_src\ui\controls\BrainFileListControl.cpp" />
+    <ClCompile Include="..\plugin_src\ui\controls\BrainFileHelpers.cpp" />
+    <ClCompile Include="..\plugin_src\ui\controls\ProgressOverlay.cpp" />
+    <ClCompile Include="..\plugin_src\ui\tabs\TabViews.cpp" />
+    <ClCompile Include="..\plugin_src\ui\dynamic\DynamicParamManager.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="../config.h" />
@@ -347,6 +356,28 @@
     <ClInclude Include="..\plugin_src\audio\FFT.h">
       <Filter>plugin_src</Filter>
     </ClInclude>
+    <ClInclude Include="..\plugin_src\Morph.h" />
+    <ClInclude Include="..\plugin_src\morph\IMorph.h">
+      <Filter>plugin_src\morph</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\morph\MorphFactory.h">
+      <Filter>plugin_src\morph</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\morph\MorphUtils.h">
+      <Filter>plugin_src\morph</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\morph\modes\CrossSynthesisMorph.h">
+      <Filter>plugin_src\morph\modes</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\morph\modes\NoneMorph.h">
+      <Filter>plugin_src\morph\modes</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\morph\modes\SpectralVocoderMorph.h">
+      <Filter>plugin_src\morph\modes</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\morph\modes\WaveMorph.h">
+      <Filter>plugin_src\morph\modes</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="resources">
@@ -415,6 +446,12 @@
     <Filter Include="plugin_src\transformers">
       <UniqueIdentifier>{5a553ad8-b65d-423d-bc08-83ab78b3affa}</UniqueIdentifier>
     </Filter>
+    <Filter Include="plugin_src\morph">
+      <UniqueIdentifier>{5b08e4b9-9f35-4850-8b3d-450685ffc7e2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="plugin_src\morph\modes">
+      <UniqueIdentifier>{c6b27278-ddc4-442e-8ce0-f96cdb931430}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\resources\main.rc">
@@ -439,5 +476,10 @@
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="$(MSBuildThisFileDirectory)..\..\natvis\wil.natvis" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="..\plugin_src\morph\morph_modes_to_support.txt">
+      <Filter>plugin_src\morph</Filter>
+    </Text>
   </ItemGroup>
 </Project>
