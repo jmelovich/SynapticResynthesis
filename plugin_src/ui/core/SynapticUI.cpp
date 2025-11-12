@@ -155,11 +155,13 @@ void SynapticUI::setActiveTab(Tab tab)
   if (mDSPTabButton) mDSPTabButton->SetActive(tab == Tab::DSP);
   if (mBrainTabButton) mBrainTabButton->SetActive(tab == Tab::Brain);
 
-  // Re-hide Create New Brain button if brain is loaded (SetControlGroupVisibility shows all Brain controls)
-  if (tab == Tab::Brain && mCreateNewBrainButton && mHasBrainLoaded)
+  // Update Create New Brain button visibility based on current tab and brain state
+  // Button should only be visible when: (1) no brain is loaded AND (2) Brain tab is active
+  if (mCreateNewBrainButton)
   {
-    mCreateNewBrainButton->Hide(true);
-    mCreateNewBrainButton->SetDisabled(true);
+    bool shouldHide = mHasBrainLoaded || (tab != Tab::Brain);
+    mCreateNewBrainButton->Hide(shouldHide);
+    mCreateNewBrainButton->SetDisabled(shouldHide);
   }
 
   // Auto-resize window to fit content when switching tabs
@@ -577,10 +579,12 @@ void SynapticUI::updateBrainState(bool useExternal, const std::string& externalP
   }
 
   // Show/hide "Create New Brain" button
+  // Button should only be visible when: (1) no brain is loaded AND (2) Brain tab is active
   if (mCreateNewBrainButton)
   {
-    mCreateNewBrainButton->Hide(useExternal);
-    mCreateNewBrainButton->SetDisabled(useExternal);
+    bool shouldHide = useExternal || (mCurrentTab != Tab::Brain);
+    mCreateNewBrainButton->Hide(shouldHide);
+    mCreateNewBrainButton->SetDisabled(shouldHide);
   }
 #endif
 }
