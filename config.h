@@ -30,6 +30,18 @@
 #define PLUG_SHARED_RESOURCES 0
 #define PLUG_HOST_RESIZE 1
 
+#ifndef UI_NUM_COLUMNS
+#define UI_NUM_COLUMNS 2
+#endif
+
+#ifndef UI_BASE_COLUMN_WIDTH
+#define UI_BASE_COLUMN_WIDTH 650
+#endif
+
+#ifndef UI_COLUMN_GAP
+#define UI_COLUMN_GAP 24
+#endif
+
 #define AUV2_ENTRY SynapticResynthesis_Entry
 #define AUV2_ENTRY_STR "SynapticResynthesis_Entry"
 #define AUV2_FACTORY SynapticResynthesis_Factory

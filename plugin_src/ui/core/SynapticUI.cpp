@@ -36,8 +36,23 @@ void SynapticUI::build()
 #if IPLUG_EDITOR
   if (!mGraphics) return;
 
-  const IRECT bounds = mGraphics->GetBounds();
+  // Configure number of columns from compile-time config
+  mNumColumns = UI_NUM_COLUMNS > 0 ? UI_NUM_COLUMNS : 1;
+
+  IRECT bounds = mGraphics->GetBounds();
   mLayout = UILayout::Calculate(bounds);
+
+  // If using multiple columns, ensure the window is wide enough
+  if (mNumColumns > 1)
+  {
+    const int targetWidth = (UI_BASE_COLUMN_WIDTH * mNumColumns) + (UI_COLUMN_GAP * (mNumColumns - 1));
+    if (mGraphics->Width() != targetWidth)
+    {
+      mGraphics->Resize(targetWidth, mGraphics->Height(), mGraphics->GetDrawScale(), true);
+      bounds = mGraphics->GetBounds();
+      mLayout = UILayout::Calculate(bounds);
+    }
+  }
 
   // One-time feature setup
   mGraphics->SetLayoutOnResize(false); // Disable auto-resize to prevent parameter reset
@@ -74,8 +89,23 @@ void SynapticUI::rebuild()
 #if IPLUG_EDITOR
   if (!mGraphics) return;
 
-  const IRECT bounds = mGraphics->GetBounds();
+  // Re-apply column configuration (compile-time for now)
+  mNumColumns = UI_NUM_COLUMNS > 0 ? UI_NUM_COLUMNS : 1;
+
+  IRECT bounds = mGraphics->GetBounds();
   mLayout = UILayout::Calculate(bounds);
+
+  // Ensure width for multi-column mode
+  if (mNumColumns > 1)
+  {
+    const int targetWidth = (UI_BASE_COLUMN_WIDTH * mNumColumns) + (UI_COLUMN_GAP * (mNumColumns - 1));
+    if (mGraphics->Width() != targetWidth)
+    {
+      mGraphics->Resize(targetWidth, mGraphics->Height(), mGraphics->GetDrawScale(), true);
+      bounds = mGraphics->GetBounds();
+      mLayout = UILayout::Calculate(bounds);
+    }
+  }
 
   Tab previousTab = mCurrentTab;
 
@@ -374,7 +404,8 @@ void SynapticUI::repositionSubsequentCards(IControl* startCard, float heightDelt
 #if IPLUG_EDITOR
   if (!mGraphics || !startCard || heightDelta == 0.f) return;
 
-  const float startY = startCard->GetRECT().B;
+  const IRECT startRect = startCard->GetRECT();
+  const float startY = startRect.B;
 
   // Reposition all cards and controls below the start card
   for (auto* ctrl : mDSPControls)
@@ -382,7 +413,12 @@ void SynapticUI::repositionSubsequentCards(IControl* startCard, float heightDelt
     if (ctrl && ctrl != startCard)
     {
       IRECT ctrlBounds = ctrl->GetRECT();
-      if (ctrlBounds.T >= startY - 10.f) // 10px tolerance for positioning
+      // Move only controls in the same column (horizontal overlap within the start card's bounds),
+      // and that are positioned below the start card.
+      const bool sameColumn =
+        (ctrlBounds.L >= startRect.L - 1.f) &&
+        (ctrlBounds.R <= startRect.R + 1.f);
+      if (sameColumn && ctrlBounds.T >= startY - 10.f) // 10px tolerance for positioning
       {
         ctrlBounds.T += heightDelta;
         ctrlBounds.B += heightDelta;

@@ -110,6 +110,9 @@ public:
   // Window management
   void resizeWindowToFitContent();
 
+  // Column layout configuration
+  int numColumns() const { return mNumColumns; }
+
   // Public card panel references (accessed by DSPTabView during layout)
   ig::IControl* mTransformerCardPanel { nullptr };
   ig::IControl* mMorphCardPanel { nullptr };
@@ -140,6 +143,7 @@ private:
 
   ig::IGraphics* mGraphics;
   UILayout mLayout;
+  int mNumColumns { 1 };
   Tab mCurrentTab { Tab::DSP };
   std::vector<ig::IControl*> mDSPControls;
   std::vector<ig::IControl*> mBrainControls;
