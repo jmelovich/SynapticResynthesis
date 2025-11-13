@@ -202,6 +202,9 @@ namespace synaptic
     int GetAlgorithmParamIdx() const { return mParamIdxAlgorithm; }
     int GetDirtyFlagParamIdx() const { return mParamIdxDirtyFlag; }
     int GetEnableOverlapParamIdx() const { return mParamIdxEnableOverlap; }
+    int GetAutotuneBlendParamIdx() const { return mParamIdxAutotuneBlend; }
+    int GetAutotuneModeParamIdx() const { return mParamIdxAutotuneMode; }
+    int GetAutotuneToleranceOctavesParamIdx() const { return mParamIdxAutotuneToleranceOctaves; }
     int GetMorphModeParamIdx() const { return mParamIdxMorphMode; }
 
   private:
@@ -216,6 +219,9 @@ namespace synaptic
     int mParamIdxAlgorithm = -1;
     int mParamIdxDirtyFlag = -1;
     int mParamIdxEnableOverlap = -1;
+    int mParamIdxAutotuneBlend = -1;
+    int mParamIdxAutotuneMode = -1;
+    int mParamIdxAutotuneToleranceOctaves = -1;
     int mParamIdxMorphMode = -1;
 
     // First transformer parameter index (base for dynamic params)

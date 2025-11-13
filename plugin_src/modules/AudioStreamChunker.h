@@ -9,6 +9,7 @@
 #include "plugin_src/audio/Window.h"
 
 #include "plugin_src/audio/FFT.h"
+#include "plugin_src/audio/AutotuneProcessor.h"
 #include "../Structs.h"
 #include "../morph/IMorph.h"
 
@@ -161,6 +162,9 @@ namespace synaptic
         const int hop = std::max(1, (int) std::lround(mChunkSize * (1.0 - ovl)));
         mSpectralOLARescale = ComputeSpectralOLARescale(mInputAnalysisWindow, mChunkSize, hop);
       }
+
+      // Initialize autotune processor with current configuration
+      mAutotuneProcessor.OnReset(mAutotuneProcessor.GetSampleRate(), mFFTSize, mNumChannels);
     }
 
     void SetChunkSize(int chunkSize)
@@ -226,9 +230,15 @@ namespace synaptic
     }
 
     int GetChunkSize() const { return mChunkSize; }
+    int GetFFTSize() const { return mFFTSize; }
+    int GetNumChannels() const { return mNumChannels; }
 
     // Set new morph owner (IMorph implementation)
     void SetMorph(std::shared_ptr<IMorph> morph) { mMorph = std::move(morph); }
+
+    // Get autotune processor for direct access
+    AutotuneProcessor& GetAutotuneProcessor() { return mAutotuneProcessor; }
+    const AutotuneProcessor& GetAutotuneProcessor() const { return mAutotuneProcessor; }
 
     void PushAudio(sample** inputs, int nFrames)
     {
@@ -449,8 +459,7 @@ namespace synaptic
 
           if (e.outputChunk.numFrames > 0)
           {
-            // Ensure spectral processing before windowing/OLA
-            // This function is where morph is applied
+
             SpectralProcessing(idx);
             // Compute AGC first (uses spectral-aware or RMS-aware calculation)
             const float agc = ComputeAGC(idx, agcEnabled);
@@ -661,8 +670,6 @@ namespace synaptic
       return true;
     }
 
-    int GetNumChannels() const { return mNumChannels; }
-
     // Get the source input chunk for a given output chunk index.
     // SIMPLIFIED: Input and output are co-located, so just return inputChunk from same entry.
     const AudioChunk* GetSourceChunkForOutput(int outputPoolIdx) const
@@ -682,22 +689,30 @@ namespace synaptic
       if (mFFTSize <= 0) return;
       PoolEntry& e = mPool[poolIdx];
 
-      const bool spectralActive = (mMorph && mMorph->IsActive());
-      if (!spectralActive) return;
+      const bool autotuneActive = mAutotuneProcessor.IsActive();
+      const bool morphActive = mMorph && mMorph->IsActive();
 
-      // Ensure both input and output spectra are consistent with current FFT settings
-      EnsureChunkSpectrum(e.inputChunk);
-      EnsureChunkSpectrum(e.outputChunk);
+      const bool spectralActive = morphActive || autotuneActive;
 
-      // Apply morph implementation on spectra
-      mMorph->Process(e.inputChunk, e.outputChunk, mFFT);
+      if (spectralActive)
+      {
+        // Ensure both input and output spectra are consistent with current FFT settings
+        EnsureChunkSpectrum(e.inputChunk);
+        EnsureChunkSpectrum(e.outputChunk);
 
-      // Synthesize back to time domain for rendering
-      mFFT.ComputeChunkIFFT(e.outputChunk);
+        if (autotuneActive)
+          mAutotuneProcessor.Process(e.inputChunk, e.outputChunk, mFFT);
+        // Apply morph implementation on spectra
+        if (morphActive)
+          mMorph->Process(e.inputChunk, e.outputChunk, mFFT);
 
-      // 'Polish' the output chunk to avoid artifacts at the edges of the window
-      for (int ch = 0; ch < mNumChannels; ++ch)
-        mOutputWindow.Polish(e.outputChunk.channelSamples[ch].data());
+        // Synthesize back to time domain for rendering
+        mFFT.ComputeChunkIFFT(e.outputChunk);
+
+        // 'Polish' the output chunk to avoid artifacts at the edges of the window
+        for (int ch = 0; ch < mNumChannels; ++ch)
+          mOutputWindow.Polish(e.outputChunk.channelSamples[ch].data());
+      }
     }
 
   private:
@@ -832,6 +847,9 @@ namespace synaptic
     std::vector<std::vector<sample>> mOutputOverlapBuffer;
     int mOutputOverlapValidSamples = 0;
     float mSpectralOLARescale = 1.0f;
+
+    // Autotune processor (handles all pitch detection and shifting logic)
+    AutotuneProcessor mAutotuneProcessor;
   };
 }
 

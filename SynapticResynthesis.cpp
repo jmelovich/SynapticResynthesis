@@ -262,6 +262,7 @@ void SynapticResynthesis::OnReset()
   const int outputWindowIdx = mParamManager.GetOutputWindowParamIdx();
   const int analysisWindowIdx = mParamManager.GetAnalysisWindowParamIdx();
   const int enableOverlapIdx = mParamManager.GetEnableOverlapParamIdx();
+  const int autotuneBlendIdx = mParamManager.GetAutotuneBlendParamIdx();
 
   if (chunkSizeIdx >= 0) mDSPConfig.chunkSize = std::max(1, GetParam(chunkSizeIdx)->Int());
   if (bufferWindowIdx >= 0) mDSPConfig.bufferWindowSize = std::max(1, GetParam(bufferWindowIdx)->Int());
@@ -276,6 +277,21 @@ void SynapticResynthesis::OnReset()
   mChunker.SetBufferWindowSize(mDSPConfig.bufferWindowSize);
   // Ensure chunker channel count matches current connection
   mChunker.SetNumChannels(NInChansConnected());
+  auto& autotune = mChunker.GetAutotuneProcessor();
+  autotune.OnReset(sr, mChunker.GetFFTSize(), mChunker.GetNumChannels());
+  if (autotuneBlendIdx >= 0)
+  {
+    const double blendPercent = GetParam(autotuneBlendIdx)->Value();
+    autotune.SetBlend((float)(blendPercent / 100.0));
+  }
+  {
+    const int modeIdx = mParamManager.GetAutotuneModeParamIdx();
+    if (modeIdx >= 0)
+      autotune.SetMode(GetParam(modeIdx)->Int() == 1);
+    const int tolIdx = mParamManager.GetAutotuneToleranceOctavesParamIdx();
+    if (tolIdx >= 0)
+      autotune.SetToleranceOctaves(std::clamp(GetParam(tolIdx)->Int(), 1, 5));
+  }
   mChunker.Reset();
 
   UpdateChunkerWindowing();
@@ -541,6 +557,24 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
   {
     mParamManager.HandleCoreParameterChange(paramIdx, GetParam(paramIdx), mDSPConfig);
     UpdateChunkerWindowing();
+  }
+  // Handle autotune blend
+  else if (paramIdx == mParamManager.GetAutotuneBlendParamIdx())
+  {
+    const double blendPercent = GetParam(paramIdx)->Value();
+    mChunker.GetAutotuneProcessor().SetBlend((float)(blendPercent / 100.0));
+  }
+  // Handle autotune mode
+  else if (paramIdx == mParamManager.GetAutotuneModeParamIdx())
+  {
+    const int mode = GetParam(paramIdx)->Int(); // 0 = FFT Peak, 1 = HPS
+    mChunker.GetAutotuneProcessor().SetMode(mode == 1);
+  }
+  // Handle autotune tolerance (octaves)
+  else if (paramIdx == mParamManager.GetAutotuneToleranceOctavesParamIdx())
+  {
+    const int oct = std::clamp(GetParam(paramIdx)->Int(), 1, 5);
+    mChunker.GetAutotuneProcessor().SetToleranceOctaves(oct);
   }
   // Handle morph mode change
   else if (paramIdx == mParamManager.GetMorphModeParamIdx())

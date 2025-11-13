@@ -102,6 +102,52 @@ void BuildDSPTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, fl
 
   yPos = transformerCard.B + layout.sectionGap;
 
+  // AUTOTUNE CARD
+  float autotuneCardHeight = 210.f;
+  IRECT autotuneCard = IRECT(layout.padding, yPos, bounds.W() - layout.padding, yPos + autotuneCardHeight);
+  auto* autotuneCardPanel = new CardPanel(autotuneCard, "AUTOTUNE");
+  ui.attach(autotuneCardPanel, ControlGroup::DSP);
+
+  rowY = autotuneCard.T + layout.cardPadding + 24.f;
+
+  // Autotune Blend slider
+  float sliderWidth = 280.f;
+  float sliderHeight = 40.f;
+  float sliderStartX = autotuneCard.L + (autotuneCard.W() - sliderWidth) / 2.f;
+  IRECT autotuneRect = IRECT(sliderStartX, rowY, sliderStartX + sliderWidth, rowY + sliderHeight);
+  ui.attach(new IVSliderControl(autotuneRect, kAutotuneBlend, "Autotune Blend", kSynapticStyle, true, EDirection::Horizontal), ControlGroup::DSP);
+
+  rowY += sliderHeight + 18.f;
+
+  // Autotune Mode (FFT Peak / HPS)
+  IRECT modeRow = IRECT(autotuneCard.L + layout.cardPadding, rowY, autotuneCard.R - layout.cardPadding, rowY + layout.controlHeight);
+  ui.attach(new ITextControl(modeRow.GetFromLeft(180.f), "Autotune Mode", kLabelText), ControlGroup::DSP);
+  float modeSwitchWidth = 220.f;
+  ui.attach(new IVTabSwitchControl(
+    modeRow.GetFromLeft(modeSwitchWidth).GetTranslated(180.f + 12.f, 0.f),
+    kAutotuneMode,
+    {"FFT Peak", "HPS"},
+    "",
+    kSynapticStyle,
+    EVShape::Rectangle,
+    EDirection::Horizontal
+  ), ControlGroup::DSP);
+
+  rowY += layout.controlHeight + 12.f;
+
+  // Autotune Range (Octaves)
+  IRECT tolRow = IRECT(autotuneCard.L + layout.cardPadding, rowY, autotuneCard.R - layout.cardPadding, rowY + layout.controlHeight);
+  ui.attach(new ITextControl(tolRow.GetFromLeft(180.f), "Autotune Range (Octaves)", kLabelText), ControlGroup::DSP);
+  ui.attach(new DeferredNumberBoxControl(
+    tolRow.GetFromLeft(200.f).GetTranslated(180.f + 8.f, 0.f),
+    kAutotuneToleranceOctaves,
+    nullptr,
+    "",
+    kSynapticStyle
+  ), ControlGroup::DSP);
+
+  yPos = autotuneCard.B + layout.sectionGap;
+
   // MORPH CARD (with space for dynamic params)
   // Base height for dropdown, will be expanded by dynamic params if needed
   float morphCardBaseHeight = 120.f;

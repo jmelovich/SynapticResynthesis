@@ -62,6 +62,9 @@ enum EParams
   kEnableOverlap,
   kOutGain,
   kAGC,
+  kAutotuneBlend,
+  kAutotuneMode,
+  kAutotuneToleranceOctaves,
   kMorphMode,
   // Dynamic transformer parameters are indexed after this sentinel
   kNumParams

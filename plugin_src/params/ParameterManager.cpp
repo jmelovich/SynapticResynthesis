@@ -88,6 +88,20 @@ namespace synaptic
     mParamIdxEnableOverlap = ::kEnableOverlap;
     plugin->GetParam(mParamIdxEnableOverlap)->InitBool("Enable Overlap-Add", config.enableOverlapAdd);
 
+    // Autotune blend (percentage)
+    mParamIdxAutotuneBlend = ::kAutotuneBlend;
+    plugin->GetParam(mParamIdxAutotuneBlend)->InitDouble("Autotune Blend", 0.0, 0.0, 100.0, 0.1, "%");
+
+    // Autotune mode (FFT peak or HPS)
+    mParamIdxAutotuneMode = ::kAutotuneMode;
+    plugin->GetParam(mParamIdxAutotuneMode)->InitEnum("Autotune Mode", 1, 2, "");
+    plugin->GetParam(mParamIdxAutotuneMode)->SetDisplayText(0, "FFT Peak");
+    plugin->GetParam(mParamIdxAutotuneMode)->SetDisplayText(1, "HPS");
+
+    // Autotune tolerance (octaves)
+    mParamIdxAutotuneToleranceOctaves = ::kAutotuneToleranceOctaves;
+    plugin->GetParam(mParamIdxAutotuneToleranceOctaves)->InitInt("Autotune Range (Octaves)", 3, 1, 5, "oct");
+
     // Morph mode parameters (factory-driven)
     mParamIdxMorphMode = ::kMorphMode;
     {
@@ -324,6 +338,9 @@ namespace synaptic
             paramIdx == mParamIdxAnalysisWindow ||
             paramIdx == mParamIdxDirtyFlag ||
             paramIdx == mParamIdxEnableOverlap ||
+            paramIdx == mParamIdxAutotuneBlend ||
+            paramIdx == mParamIdxAutotuneMode ||
+            paramIdx == mParamIdxAutotuneToleranceOctaves ||
             paramIdx == mParamIdxMorphMode);
   }
 
