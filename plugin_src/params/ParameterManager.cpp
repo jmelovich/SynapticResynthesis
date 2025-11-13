@@ -98,9 +98,14 @@ namespace synaptic
     plugin->GetParam(mParamIdxAutotuneMode)->SetDisplayText(0, "FFT Peak");
     plugin->GetParam(mParamIdxAutotuneMode)->SetDisplayText(1, "HPS");
 
-    // Autotune tolerance (octaves)
+    // Autotune tolerance (octaves) - enum with values 1-5
     mParamIdxAutotuneToleranceOctaves = ::kAutotuneToleranceOctaves;
-    plugin->GetParam(mParamIdxAutotuneToleranceOctaves)->InitInt("Autotune Range (Octaves)", 3, 1, 5, "oct");
+    plugin->GetParam(mParamIdxAutotuneToleranceOctaves)->InitEnum("Autotune Range (Octaves)", 2, 5, "");
+    plugin->GetParam(mParamIdxAutotuneToleranceOctaves)->SetDisplayText(0, "1");
+    plugin->GetParam(mParamIdxAutotuneToleranceOctaves)->SetDisplayText(1, "2");
+    plugin->GetParam(mParamIdxAutotuneToleranceOctaves)->SetDisplayText(2, "3");
+    plugin->GetParam(mParamIdxAutotuneToleranceOctaves)->SetDisplayText(3, "4");
+    plugin->GetParam(mParamIdxAutotuneToleranceOctaves)->SetDisplayText(4, "5");
 
     // Morph mode parameters (factory-driven)
     mParamIdxMorphMode = ::kMorphMode;

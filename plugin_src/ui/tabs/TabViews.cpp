@@ -162,12 +162,15 @@ void BuildDSPTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, fl
     // Autotune Range (Octaves)
     IRECT tolRow = IRECT(autotuneCard.L + layout.cardPadding, rowY, autotuneCard.R - layout.cardPadding, rowY + layout.controlHeight);
     ui.attach(new ITextControl(tolRow.GetFromLeft(180.f), "Autotune Range (Octaves)", kLabelText), ControlGroup::DSP);
-    ui.attach(new DeferredNumberBoxControl(
-      tolRow.GetFromLeft(200.f).GetTranslated(180.f + 8.f, 0.f),
+    const float tolSwitchWidth = 220.f;
+    ui.attach(new IVTabSwitchControl(
+      tolRow.GetFromLeft(tolSwitchWidth).GetTranslated(180.f + 12.f, 0.f),
       kAutotuneToleranceOctaves,
-      nullptr,
+      {"1", "2", "3", "4", "5"},
       "",
-      kSynapticStyle
+      kSynapticStyle,
+      EVShape::Rectangle,
+      EDirection::Horizontal
     ), ControlGroup::DSP);
 
     colY[col] = autotuneCard.B + layout.sectionGap;

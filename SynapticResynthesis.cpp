@@ -169,8 +169,26 @@ void SynapticResynthesis::DrainUiQueueOnMainThread()
       // Update analysis window instance and Brain pointer, but suppress auto-reanalysis because data already analyzed in file
       UpdateBrainAnalysisWindow();
 
+      // Refresh windowing and latency to reflect new settings
+      UpdateChunkerWindowing();
+      SetLatency(ComputeLatencySamples());
+
+#if SR_USE_WEB_UI
+      // Also update web UI's brain chunk size label explicitly
+      {
+        nlohmann::json j; j["id"] = "brainChunkSize"; j["size"] = mDSPConfig.chunkSize;
+        const std::string payload = j.dump();
+        SendArbitraryMsgFromDelegate(-1, (int)payload.size(), payload.c_str());
+      }
+#endif
+
       // Send DSP config to UI
       SyncAndSendDSPConfig();
+
+#if !SR_USE_WEB_UI && IPLUG_EDITOR
+      // Trigger full UI rebuild to sync all controls with imported parameters
+      SetPendingUpdate(PendingUpdate::RebuildTransformer);
+#endif
     }
   }
 }
@@ -290,7 +308,11 @@ void SynapticResynthesis::OnReset()
       autotune.SetMode(GetParam(modeIdx)->Int() == 1);
     const int tolIdx = mParamManager.GetAutotuneToleranceOctavesParamIdx();
     if (tolIdx >= 0)
-      autotune.SetToleranceOctaves(std::clamp(GetParam(tolIdx)->Int(), 1, 5));
+    {
+      // Convert enum index (0-4) to octave value (1-5)
+      const int enumIdx = std::clamp(GetParam(tolIdx)->Int(), 0, 4);
+      autotune.SetToleranceOctaves(enumIdx + 1);
+    }
   }
   mChunker.Reset();
 
@@ -573,8 +595,9 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
   // Handle autotune tolerance (octaves)
   else if (paramIdx == mParamManager.GetAutotuneToleranceOctavesParamIdx())
   {
-    const int oct = std::clamp(GetParam(paramIdx)->Int(), 1, 5);
-    mChunker.GetAutotuneProcessor().SetToleranceOctaves(oct);
+    // Convert enum index (0-4) to octave value (1-5)
+    const int enumIdx = std::clamp(GetParam(paramIdx)->Int(), 0, 4);
+    mChunker.GetAutotuneProcessor().SetToleranceOctaves(enumIdx + 1);
   }
   // Handle morph mode change
   else if (paramIdx == mParamManager.GetMorphModeParamIdx())
