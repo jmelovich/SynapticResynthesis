@@ -71,7 +71,7 @@ namespace synaptic
       else
       {
         CepstralApply(a.complexSpectrum, b.complexSpectrum, fftSize,
-                      (float) mMorphAmount, (float) mPhaseMorphAmount,
+                      (float) mMorphAmount, (float) mPhaseMorphAmount, (float) mEmphasis,
                       fft, mCepstralScratch);
       }
 
@@ -149,6 +149,14 @@ namespace synaptic
       p6.options.push_back({"cepstral", "Cepstral"});
       p6.defaultString = "log";
       out.push_back(p6);
+      
+      ExposedParamDesc p7;
+      p7.id = "emphasis";
+      p7.label = "Emphasis";
+      p7.type = ParamType::Number;
+      p7.control = ControlType::Slider;
+      p7.minValue = 0.0; p7.maxValue = 1.0; p7.step = 0.01; p7.defaultNumber = 0.0;
+      out.push_back(p7);
     }
 
     bool SetParamFromNumber(const std::string& id, double v) override
@@ -157,6 +165,7 @@ namespace synaptic
       if (id == "waveHarmonics") { mWaveHarmonics = (int)v; return true; }
       if (id == "morphAmount") { mMorphAmount = v; return true; }
       if (id == "phaseMorphAmount") { mPhaseMorphAmount = v; return true; }
+      if (id == "emphasis") { mEmphasis = v; return true; }
       return false;
     }
 
@@ -166,6 +175,7 @@ namespace synaptic
       if (id == "waveHarmonics") { out = mWaveHarmonics; return true; }
       if (id == "morphAmount") { out = mMorphAmount; return true; }
       if (id == "phaseMorphAmount") { out = mPhaseMorphAmount; return true; }
+      if (id == "emphasis") { out = mEmphasis; return true; }
       return false;
     }
 
@@ -221,6 +231,7 @@ namespace synaptic
     int mWaveHarmonics = 20;
     double mMorphAmount = 1.0;
     double mPhaseMorphAmount = 1.0;
+    double mEmphasis = 0.0;
     MorphDomain mDomain = MorphDomain::Log;
     CepstralScratch mCepstralScratch;
   };
