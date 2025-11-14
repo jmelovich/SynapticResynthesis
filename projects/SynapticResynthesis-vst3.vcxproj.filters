@@ -116,22 +116,22 @@
     <ClCompile Include="..\..\..\IPlug\Extras\WebView\IPlugWebView.cpp">
       <Filter>IPlug\Extras\WebView</Filter>
     </ClCompile>
-    <ClCompile Include="..\plugin_src\modules\BrainManager.cpp">
+    <ClCompile Include="..\plugin_src\brain\BrainManager.cpp">
       <Filter>plugin_src\modules</Filter>
     </ClCompile>
-    <ClCompile Include="..\plugin_src\modules\MessageHandlers.cpp">
+    <ClCompile Include="..\plugin_src\ui_bridge\MessageHandlers.cpp">
       <Filter>plugin_src\modules</Filter>
     </ClCompile>
-    <ClCompile Include="..\plugin_src\modules\ParameterManager.cpp">
+    <ClCompile Include="..\plugin_src\params\ParameterManager.cpp">
       <Filter>plugin_src\modules</Filter>
     </ClCompile>
-    <ClCompile Include="..\plugin_src\modules\StateSerializer.cpp">
+    <ClCompile Include="..\plugin_src\serialization\StateSerializer.cpp">
       <Filter>plugin_src\modules</Filter>
     </ClCompile>
-    <ClCompile Include="..\plugin_src\modules\UIBridge.cpp">
+    <ClCompile Include="..\plugin_src\ui_bridge\UIBridge.cpp">
       <Filter>plugin_src\modules</Filter>
     </ClCompile>
-    <ClCompile Include="..\plugin_src\samplebrain\Brain.cpp">
+    <ClCompile Include="..\plugin_src\brain\Brain.cpp">
       <Filter>plugin_src\samplebrain</Filter>
     </ClCompile>
     <ClCompile Include="..\exdeps\pffft\pffft.c" />
@@ -144,6 +144,15 @@
     <ClCompile Include="..\..\..\IGraphics\IGraphics.cpp" />
     <ClCompile Include="..\..\..\IGraphics\Platforms\IGraphicsWin.cpp" />
     <ClCompile Include="..\..\..\IGraphics\IGraphicsEditorDelegate.cpp" />
+    <ClCompile Include="..\plugin_src\ui\core\SynapticUI.cpp" />
+    <ClCompile Include="..\plugin_src\ui\core\ProgressOverlayManager.cpp" />
+    <ClCompile Include="..\plugin_src\ui\controls\UIControls.cpp" />
+    <ClCompile Include="..\plugin_src\ui\controls\BrainFileDropControl.cpp" />
+    <ClCompile Include="..\plugin_src\ui\controls\BrainFileListControl.cpp" />
+    <ClCompile Include="..\plugin_src\ui\controls\BrainFileHelpers.cpp" />
+    <ClCompile Include="..\plugin_src\ui\controls\ProgressOverlay.cpp" />
+    <ClCompile Include="..\plugin_src\ui\tabs\TabViews.cpp" />
+    <ClCompile Include="..\plugin_src\ui\dynamic\DynamicParamManager.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="../config.h" />
@@ -296,49 +305,46 @@
     <ClInclude Include="..\exdeps\miniaudio\miniaudio.h">
       <Filter>exdeps</Filter>
     </ClInclude>
-    <ClInclude Include="..\plugin_src\AudioStreamChunker.h">
+    <ClInclude Include="..\plugin_src\modules\AudioStreamChunker.h">
       <Filter>plugin_src</Filter>
     </ClInclude>
-    <ClInclude Include="..\plugin_src\ChunkBufferTransformer.h">
+    <ClInclude Include="..\plugin_src\transformers\BaseTransformer.h">
       <Filter>plugin_src</Filter>
     </ClInclude>
-    <ClInclude Include="..\plugin_src\FeatureAnalysis.h">
+    <ClInclude Include="..\plugin_src\audio\FeatureAnalysis.h">
       <Filter>plugin_src</Filter>
     </ClInclude>
     <ClInclude Include="..\plugin_src\PlatformFileDialogs.h">
       <Filter>plugin_src</Filter>
     </ClInclude>
-    <ClInclude Include="..\plugin_src\TransformerFactory.h">
+    <ClInclude Include="..\plugin_src\transformers\TransformerFactory.h">
       <Filter>plugin_src</Filter>
     </ClInclude>
-    <ClInclude Include="..\plugin_src\Window.h">
+    <ClInclude Include="..\plugin_src\audio\Window.h">
       <Filter>plugin_src</Filter>
     </ClInclude>
-    <ClInclude Include="..\plugin_src\modules\BrainManager.h">
+    <ClInclude Include="..\plugin_src\brain\BrainManager.h">
       <Filter>plugin_src\modules</Filter>
     </ClInclude>
     <ClInclude Include="..\plugin_src\modules\DSPConfig.h">
       <Filter>plugin_src\modules</Filter>
     </ClInclude>
-    <ClInclude Include="..\plugin_src\modules\ParameterManager.h">
+    <ClInclude Include="..\plugin_src\params\ParameterManager.h">
       <Filter>plugin_src\modules</Filter>
     </ClInclude>
-    <ClInclude Include="..\plugin_src\modules\StateSerializer.h">
+    <ClInclude Include="..\plugin_src\serialization\StateSerializer.h">
       <Filter>plugin_src\modules</Filter>
     </ClInclude>
-    <ClInclude Include="..\plugin_src\modules\UIBridge.h">
+    <ClInclude Include="..\plugin_src\ui_bridge\UIBridge.h">
       <Filter>plugin_src\modules</Filter>
     </ClInclude>
-    <ClInclude Include="..\plugin_src\modules\UIMessageHandler.h">
+    <ClInclude Include="..\plugin_src\ui_bridge\UIMessageHandler.h">
       <Filter>plugin_src\modules</Filter>
     </ClInclude>
-    <ClInclude Include="..\plugin_src\samplebrain\Brain.h">
+    <ClInclude Include="..\plugin_src\brain\Brain.h">
       <Filter>plugin_src\samplebrain</Filter>
     </ClInclude>
-    <ClInclude Include="..\plugin_src\Morph.h">
-      <Filter>plugin_src</Filter>
-    </ClInclude>
-    <ClInclude Include="..\plugin_src\transformers\ExpandedSimpleSampleBrainTransformer.h">
+    <ClInclude Include="..\plugin_src\transformers\types\ExpandedSimpleSampleBrainTransformer.h">
       <Filter>plugin_src\transformers</Filter>
     </ClInclude>
     <ClInclude Include="..\plugin_src\transformers\SimpleSampleBrainTransformer.h">
@@ -347,8 +353,30 @@
     <ClInclude Include="..\plugin_src\Structs.h">
       <Filter>plugin_src</Filter>
     </ClInclude>
-    <ClInclude Include="..\plugin_src\FFT.h">
+    <ClInclude Include="..\plugin_src\audio\FFT.h">
       <Filter>plugin_src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\Morph.h" />
+    <ClInclude Include="..\plugin_src\morph\IMorph.h">
+      <Filter>plugin_src\morph</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\morph\MorphFactory.h">
+      <Filter>plugin_src\morph</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\morph\MorphUtils.h">
+      <Filter>plugin_src\morph</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\morph\modes\CrossSynthesisMorph.h">
+      <Filter>plugin_src\morph\modes</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\morph\modes\NoneMorph.h">
+      <Filter>plugin_src\morph\modes</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\morph\modes\SpectralVocoderMorph.h">
+      <Filter>plugin_src\morph\modes</Filter>
+    </ClInclude>
+    <ClInclude Include="..\plugin_src\morph\modes\WaveMorph.h">
+      <Filter>plugin_src\morph\modes</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -418,6 +446,12 @@
     <Filter Include="plugin_src\transformers">
       <UniqueIdentifier>{5a553ad8-b65d-423d-bc08-83ab78b3affa}</UniqueIdentifier>
     </Filter>
+    <Filter Include="plugin_src\morph">
+      <UniqueIdentifier>{5b08e4b9-9f35-4850-8b3d-450685ffc7e2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="plugin_src\morph\modes">
+      <UniqueIdentifier>{c6b27278-ddc4-442e-8ce0-f96cdb931430}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\resources\main.rc">
@@ -442,5 +476,10 @@
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="$(MSBuildThisFileDirectory)..\..\natvis\wil.natvis" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="..\plugin_src\morph\morph_modes_to_support.txt">
+      <Filter>plugin_src\morph</Filter>
+    </Text>
   </ItemGroup>
 </Project>

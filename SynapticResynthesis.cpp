@@ -7,8 +7,10 @@
 #else
 #include "plugin_src/ui/IGraphicsUI.h"
 #endif
-#include "plugin_src/TransformerFactory.h"
+#include "plugin_src/transformers/TransformerFactory.h"
 #include "plugin_src/PlatformFileDialogs.h"
+#include "plugin_src/params/DynamicParamSchema.h"
+#include "plugin_src/morph/MorphFactory.h"
 #include <thread>
 #include <mutex>
 #ifdef AAX_API
@@ -19,16 +21,25 @@ namespace {
   static int ComputeTotalParams()
   {
     // Fixed params are enumerated in EParams up to kNumParams.
-    // Dynamic transformer params are appended after kNumParams.
-    // Use ParameterManager's method to get union count
-    std::vector<synaptic::IChunkBufferTransformer::ExposedParamDesc> unionDescs;
-    synaptic::ParameterManager tempMgr;
-    // We need to compute this statically, so we replicate the union logic here
+    // Dynamic transformer and morph params are appended after kNumParams.
+    std::vector<synaptic::ExposedParamDesc> unionDescs;
+    // Replicate union logic across both factories
     for (const auto& info : synaptic::TransformerFactory::GetAll())
     {
       auto t = info.create();
-      std::vector<synaptic::IChunkBufferTransformer::ExposedParamDesc> tmp;
+      std::vector<synaptic::ExposedParamDesc> tmp;
       t->GetParamDescs(tmp);
+      for (const auto& d : tmp)
+      {
+        auto it = std::find_if(unionDescs.begin(), unionDescs.end(), [&](const auto& e){ return e.id == d.id; });
+        if (it == unionDescs.end()) unionDescs.push_back(d);
+      }
+    }
+    for (const auto& info : synaptic::MorphFactory::GetAll())
+    {
+      auto m = info.create();
+      std::vector<synaptic::ExposedParamDesc> tmp;
+      m->GetParamDescs(tmp);
       for (const auto& d : tmp)
       {
         auto it = std::find_if(unionDescs.begin(), unionDescs.end(), [&](const auto& e){ return e.id == d.id; });
@@ -43,6 +54,11 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
 : Plugin(info, MakeConfig(ComputeTotalParams(), kNumPresets))
 , mUIBridge(this)
 , mBrainManager(&mBrain, &mAnalysisWindow, &mUIBridge)
+#if SR_USE_WEB_UI
+, mProgressOverlayMgr(&mUIBridge)
+#else
+, mProgressOverlayMgr(nullptr) // C++ UI mode - no UIBridge needed
+#endif
 {
   GetParam(kInGain)->InitGain("Input Gain", 0.0, -70, 0.);
   GetParam(kOutGain)->InitGain("Output Gain", 0.0, -70, 0.);
@@ -90,6 +106,10 @@ mEditorInitFunc = [this]() {
   if (auto sb = dynamic_cast<synaptic::BaseSampleBrainTransformer*>(mTransformer.get()))
     sb->SetBrain(&mBrain);
 
+  // Default morph = first UI-visible entry
+  mMorph = synaptic::MorphFactory::CreateByUiIndex(0);
+  mChunker.SetMorph(mMorph);
+
   // Initialize analysis window with default Hann window
   mAnalysisWindow.Set(synaptic::Window::Type::Hann, mDSPConfig.chunkSize);
 
@@ -101,28 +121,24 @@ mEditorInitFunc = [this]() {
   // Initialize parameters using ParameterManager
   mParamManager.InitializeCoreParameters(this, mDSPConfig);
   mParamManager.InitializeTransformerParameters(this);
-
-
-  // Initialize morph with default settings (using chunker's morph instance)
-  mChunker.GetMorph().Configure(synaptic::Morph::Type::None, mDSPConfig.chunkSize);
 }
 
 void SynapticResynthesis::DrainUiQueueOnMainThread()
 {
   // Coalesce structured resend flags first
-  if (mPendingSendBrainSummary.exchange(false))
-  {
 #if SR_USE_WEB_UI
+  // For WebUI, handle BrainSummary here
+  if (CheckAndClearPendingUpdate(PendingUpdate::BrainSummary))
+  {
     mUIBridge.SendBrainSummary(mBrain);
-#endif
   }
-  if (mPendingSendDSPConfig.exchange(false))
+  if (CheckAndClearPendingUpdate(PendingUpdate::DSPConfig))
   {
-#if SR_USE_WEB_UI
     SyncAndSendDSPConfig();
-#endif
   }
-  if (mPendingMarkDirty.exchange(false))
+#endif
+  // MarkDirty is shared by both UI modes
+  if (CheckAndClearPendingUpdate(PendingUpdate::MarkDirty))
     MarkHostStateDirty();
 
   // Drain UIBridge queue
@@ -146,15 +162,33 @@ void SynapticResynthesis::DrainUiQueueOnMainThread()
       if (impAW > 0 && analysisWindowIdx >= 0)
       {
         const int idx = std::clamp(impAW - 1, 0, 3);
-        mSuppressNextAnalysisReanalyze = true;
+        SetPendingUpdate(PendingUpdate::SuppressAnalysisReanalyze);
         SetParameterFromUI(analysisWindowIdx, (double) idx);
         mDSPConfig.analysisWindowMode = impAW;
       }
       // Update analysis window instance and Brain pointer, but suppress auto-reanalysis because data already analyzed in file
       UpdateBrainAnalysisWindow();
 
+      // Refresh windowing and latency to reflect new settings
+      UpdateChunkerWindowing();
+      SetLatency(ComputeLatencySamples());
+
+#if SR_USE_WEB_UI
+      // Also update web UI's brain chunk size label explicitly
+      {
+        nlohmann::json j; j["id"] = "brainChunkSize"; j["size"] = mDSPConfig.chunkSize;
+        const std::string payload = j.dump();
+        SendArbitraryMsgFromDelegate(-1, (int)payload.size(), payload.c_str());
+      }
+#endif
+
       // Send DSP config to UI
       SyncAndSendDSPConfig();
+
+#if !SR_USE_WEB_UI && IPLUG_EDITOR
+      // Trigger full UI rebuild to sync all controls with imported parameters
+      SetPendingUpdate(PendingUpdate::RebuildTransformer);
+#endif
     }
   }
 }
@@ -169,6 +203,20 @@ void SynapticResynthesis::ProcessBlock(sample** inputs, sample** outputs, int nF
     mPendingTransformer.reset();
     // Update latency after swap
     SetLatency(ComputeLatencySamples());
+
+    // Also apply bindings to the newly swapped transformer
+    mParamManager.ApplyBindingsToOwners(this, mTransformer.get(), mMorph.get());
+  }
+
+  // Thread-safe morph swap: check if there's a pending morph and swap it on audio thread
+  if (mPendingMorph)
+  {
+    mMorph = std::move(mPendingMorph);
+    mPendingMorph.reset();
+    mChunker.SetMorph(mMorph);
+
+    // Also apply bindings to the newly swapped morph
+    mParamManager.ApplyBindingsToOwners(this, mTransformer.get(), mMorph.get());
   }
 
   const double inGain = GetParam(kInGain)->DBToAmp();
@@ -232,6 +280,7 @@ void SynapticResynthesis::OnReset()
   const int outputWindowIdx = mParamManager.GetOutputWindowParamIdx();
   const int analysisWindowIdx = mParamManager.GetAnalysisWindowParamIdx();
   const int enableOverlapIdx = mParamManager.GetEnableOverlapParamIdx();
+  const int autotuneBlendIdx = mParamManager.GetAutotuneBlendParamIdx();
 
   if (chunkSizeIdx >= 0) mDSPConfig.chunkSize = std::max(1, GetParam(chunkSizeIdx)->Int());
   if (bufferWindowIdx >= 0) mDSPConfig.bufferWindowSize = std::max(1, GetParam(bufferWindowIdx)->Int());
@@ -246,6 +295,25 @@ void SynapticResynthesis::OnReset()
   mChunker.SetBufferWindowSize(mDSPConfig.bufferWindowSize);
   // Ensure chunker channel count matches current connection
   mChunker.SetNumChannels(NInChansConnected());
+  auto& autotune = mChunker.GetAutotuneProcessor();
+  autotune.OnReset(sr, mChunker.GetFFTSize(), mChunker.GetNumChannels());
+  if (autotuneBlendIdx >= 0)
+  {
+    const double blendPercent = GetParam(autotuneBlendIdx)->Value();
+    autotune.SetBlend((float)(blendPercent / 100.0));
+  }
+  {
+    const int modeIdx = mParamManager.GetAutotuneModeParamIdx();
+    if (modeIdx >= 0)
+      autotune.SetMode(GetParam(modeIdx)->Int() == 1);
+    const int tolIdx = mParamManager.GetAutotuneToleranceOctavesParamIdx();
+    if (tolIdx >= 0)
+    {
+      // Convert enum index (0-4) to octave value (1-5)
+      const int enumIdx = std::clamp(GetParam(tolIdx)->Int(), 0, 4);
+      autotune.SetToleranceOctaves(enumIdx + 1);
+    }
+  }
   mChunker.Reset();
 
   UpdateChunkerWindowing();
@@ -256,31 +324,17 @@ void SynapticResynthesis::OnReset()
   if (mTransformer)
     mTransformer->OnReset(sr, mDSPConfig.chunkSize, mDSPConfig.bufferWindowSize, NInChansConnected());
 
+  if (mMorph)
+    mMorph->OnReset(sr, mDSPConfig.chunkSize, NInChansConnected());
+  mChunker.SetMorph(mMorph);
+
   // After reset, apply IParam values to transformer implementation using ParameterManager
-  mParamManager.ApplyBindingsToTransformer(this, mTransformer.get());
-
-  // Apply morph parameters
-  const int morphModeIdx = mParamManager.GetMorphModeParamIdx();
-  const int morphAmountIdx = mParamManager.GetMorphAmountParamIdx();
-  const int phaseMorphAmountIdx = mParamManager.GetPhaseMorphAmountParamIdx();
-  const int vocoderSensitivityIdx = mParamManager.GetVocoderSensitivityParamIdx();
-
-  if (morphModeIdx >= 0) {
-    const int mode = GetParam(morphModeIdx)->Int();
-    mChunker.GetMorph().Configure(synaptic::Morph::IntToType(mode), mDSPConfig.chunkSize);
-  }
-
-  if (morphAmountIdx >= 0 || phaseMorphAmountIdx >= 0 || vocoderSensitivityIdx >= 0) {
-    auto params = mChunker.GetMorph().GetParameters();
-    if (morphAmountIdx >= 0) params.morphAmount = GetParam(morphAmountIdx)->Value();
-    if (phaseMorphAmountIdx >= 0) params.phaseMorphAmount = GetParam(phaseMorphAmountIdx)->Value();
-    if (vocoderSensitivityIdx >= 0) params.vocoderSensitivity = GetParam(vocoderSensitivityIdx)->Value();
-    mChunker.GetMorph().SetParameters(params);
-  }
+  mParamManager.ApplyBindingsToOwners(this, mTransformer.get(), mMorph.get());
 
   // When audio engine resets, leave brain state intact; just resend summary to UI
   mUIBridge.SendBrainSummary(mBrain);
   mUIBridge.SendTransformerParams(mTransformer);
+  mUIBridge.SendMorphParams(mMorph);
 
   // Update and send DSP config to UI
   SyncAndSendDSPConfig();
@@ -291,7 +345,7 @@ bool SynapticResynthesis::OnMessage(int msgTag, int ctrlTag, int dataSize, const
   return synaptic::UIMessageRouter::Route(this, msgTag, ctrlTag, dataSize, pData);
 }
 
-// Message handler implementations are in plugin_src/modules/MessageHandlers.cpp
+// Message handler implementations are in plugin_src/ui_bridge/MessageHandlers.cpp
 
 void SynapticResynthesis::OnUIOpen()
 {
@@ -299,8 +353,16 @@ void SynapticResynthesis::OnUIOpen()
   Plugin::OnUIOpen();
 #if SR_USE_WEB_UI
   mUIBridge.SendTransformerParams(mTransformer);
+  mUIBridge.SendMorphParams(mMorph);
   SyncAndSendDSPConfig();
   mUIBridge.SendBrainSummary(mBrain);
+#else
+  // For C++ UI, rebuild dynamic parameter controls and brain file list
+  #if IPLUG_EDITOR
+  // Small delay to ensure UI is fully initialized
+  static int initCounter = 0;
+  initCounter = 0; // Reset on UI open
+  #endif
 #endif
 }
 
@@ -308,6 +370,98 @@ void SynapticResynthesis::OnIdle()
 {
   // Drain any UI messages queued by background threads
   DrainUiQueueOnMainThread();
+
+  // Update C++ UI on first idle call after UI open
+#if !SR_USE_WEB_UI && IPLUG_EDITOR
+  if (mNeedsInitialUIRebuild && GetUI())
+  {
+    SyncAllUIState();
+    mNeedsInitialUIRebuild = false;
+  }
+
+  // Update C++ UI brain file list if needed
+  if (CheckAndClearPendingUpdate(PendingUpdate::BrainSummary))
+  {
+    SyncBrainUIState();
+  }
+
+  // Process progress overlay updates from background threads
+  mProgressOverlayMgr.ProcessPendingUpdates(synaptic::GetSynapticUI());
+
+  // Handle transformer/morph parameter UI rebuild on UI thread
+  // Simply rebuild the entire UI - this is reliable and always works correctly
+  if (HasPendingUpdate(PendingUpdate::RebuildTransformer) || HasPendingUpdate(PendingUpdate::RebuildMorph))
+  {
+    if (auto* ui = synaptic::GetSynapticUI())
+    {
+      // Use pending transformer/morph if available (swap hasn't happened yet), otherwise use current
+      // Pass shared_ptr copies to keep objects alive during UI rebuild (prevents race with audio thread)
+      std::shared_ptr<const synaptic::IChunkBufferTransformer> currentTransformer =
+        mPendingTransformer ? mPendingTransformer : mTransformer;
+      std::shared_ptr<const synaptic::IMorph> currentMorph =
+        mPendingMorph ? mPendingMorph : mMorph;
+
+      // Update cached context with shared_ptr copies before rebuilding
+      ui->setDynamicParamContext(currentTransformer, currentMorph, &mParamManager, this);
+      ui->rebuild();
+
+      // Re-sync brain UI state after rebuild (brain controls were wiped and need to be repopulated)
+      SyncBrainUIState();
+    }
+
+    CheckAndClearPendingUpdate(PendingUpdate::RebuildTransformer);
+    CheckAndClearPendingUpdate(PendingUpdate::RebuildMorph);
+  }
+
+  // Coalesce pending dropped files and start async batch import
+  if (mPendingImportScheduled.load())
+  {
+    if (mPendingImportIdleTicks > 0)
+      --mPendingImportIdleTicks;
+
+    if (mPendingImportIdleTicks <= 0)
+    {
+      // Only launch if no other operation is in progress
+      if (!mBrainManager.IsOperationInProgress())
+      {
+        auto files = std::move(mPendingImportFiles);
+        mPendingImportFiles.clear();
+        mPendingImportScheduled = false;
+
+        if (!files.empty())
+        {
+          mProgressOverlayMgr.Show("Importing Files", "Starting...", 0.0f);
+          mBrainManager.AddMultipleFilesAsync(std::move(files), (int)GetSampleRate(), NInChansConnected(), mDSPConfig.chunkSize,
+            [this](const std::string& fileName, int cumulativeChunk, int totalChunksAllFiles)
+            {
+              // Reports cumulative chunk progress across all files
+              const float p = (totalChunksAllFiles > 0) ? ((float)cumulativeChunk / (float)totalChunksAllFiles * 100.0f) : 50.0f;
+              char buf[256];
+              snprintf(buf, sizeof(buf), "%s (chunk %d/%d)", fileName.c_str(), cumulativeChunk, totalChunksAllFiles);
+              mProgressOverlayMgr.Update(buf, p);
+            },
+            [this]()
+            {
+              mProgressOverlayMgr.Hide();
+              SetPendingUpdate(PendingUpdate::BrainSummary);
+              MarkHostStateDirty();
+            }
+          );
+        }
+      }
+      else
+      {
+        // Keep scheduled; try again next idle
+        mPendingImportIdleTicks = 1;
+      }
+    }
+  }
+
+  if (!GetUI())
+  {
+    mNeedsInitialUIRebuild = true;
+  }
+#endif
 }
 
 void SynapticResynthesis::OnRestoreState()
@@ -315,8 +469,12 @@ void SynapticResynthesis::OnRestoreState()
   Plugin::OnRestoreState();
 #if SR_USE_WEB_UI
   mUIBridge.SendTransformerParams(mTransformer);
+  mUIBridge.SendMorphParams(mMorph);
   SyncAndSendDSPConfig();
   mUIBridge.SendBrainSummary(mBrain);
+#else
+  // For C++ UI, rebuild dynamic parameter controls and brain file list
+  SyncAllUIState();
 #endif
 }
 
@@ -325,9 +483,33 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
   // Handle chunk size parameter (coordinated by ParameterManager)
   if (paramIdx == mParamManager.GetChunkSizeParamIdx())
   {
-    mParamManager.HandleChunkSizeChange(paramIdx, GetParam(paramIdx), mDSPConfig, this, mChunker, mAnalysisWindow);
+    bool chunkSizeChanged = mParamManager.HandleChunkSizeChange(paramIdx, GetParam(paramIdx), mDSPConfig, this, mChunker, mAnalysisWindow);
     UpdateChunkerWindowing();
     SetLatency(ComputeLatencySamples());
+
+#if !SR_USE_WEB_UI
+    // Only trigger background rechunk if chunk size actually changed (not just parameter editing)
+    if (chunkSizeChanged)
+    {
+      mProgressOverlayMgr.Show("Rechunking", "Starting...", 0.0f);
+      mBrainManager.RechunkAllFilesAsync(mDSPConfig.chunkSize, (int)GetSampleRate(),
+        [this](const std::string& fileName, int currentChunk, int totalChunks)
+        {
+          // Now reports per-chunk progress across all files
+          const float p = (totalChunks > 0) ? ((float)currentChunk / (float)totalChunks * 100.0f) : 50.0f;
+          char buf[256];
+          snprintf(buf, sizeof(buf), "%s (chunk %d/%d)", fileName.c_str(), currentChunk, totalChunks);
+          mProgressOverlayMgr.Update(buf, p);
+        },
+        [this]()
+        {
+          mProgressOverlayMgr.Hide();
+          SetPendingUpdate(PendingUpdate::BrainSummary);
+          SetPendingUpdate(PendingUpdate::MarkDirty);
+        }
+      );
+    }
+#endif
   }
   // Handle buffer window parameter
   else if (paramIdx == mParamManager.GetBufferWindowParamIdx())
@@ -343,6 +525,11 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
                                                                this, mBrain, GetSampleRate(), NInChansConnected());
     UpdateChunkerWindowing();
     // Note: SetLatency will be called in ProcessBlock after swap
+
+    // Schedule transformer parameter UI rebuild (must happen on UI thread)
+#if !SR_USE_WEB_UI && IPLUG_EDITOR
+    SetPendingUpdate(PendingUpdate::RebuildTransformer);
+#endif
   }
   // Handle output window
   else if (paramIdx == mParamManager.GetOutputWindowParamIdx())
@@ -353,19 +540,39 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
   // Handle analysis window (coordinated by ParameterManager, with background reanalysis)
   else if (paramIdx == mParamManager.GetAnalysisWindowParamIdx())
   {
-    mParamManager.HandleCoreParameterChange(paramIdx, GetParam(paramIdx), mDSPConfig);
-    UpdateBrainAnalysisWindow();
+    bool analysisWindowChanged = mParamManager.HandleAnalysisWindowChange(paramIdx, GetParam(paramIdx), mDSPConfig, mAnalysisWindow, mBrain);
 
-    // Kick background reanalysis when analysis window changes via host/restore, unless suppressed
-    if (!mSuppressNextAnalysisReanalyze.exchange(false))
+    // Only trigger reanalysis if window mode actually changed AND not suppressed
+    if (analysisWindowChanged && !CheckAndClearPendingUpdate(PendingUpdate::SuppressAnalysisReanalyze))
     {
-      mBrainManager.ReanalyzeAllChunksAsync((int)GetSampleRate(), [this]()
-      {
-        mPendingSendBrainSummary = true;
-        mPendingMarkDirty = true;
-      });
+#if SR_USE_WEB_UI
+      mBrainManager.ReanalyzeAllChunksAsync((int)GetSampleRate(),
+        [](const std::string&, int, int){},  // Empty progress callback (silent background operation)
+        [this]()
+        {
+          SetPendingUpdate(PendingUpdate::BrainSummary);
+          SetPendingUpdate(PendingUpdate::MarkDirty);
+        });
+#else
+      mProgressOverlayMgr.Show("Reanalyzing", "Starting...", 0.0f);
+      mBrainManager.ReanalyzeAllChunksAsync((int)GetSampleRate(),
+        [this](const std::string& fileName, int currentChunk, int totalChunks)
+        {
+          // Now reports per-chunk progress across all files
+          const float p = (totalChunks > 0) ? ((float)currentChunk / (float)totalChunks * 100.0f) : 50.0f;
+          char buf[256];
+          snprintf(buf, sizeof(buf), "%s (chunk %d/%d)", fileName.c_str(), currentChunk, totalChunks);
+          mProgressOverlayMgr.Update(buf, p);
+        },
+        [this]()
+        {
+          mProgressOverlayMgr.Hide();
+          SetPendingUpdate(PendingUpdate::BrainSummary);
+          SetPendingUpdate(PendingUpdate::MarkDirty);
+        });
+#endif
     }
-    mPendingSendDSPConfig = true;
+    SetPendingUpdate(PendingUpdate::DSPConfig);
   }
   // Handle overlap enable
   else if (paramIdx == mParamManager.GetEnableOverlapParamIdx())
@@ -373,33 +580,43 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
     mParamManager.HandleCoreParameterChange(paramIdx, GetParam(paramIdx), mDSPConfig);
     UpdateChunkerWindowing();
   }
-  // Handle morph parameters
+  // Handle autotune blend
+  else if (paramIdx == mParamManager.GetAutotuneBlendParamIdx())
+  {
+    const double blendPercent = GetParam(paramIdx)->Value();
+    mChunker.GetAutotuneProcessor().SetBlend((float)(blendPercent / 100.0));
+  }
+  // Handle autotune mode
+  else if (paramIdx == mParamManager.GetAutotuneModeParamIdx())
+  {
+    const int mode = GetParam(paramIdx)->Int(); // 0 = FFT Peak, 1 = HPS
+    mChunker.GetAutotuneProcessor().SetMode(mode == 1);
+  }
+  // Handle autotune tolerance (octaves)
+  else if (paramIdx == mParamManager.GetAutotuneToleranceOctavesParamIdx())
+  {
+    // Convert enum index (0-4) to octave value (1-5)
+    const int enumIdx = std::clamp(GetParam(paramIdx)->Int(), 0, 4);
+    mChunker.GetAutotuneProcessor().SetToleranceOctaves(enumIdx + 1);
+  }
+  // Handle morph mode change
   else if (paramIdx == mParamManager.GetMorphModeParamIdx())
   {
-    const int mode = GetParam(paramIdx)->Int();
-    mChunker.GetMorph().Configure(synaptic::Morph::IntToType(mode), mDSPConfig.chunkSize);
+    // Create/reset new IMorph instance and apply bindings
+    mPendingMorph = mParamManager.HandleMorphModeChange(paramIdx, GetParam(paramIdx), this,
+                                                 GetSampleRate(), mDSPConfig.chunkSize, NInChansConnected());
+    // Note: mChunker.SetMorph will be called in ProcessBlock after swap
+#if SR_USE_WEB_UI
+    mUIBridge.SendMorphParams(mPendingMorph);
+#else
+    // Schedule morph parameter UI rebuild (must happen on UI thread)
+    #if IPLUG_EDITOR
+    SetPendingUpdate(PendingUpdate::RebuildMorph);
+    #endif
+#endif
   }
-  else if (paramIdx == mParamManager.GetMorphAmountParamIdx())
-  {
-    auto params = mChunker.GetMorph().GetParameters();
-    params.morphAmount = GetParam(paramIdx)->Value();
-    DBGMSG("Morph Amount: %f\n", params.morphAmount);
-    mChunker.GetMorph().SetParameters(params);
-  }
-  else if (paramIdx == mParamManager.GetPhaseMorphAmountParamIdx())
-  {
-    auto params = mChunker.GetMorph().GetParameters();
-    params.phaseMorphAmount = GetParam(paramIdx)->Value();
-    mChunker.GetMorph().SetParameters(params);
-  }
-  else if (paramIdx == mParamManager.GetVocoderSensitivityParamIdx())
-  {
-    auto params = mChunker.GetMorph().GetParameters();
-    params.vocoderSensitivity = GetParam(paramIdx)->Value();
-    mChunker.GetMorph().SetParameters(params);
-  }
-  // Handle transformer parameters using ParameterManager
-  else if (mParamManager.HandleTransformerParameterChange(paramIdx, GetParam(paramIdx), mTransformer.get()))
+  // Handle dynamic parameters using ParameterManager
+  else if (mParamManager.HandleDynamicParameterChange(paramIdx, GetParam(paramIdx), mTransformer.get(), mMorph.get()))
   {
     // Parameter was handled by ParameterManager
   }
@@ -474,7 +691,12 @@ void SynapticResynthesis::SyncAndSendDSPConfig()
 {
   mDSPConfig.useExternalBrain = mBrainManager.UseExternal();
   mDSPConfig.externalPath = mBrainManager.UseExternal() ? mBrainManager.ExternalPath() : std::string();
-  mUIBridge.SendDSPConfigWithAlgorithms(mDSPConfig);
+  int morphIdx = 0;
+  {
+    const int morphModeParamIdx = mParamManager.GetMorphModeParamIdx();
+    if (morphModeParamIdx >= 0) morphIdx = GetParam(morphModeParamIdx)->Int();
+  }
+  mUIBridge.SendDSPConfigWithAlgorithms(mDSPConfig, morphIdx);
 }
 
 void SynapticResynthesis::SetParameterFromUI(int paramIdx, double value)
@@ -489,6 +711,48 @@ void SynapticResynthesis::UpdateBrainAnalysisWindow()
 {
   mAnalysisWindow.Set(synaptic::Window::IntToType(mDSPConfig.analysisWindowMode), mDSPConfig.chunkSize);
   mBrain.SetWindow(&mAnalysisWindow);
+}
+
+void SynapticResynthesis::SyncBrainUIState()
+{
+#if !SR_USE_WEB_UI && IPLUG_EDITOR
+  auto* ui = synaptic::GetSynapticUI();
+  if (!ui) return;
+
+  // Convert Brain summary to UI format
+  auto brainSummary = mBrain.GetSummary();
+  std::vector<synaptic::ui::BrainFileEntry> uiEntries;
+  for (const auto& s : brainSummary)
+  {
+    uiEntries.push_back({s.id, s.name, s.chunkCount});
+  }
+  ui->updateBrainFileList(uiEntries);
+
+  // Update brain state (storage info, button visibility, control states)
+  // Single source of truth: all UI state is derived from UseExternal()
+  ui->updateBrainState(mBrainManager.UseExternal(), mBrainManager.ExternalPath());
+#endif
+}
+
+void SynapticResynthesis::SyncAllUIState()
+{
+#if !SR_USE_WEB_UI && IPLUG_EDITOR
+  auto* ui = synaptic::GetSynapticUI();
+  if (!ui) return;
+
+  // Update context with shared_ptr copies to prevent race conditions
+  ui->setDynamicParamContext(mTransformer, mMorph, &mParamManager, this);
+
+  // Rebuild dynamic params
+  ui->rebuildDynamicParams(synaptic::ui::DynamicParamType::Transformer, mTransformer.get(), mParamManager, this);
+  ui->rebuildDynamicParams(synaptic::ui::DynamicParamType::Morph, mMorph.get(), mParamManager, this);
+
+  // Sync brain state
+  SyncBrainUIState();
+
+  // Resize to fit
+  ui->resizeWindowToFitContent();
+#endif
 }
 
 bool SynapticResynthesis::SerializeState(IByteChunk& chunk) const
@@ -514,6 +778,7 @@ int SynapticResynthesis::UnserializeState(const IByteChunk& chunk, int startPos)
   SyncAndSendDSPConfig();
 
   mUIBridge.SendTransformerParams(mTransformer);
+  mUIBridge.SendMorphParams(mMorph);
   mUIBridge.SendExternalRefInfo(mBrainManager.UseExternal(), mBrainManager.ExternalPath());
 
   return pos;

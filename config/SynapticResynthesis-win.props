@@ -4,7 +4,7 @@
     <IPLUG2_ROOT>$(ProjectDir)..\..\..</IPLUG2_ROOT>
     <BINARY_NAME>SynapticResynthesis</BINARY_NAME>
     <!-- Toggle this single flag: 1 = WebUI, 0 = IGraphics -->
-    <SR_USE_WEB_UI>1</SR_USE_WEB_UI>
+    <SR_USE_WEB_UI>0</SR_USE_WEB_UI>
     <!-- Define macros per UI mode -->
     <EXTRA_ALL_DEFS Condition="'$(SR_USE_WEB_UI)'=='1'">WEBVIEW_EDITOR_DELEGATE;NO_IGRAPHICS;IDLE_TIMER_RATE=50;SR_USE_WEB_UI=1</EXTRA_ALL_DEFS>
     <EXTRA_ALL_DEFS Condition="'$(SR_USE_WEB_UI)'!='1'">IGRAPHICS_NANOVG;IGRAPHICS_GL2;IDLE_TIMER_RATE=50;SR_USE_WEB_UI=0</EXTRA_ALL_DEFS>

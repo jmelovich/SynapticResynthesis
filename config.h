@@ -24,11 +24,23 @@
 #define PLUG_DOES_MPE 0
 #define PLUG_DOES_STATE_CHUNKS 1
 #define PLUG_HAS_UI 1
-#define PLUG_WIDTH 600
-#define PLUG_HEIGHT 600
+#define PLUG_WIDTH 650
+#define PLUG_HEIGHT 800
 #define PLUG_FPS 60
 #define PLUG_SHARED_RESOURCES 0
 #define PLUG_HOST_RESIZE 1
+
+#ifndef UI_NUM_COLUMNS
+#define UI_NUM_COLUMNS 2
+#endif
+
+#ifndef UI_BASE_COLUMN_WIDTH
+#define UI_BASE_COLUMN_WIDTH 650
+#endif
+
+#ifndef UI_COLUMN_GAP
+#define UI_COLUMN_GAP 24
+#endif
 
 #define AUV2_ENTRY SynapticResynthesis_Entry
 #define AUV2_ENTRY_STR "SynapticResynthesis_Entry"
