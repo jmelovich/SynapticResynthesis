@@ -156,9 +156,12 @@ namespace synaptic
                                           IChunkBufferTransformer* transformer);
 
     // Unified handler: routes to transformer and/or morph
+    // Optional output parameters indicate if UI rebuild is needed
     bool HandleDynamicParameterChange(int paramIdx, iplug::IParam* param,
                                       IChunkBufferTransformer* transformer,
-                                      IMorph* morph);
+                                      IMorph* morph,
+                                      bool* outNeedsTransformerRebuild = nullptr,
+                                      bool* outNeedsMorphRebuild = nullptr);
 
     // === Transformer Binding Management ===
 

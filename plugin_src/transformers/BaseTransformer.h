@@ -47,7 +47,7 @@ namespace synaptic
     using ExposedParamDesc = synaptic::ExposedParamDesc;
 
     // Describe all exposed parameters (schema)
-    void GetParamDescs(std::vector<ExposedParamDesc>& out) const override { out.clear(); }
+    void GetParamDescs(std::vector<ExposedParamDesc>& out, bool /*includeAll*/) const override { out.clear(); }
 
     // Get current value by id
     bool GetParamAsNumber(const std::string& /*id*/, double& /*out*/) const override { return false; }

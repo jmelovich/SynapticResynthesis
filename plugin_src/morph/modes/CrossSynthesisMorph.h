@@ -36,7 +36,7 @@ namespace synaptic
       }
     }
 
-    void GetParamDescs(std::vector<ExposedParamDesc>& out) const override
+    void GetParamDescs(std::vector<ExposedParamDesc>& out, bool includeAll = false) const override
     {
       out.clear();
       ExposedParamDesc p1;
@@ -64,14 +64,20 @@ namespace synaptic
       p3.options.push_back({"cepstral", "Cepstral"});
       p3.defaultString = "log";
       out.push_back(p3);
-      
-      ExposedParamDesc p4;
-      p4.id = "emphasis";
-      p4.label = "Emphasis";
-      p4.type = ParamType::Number;
-      p4.control = ControlType::Slider;
-      p4.minValue = 0.0; p4.maxValue = 1.0; p4.step = 0.01; p4.defaultNumber = 0.0;
-      out.push_back(p4);
+
+      // Only show Emphasis when domain is Cepstral (unless includeAll is true)3
+      // 'includeAll' is used when getting all params for binding
+      // so when 'includeAll' is true, we should make sure all possible parameters are returned
+      if(includeAll || mDomain == MorphDomain::Cepstral)
+      {
+        ExposedParamDesc p4;
+        p4.id = "emphasis";
+        p4.label = "Emphasis";
+        p4.type = ParamType::Number;
+        p4.control = ControlType::Slider;
+        p4.minValue = 0.0; p4.maxValue = 1.0; p4.step = 0.01; p4.defaultNumber = 0.0;
+        out.push_back(p4);
+      }
     }
 
     bool SetParamFromNumber(const std::string& id, double v) override
@@ -109,6 +115,12 @@ namespace synaptic
         return true;
       }
       return false;
+    }
+
+    bool ParamChangeRequiresUIRebuild(const std::string& id) const override
+    {
+      // Changing morph domain requires UI rebuild because it controls visibility of the Emphasis parameter
+      return (id == "morphDomain");
     }
 
   private:

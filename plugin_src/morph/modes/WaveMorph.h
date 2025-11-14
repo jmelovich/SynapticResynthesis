@@ -95,7 +95,7 @@ namespace synaptic
       }
     }
 
-    void GetParamDescs(std::vector<ExposedParamDesc>& out) const override
+    void GetParamDescs(std::vector<ExposedParamDesc>& out, bool includeAll = false) const override
     {
       out.clear();
       ExposedParamDesc p1;
@@ -149,14 +149,18 @@ namespace synaptic
       p6.options.push_back({"cepstral", "Cepstral"});
       p6.defaultString = "log";
       out.push_back(p6);
-      
-      ExposedParamDesc p7;
-      p7.id = "emphasis";
-      p7.label = "Emphasis";
-      p7.type = ParamType::Number;
-      p7.control = ControlType::Slider;
-      p7.minValue = 0.0; p7.maxValue = 1.0; p7.step = 0.01; p7.defaultNumber = 0.0;
-      out.push_back(p7);
+
+      // Only show Emphasis when domain is Cepstral (unless includeAll is true)
+      if(includeAll || mDomain == MorphDomain::Cepstral)
+      {
+        ExposedParamDesc p7;
+        p7.id = "emphasis";
+        p7.label = "Emphasis";
+        p7.type = ParamType::Number;
+        p7.control = ControlType::Slider;
+        p7.minValue = 0.0; p7.maxValue = 1.0; p7.step = 0.01; p7.defaultNumber = 0.0;
+        out.push_back(p7);
+      }
     }
 
     bool SetParamFromNumber(const std::string& id, double v) override
@@ -212,6 +216,12 @@ namespace synaptic
         return true;
       }
       return false;
+    }
+
+    bool ParamChangeRequiresUIRebuild(const std::string& id) const override
+    {
+      // Changing morph domain requires UI rebuild because it controls visibility of the Emphasis parameter
+      return (id == "morphDomain");
     }
 
   private:

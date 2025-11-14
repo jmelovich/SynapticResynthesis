@@ -37,7 +37,7 @@ std::vector<IControl*> DynamicParamManager::BuildTransformerParams(
     return {};
 
   std::vector<ExposedParamDesc> descs;
-  transformer->GetParamDescs(descs);
+  transformer->GetParamDescs(descs, false);  // includeAll=false to respect current visibility
   return BuildParamControls(graphics, bounds, layout, descs, paramManager, plugin);
 }
 
@@ -53,7 +53,7 @@ std::vector<IControl*> DynamicParamManager::BuildMorphParams(
     return {};
 
   std::vector<ExposedParamDesc> descs;
-  morph->GetParamDescs(descs);
+  morph->GetParamDescs(descs, false);  // includeAll=false to respect current visibility
   return BuildParamControls(graphics, bounds, layout, descs, paramManager, plugin);
 }
 

@@ -264,7 +264,7 @@ namespace synaptic
     }
 
     // Exposed parameters implementation
-    void GetParamDescs(std::vector<ExposedParamDesc>& out) const override
+    void GetParamDescs(std::vector<ExposedParamDesc>& out, bool /*includeAll*/) const override
     {
       out.clear();
       AddCommonParamDescs(out);

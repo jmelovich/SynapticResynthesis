@@ -15,7 +15,7 @@ namespace synaptic
       std::vector<ExposedParamDesc> tmp;
       auto consider = [&](std::shared_ptr<IChunkBufferTransformer> t){
         tmp.clear();
-        t->GetParamDescs(tmp);
+        t->GetParamDescs(tmp, true);  // includeAll=true to get ALL params for binding
         for (const auto& d : tmp)
         {
           auto it = std::find_if(out.begin(), out.end(), [&](const auto& e){ return e.id == d.id; });
@@ -29,7 +29,7 @@ namespace synaptic
       // Also consider morph modes
       auto considerMorph = [&](std::shared_ptr<IMorph> m){
         tmp.clear();
-        m->GetParamDescs(tmp);
+        m->GetParamDescs(tmp, true);  // includeAll=true to get ALL params for binding
         for (const auto& d : tmp)
         {
           auto it = std::find_if(out.begin(), out.end(), [&](const auto& e){ return e.id == d.id; });
@@ -216,12 +216,23 @@ namespace synaptic
 
   bool ParameterManager::HandleDynamicParameterChange(int paramIdx, iplug::IParam* param,
                                                       IChunkBufferTransformer* transformer,
-                                                      IMorph* morph)
+                                                      IMorph* morph,
+                                                      bool* outNeedsTransformerRebuild,
+                                                      bool* outNeedsMorphRebuild)
   {
+    // Initialize output parameters
+    if (outNeedsTransformerRebuild) *outNeedsTransformerRebuild = false;
+    if (outNeedsMorphRebuild) *outNeedsMorphRebuild = false;
+
     for (const auto& b : mBindings)
     {
       if (b.paramIdx == paramIdx)
       {
+        // Check if UI rebuild is needed
+        if (transformer && transformer->ParamChangeRequiresUIRebuild(b.id) && outNeedsTransformerRebuild)
+          *outNeedsTransformerRebuild = true;
+        if (morph && morph->ParamChangeRequiresUIRebuild(b.id) && outNeedsMorphRebuild)
+          *outNeedsMorphRebuild = true;
         switch (b.type)
         {
           case ParamType::Number:
@@ -230,6 +241,7 @@ namespace synaptic
             bool handled = false;
             if (transformer) handled |= transformer->SetParamFromNumber(b.id, v);
             if (morph) handled |= morph->SetParamFromNumber(b.id, v);
+
             return handled;
           }
           case ParamType::Boolean:
@@ -238,6 +250,7 @@ namespace synaptic
             bool handled = false;
             if (transformer) handled |= transformer->SetParamFromBool(b.id, v);
             if (morph) handled |= morph->SetParamFromBool(b.id, v);
+
             return handled;
           }
           case ParamType::Enum:
@@ -247,6 +260,7 @@ namespace synaptic
             bool handled = false;
             if (transformer) handled |= transformer->SetParamFromString(b.id, val);
             if (morph) handled |= morph->SetParamFromString(b.id, val);
+
             return handled;
           }
           case ParamType::Text:

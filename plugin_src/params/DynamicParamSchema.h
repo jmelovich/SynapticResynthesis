@@ -39,7 +39,8 @@ namespace synaptic
     virtual ~IDynamicParamOwner() {}
 
     // Describe all exposed parameters (schema)
-    virtual void GetParamDescs(std::vector<ExposedParamDesc>& out) const = 0;
+    // Set includeAll=true to bypass conditional visibility checks and return ALL parameters
+    virtual void GetParamDescs(std::vector<ExposedParamDesc>& out, bool includeAll = false) const = 0;
 
     // Get current value by id
     virtual bool GetParamAsNumber(const std::string& id, double& out) const = 0;
@@ -50,6 +51,9 @@ namespace synaptic
     virtual bool SetParamFromNumber(const std::string& id, double v) = 0;
     virtual bool SetParamFromBool(const std::string& id, bool v) = 0;
     virtual bool SetParamFromString(const std::string& id, const std::string& v) = 0;
+
+    // Check if changing this parameter requires a UI rebuild (e.g., when it controls visibility of other params)
+    virtual bool ParamChangeRequiresUIRebuild(const std::string& id) const { return false; }
   };
 }
 
