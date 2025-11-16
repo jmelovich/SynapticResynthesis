@@ -15,7 +15,7 @@
 #include "../styles/UITheme.h"
 #include "../controls/BrainFileListControl.h"
 
-#include "../../SynapticResynthesis.h"
+#include "SynapticResynthesis.h"
 #include "plugin_src/transformers/BaseTransformer.h"
 #include "plugin_src/morph/IMorph.h"
 #include "plugin_src/params/ParameterManager.h"

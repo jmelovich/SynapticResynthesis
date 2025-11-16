@@ -53,7 +53,7 @@ namespace synaptic
     }
 
     std::vector<ExposedParamDesc> descs;
-    transformer->GetParamDescs(descs);
+    transformer->GetParamDescs(descs, false);  // includeAll=false to respect current visibility
 
     nlohmann::json arr = nlohmann::json::array();
     for (const auto& d : descs)
@@ -141,7 +141,7 @@ namespace synaptic
     }
 
     std::vector<ExposedParamDesc> descs;
-    morph->GetParamDescs(descs);
+    morph->GetParamDescs(descs, false);  // includeAll=false to respect current visibility
 
     nlohmann::json arr = nlohmann::json::array();
     for (const auto& d : descs)

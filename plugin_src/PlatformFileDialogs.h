@@ -66,6 +66,91 @@ namespace platform
     return false;
   }
 }
+#elif defined(__APPLE__)
+#include <string>
+#include <vector>
+#include <codecvt>
+#include <locale>
+
+namespace platform
+{
+  // Helper to convert wchar_t* to UTF-8 string
+  inline static std::string WideToUtf8(const wchar_t* s)
+  {
+    if (!s || !*s) return std::string();
+    std::wstring ws(s);
+    std::wstring_convert<std::codecvt_utf8<wchar_t>> conv;
+    return conv.to_bytes(ws);
+  }
+
+  // Parse Windows-style filter string and extract file extensions
+  // Input format: L"Description\0*.ext1;*.ext2\0...\0\0"
+  inline static std::vector<std::string> ParseFilterExtensions(const wchar_t* filterW)
+  {
+    std::vector<std::string> extensions;
+    if (!filterW) return extensions;
+
+    std::string filter = WideToUtf8(filterW);
+    size_t pos = 0;
+    bool inPattern = false;
+    
+    // Parse null-separated string pairs
+    while (pos < filter.size())
+    {
+      size_t nullPos = filter.find('\0', pos);
+      if (nullPos == std::string::npos) break;
+      
+      std::string section = filter.substr(pos, nullPos - pos);
+      if (section.empty()) break; // Double null terminates
+      
+      if (inPattern)
+      {
+        // This is a pattern section like "*.ext1;*.ext2"
+        size_t extPos = 0;
+        while (extPos < section.size())
+        {
+          // Find next semicolon or end
+          size_t semiPos = section.find(';', extPos);
+          if (semiPos == std::string::npos) semiPos = section.size();
+          
+          std::string pattern = section.substr(extPos, semiPos - extPos);
+          // Extract extension from "*.ext" format
+          if (pattern.size() > 2 && pattern[0] == '*' && pattern[1] == '.')
+          {
+            std::string ext = pattern.substr(2);
+            if (!ext.empty() && ext != "*")
+              extensions.push_back(ext);
+          }
+          
+          extPos = semiPos + 1;
+        }
+      }
+      
+      inPattern = !inPattern; // Alternate between description and pattern
+      pos = nullPos + 1;
+    }
+    
+    return extensions;
+  }
+
+  // Forward declare the Obj-C++ implementation functions
+  bool ShowMacSavePanel_ObjC(std::string& outPath, const std::string& defaultFileName, const std::vector<std::string>& extensions);
+  bool ShowMacOpenPanel_ObjC(std::string& outPath, const std::vector<std::string>& extensions);
+
+  inline bool GetSaveFilePath(std::string& outPathUtf8, const wchar_t* filterW, const wchar_t* defaultFileNameW)
+  {
+    std::string defaultFileName = defaultFileNameW ? WideToUtf8(defaultFileNameW) : "Untitled.sbrain";
+    std::vector<std::string> extensions = ParseFilterExtensions(filterW);
+    
+    return ShowMacSavePanel_ObjC(outPathUtf8, defaultFileName, extensions);
+  }
+
+  inline bool GetOpenFilePath(std::string& outPathUtf8, const wchar_t* filterW)
+  {
+    std::vector<std::string> extensions = ParseFilterExtensions(filterW);
+    return ShowMacOpenPanel_ObjC(outPathUtf8, extensions);
+  }
+}
 #else
 namespace platform
 {

@@ -28,7 +28,7 @@ namespace {
     {
       auto t = info.create();
       std::vector<synaptic::ExposedParamDesc> tmp;
-      t->GetParamDescs(tmp);
+      t->GetParamDescs(tmp, true);  // includeAll=true to get ALL params for binding
       for (const auto& d : tmp)
       {
         auto it = std::find_if(unionDescs.begin(), unionDescs.end(), [&](const auto& e){ return e.id == d.id; });
@@ -39,7 +39,7 @@ namespace {
     {
       auto m = info.create();
       std::vector<synaptic::ExposedParamDesc> tmp;
-      m->GetParamDescs(tmp);
+      m->GetParamDescs(tmp, true);  // includeAll=true to get ALL params for binding
       for (const auto& d : tmp)
       {
         auto it = std::find_if(unionDescs.begin(), unionDescs.end(), [&](const auto& e){ return e.id == d.id; });
@@ -72,8 +72,10 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
   mDSPConfig.algorithmId = 0;
   mDSPConfig.enableOverlapAdd = true;
 
+#if SR_USE_WEB_UI
 #ifdef DEBUG
   SetEnableDevTools(true);
+  #endif
 #endif
 
 #if SR_USE_WEB_UI
@@ -616,9 +618,22 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
 #endif
   }
   // Handle dynamic parameters using ParameterManager
-  else if (mParamManager.HandleDynamicParameterChange(paramIdx, GetParam(paramIdx), mTransformer.get(), mMorph.get()))
+  else
   {
-    // Parameter was handled by ParameterManager
+    bool needsTransformerRebuild = false;
+    bool needsMorphRebuild = false;
+    if (mParamManager.HandleDynamicParameterChange(paramIdx, GetParam(paramIdx), mTransformer.get(), mMorph.get(),
+                                                     &needsTransformerRebuild, &needsMorphRebuild))
+    {
+      // Parameter was handled by ParameterManager
+      // Check if UI rebuild is needed
+      #if !SR_USE_WEB_UI && IPLUG_EDITOR
+      if (needsTransformerRebuild)
+        SetPendingUpdate(PendingUpdate::RebuildTransformer);
+      if (needsMorphRebuild)
+        SetPendingUpdate(PendingUpdate::RebuildMorph);
+      #endif
+    }
   }
 
   // For all parameters (including kAGC, kInGain, kOutGain, and any others),

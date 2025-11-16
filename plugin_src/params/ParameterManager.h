@@ -4,7 +4,9 @@
 #include "plugin_src/params/DynamicParamSchema.h"
 #include "plugin_src/transformers/BaseTransformer.h"
 #include "plugin_src/transformers/types/ExpandedSimpleSampleBrainTransformer.h"
+#include "plugin_src/transformers/TransformerFactory.h"
 #include "plugin_src/morph/IMorph.h"
+#include "plugin_src/morph/MorphFactory.h"
 #include "plugin_src/modules/DSPConfig.h"
 #include <vector>
 #include <string>
@@ -156,9 +158,12 @@ namespace synaptic
                                           IChunkBufferTransformer* transformer);
 
     // Unified handler: routes to transformer and/or morph
+    // Optional output parameters indicate if UI rebuild is needed
     bool HandleDynamicParameterChange(int paramIdx, iplug::IParam* param,
                                       IChunkBufferTransformer* transformer,
-                                      IMorph* morph);
+                                      IMorph* morph,
+                                      bool* outNeedsTransformerRebuild = nullptr,
+                                      bool* outNeedsMorphRebuild = nullptr);
 
     // === Transformer Binding Management ===
 

@@ -1,8 +1,8 @@
 #pragma once
 
 #include "../BaseTransformer.h"
-#include "../plugin_src/audio/FeatureAnalysis.h"
-#include "../plugin_src/audio/FFT.h"
+#include "plugin_src/audio/FeatureAnalysis.h"
+#include "plugin_src/audio/FFT.h"
 
 namespace synaptic
 {
@@ -264,7 +264,7 @@ namespace synaptic
     }
 
     // Exposed parameters implementation
-    void GetParamDescs(std::vector<ExposedParamDesc>& out) const override
+    void GetParamDescs(std::vector<ExposedParamDesc>& out, bool /*includeAll*/) const override
     {
       out.clear();
       AddCommonParamDescs(out);

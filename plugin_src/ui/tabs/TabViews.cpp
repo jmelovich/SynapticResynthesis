@@ -15,7 +15,7 @@
 #include "../controls/DeferredNumberBoxControl.h"
 #include "../styles/UITheme.h"
 #include "../layout/UILayout.h"
-#include "../SynapticResynthesis.h"
+#include "SynapticResynthesis.h"
 
 using namespace iplug;
 using namespace igraphics;

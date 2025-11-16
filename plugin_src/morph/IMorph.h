@@ -25,7 +25,7 @@ namespace synaptic
     virtual bool IsActive() const { return true; }
 
     // Default empty dynamic param implementation
-    void GetParamDescs(std::vector<ExposedParamDesc>& out) const override { out.clear(); }
+    void GetParamDescs(std::vector<ExposedParamDesc>& out, bool /*includeAll*/) const override { out.clear(); }
     bool GetParamAsNumber(const std::string&, double&) const override { return false; }
     bool GetParamAsBool(const std::string&, bool&) const override { return false; }
     bool GetParamAsString(const std::string&, std::string&) const override { return false; }

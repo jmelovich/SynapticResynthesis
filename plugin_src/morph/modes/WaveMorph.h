@@ -71,7 +71,7 @@ namespace synaptic
       else
       {
         CepstralApply(a.complexSpectrum, b.complexSpectrum, fftSize,
-                      (float) mMorphAmount, (float) mPhaseMorphAmount,
+                      (float) mMorphAmount, (float) mPhaseMorphAmount, (float) mEmphasis,
                       fft, mCepstralScratch);
       }
 
@@ -95,7 +95,7 @@ namespace synaptic
       }
     }
 
-    void GetParamDescs(std::vector<ExposedParamDesc>& out) const override
+    void GetParamDescs(std::vector<ExposedParamDesc>& out, bool includeAll = false) const override
     {
       out.clear();
       ExposedParamDesc p1;
@@ -149,6 +149,18 @@ namespace synaptic
       p6.options.push_back({"cepstral", "Cepstral"});
       p6.defaultString = "log";
       out.push_back(p6);
+
+      // Only show Emphasis when domain is Cepstral (unless includeAll is true)
+      if(includeAll || mDomain == MorphDomain::Cepstral)
+      {
+        ExposedParamDesc p7;
+        p7.id = "emphasis";
+        p7.label = "Emphasis";
+        p7.type = ParamType::Number;
+        p7.control = ControlType::Slider;
+        p7.minValue = 0.0; p7.maxValue = 1.0; p7.step = 0.01; p7.defaultNumber = 0.0;
+        out.push_back(p7);
+      }
     }
 
     bool SetParamFromNumber(const std::string& id, double v) override
@@ -157,6 +169,7 @@ namespace synaptic
       if (id == "waveHarmonics") { mWaveHarmonics = (int)v; return true; }
       if (id == "morphAmount") { mMorphAmount = v; return true; }
       if (id == "phaseMorphAmount") { mPhaseMorphAmount = v; return true; }
+      if (id == "emphasis") { mEmphasis = v; return true; }
       return false;
     }
 
@@ -166,6 +179,7 @@ namespace synaptic
       if (id == "waveHarmonics") { out = mWaveHarmonics; return true; }
       if (id == "morphAmount") { out = mMorphAmount; return true; }
       if (id == "phaseMorphAmount") { out = mPhaseMorphAmount; return true; }
+      if (id == "emphasis") { out = mEmphasis; return true; }
       return false;
     }
 
@@ -204,6 +218,12 @@ namespace synaptic
       return false;
     }
 
+    bool ParamChangeRequiresUIRebuild(const std::string& id) const override
+    {
+      // Changing morph domain requires UI rebuild because it controls visibility of the Emphasis parameter
+      return (id == "morphDomain");
+    }
+
   private:
     std::pair<double, double> GetHarmonic(double r, double i, int n)
     {
@@ -221,6 +241,7 @@ namespace synaptic
     int mWaveHarmonics = 20;
     double mMorphAmount = 1.0;
     double mPhaseMorphAmount = 1.0;
+    double mEmphasis = 0.0;
     MorphDomain mDomain = MorphDomain::Log;
     CepstralScratch mCepstralScratch;
   };

@@ -1,6 +1,12 @@
 #pragma once
 
 #include "IPlug_include_in_plug_hdr.h"
+
+#if !SR_USE_WEB_UI && IPLUG_EDITOR
+  #include "IGraphics_include_in_plug_hdr.h"
+  #include "IControls.h"
+#endif
+
 #include "Oscillator.h"
 #include "Smoothers.h"
 #include "plugin_src/modules/AudioStreamChunker.h"
@@ -70,32 +76,9 @@ enum EParams
   kNumParams
 };
 
-enum EMsgTags
-{
-  kMsgTagSetChunkSize = 4,
-  // kMsgTagSetBufferWindowSize = 5, // DEPRECATED - removed
-  kMsgTagSetAlgorithm = 6,
-  kMsgTagSetOutputWindowMode = 7,
-  // Analysis window used for offline brain analysis (non-automatable IParam mirrors this)
-  kMsgTagSetAnalysisWindowMode = 8,
-  // Brain UI -> C++ messages
-  kMsgTagBrainAddFile = 100,
-  kMsgTagBrainRemoveFile = 101,
-  // Transformer params UI -> C++
-  kMsgTagTransformerSetParam = 102,
-  // UI lifecycle
-  kMsgTagUiReady = 103,
-  // Brain snapshot external IO
-  kMsgTagBrainExport = 104,
-  kMsgTagBrainImport = 105,
-  kMsgTagBrainReset = 106,
-  kMsgTagBrainDetach = 107,
-  kMsgTagBrainCreateNew = 109,
-  // Window resize
-  kMsgTagResizeToFit = 108,
-  // C++ -> UI JSON updates use msgTag = -1, with id fields "brainSummary"
-
-};
+// Message tags are now defined in plugin_src/ui_bridge/MessageTags.h
+// Include it here for backward compatibility
+#include "plugin_src/ui_bridge/MessageTags.h"
 
 class SynapticResynthesis final : public Plugin
 {

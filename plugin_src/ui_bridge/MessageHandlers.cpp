@@ -249,6 +249,23 @@ bool SynapticResynthesis::HandleTransformerSetParamMsg(const void* jsonData, int
       }
       mUIBridge.SendTransformerParams(mTransformer);
       mUIBridge.SendMorphParams(mMorph);
+
+      // Check if this parameter change requires UI rebuild (e.g., when it controls visibility of other params)
+      bool needsRebuild = false;
+      if (mTransformer && mTransformer->ParamChangeRequiresUIRebuild(id))
+        needsRebuild = true;
+      if (mMorph && mMorph->ParamChangeRequiresUIRebuild(id))
+        needsRebuild = true;
+
+      if (needsRebuild)
+      {
+        #if IPLUG_EDITOR
+        if (mTransformer && mTransformer->ParamChangeRequiresUIRebuild(id))
+          SetPendingUpdate(PendingUpdate::RebuildTransformer);
+        if (mMorph && mMorph->ParamChangeRequiresUIRebuild(id))
+          SetPendingUpdate(PendingUpdate::RebuildMorph);
+        #endif
+      }
     }
     return ok;
   }

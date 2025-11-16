@@ -11,7 +11,7 @@ namespace synaptic
 
     void Process(AudioChunk& /*a*/, AudioChunk& /*b*/, FFTProcessor& /*fft*/) override {}
 
-    void GetParamDescs(std::vector<ExposedParamDesc>& out) const override
+    void GetParamDescs(std::vector<ExposedParamDesc>& out, bool /*includeAll*/) const override
     {
       out.clear();
       ExposedParamDesc p1;

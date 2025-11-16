@@ -86,6 +86,7 @@ namespace synaptic
                             int fftSize,
                             float morphAmount,
                             float phaseMorphAmount,
+                            float emphasis,
                             FFTProcessor& fft,
                             CepstralScratch& scratch)
   {
@@ -133,9 +134,26 @@ namespace synaptic
       fft.Inverse(scratch.logMagA.data(), fftSize, scratch.cepA.data(), fftSize);
       fft.Inverse(scratch.logMagB.data(), fftSize, scratch.cepB.data(), fftSize);
 
+      float e = std::max(emphasis * 25, 0.000001f) / std::max(1 - emphasis, 0.000001f);
+      float spread = 1 / e;
+
       // 3) Crossfade cepstra based on magnitude morph amount
       for (int n = 0; n < fftSize; ++n)
-        scratch.cepC[n] = oneMinusMagAmt * scratch.cepA[n] + magAmt * scratch.cepB[n];
+      {
+        float scaledN = (float)n / fftSize;
+        if (scaledN < oneMinusMagAmt - spread)
+        {
+          scratch.cepC[n] = scratch.cepA[n];
+          continue;
+        }
+        if (scaledN > oneMinusMagAmt + spread)
+        {
+          scratch.cepC[n] = scratch.cepB[n];
+          continue;
+        }
+        float emphasizedAmount = (scaledN - oneMinusMagAmt * (1 + 2 * spread) + spread) * e / 2 + 0.5;
+        scratch.cepC[n] = emphasizedAmount * scratch.cepA[n] + (1-emphasizedAmount)*scratch.cepB[n];
+      }
 
       // 4) Real FFT of crossfaded cepstrum -> combined log magnitude spectrum
       // Use forward without window
@@ -207,4 +225,4 @@ namespace synaptic
 
     return {r * factor, i * factor};
   }
-}
+  }
