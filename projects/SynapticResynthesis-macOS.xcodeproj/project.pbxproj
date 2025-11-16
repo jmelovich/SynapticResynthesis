@@ -79,13 +79,6 @@
 		4F3EE1E7231438D000004786 /* AUv3Framework.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4F78BE0222E73D0800AD537E /* AUv3Framework.framework */; };
 		4F3EE1E9231438D000004786 /* AUv3Framework.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 4F78BE0222E73D0800AD537E /* AUv3Framework.framework */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		4F3EE1EB231438D000004786 /* SynapticResynthesis.appex in Embed AUv3 App Extension */ = {isa = PBXBuildFile; fileRef = 4F3907602013EBA300DDA490 /* SynapticResynthesis.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		4F3F6E472CCBDFF700C41C6D /* IPlugWebView_mac.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4F3F6E462CCBDFF700C41C6D /* IPlugWebView_mac.mm */; settings = {COMPILER_FLAGS = "-fobjc-arc"; }; };
-		4F3F6E492CCBDFF700C41C6D /* IPlugWebView_mac.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4F3F6E462CCBDFF700C41C6D /* IPlugWebView_mac.mm */; settings = {COMPILER_FLAGS = "-fobjc-arc"; }; };
-		4F3F6E4B2CCBDFF700C41C6D /* IPlugWebView_mac.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4F3F6E462CCBDFF700C41C6D /* IPlugWebView_mac.mm */; settings = {COMPILER_FLAGS = "-fobjc-arc"; }; };
-		4F3F6E4F2CCBDFF700C41C6D /* IPlugWebView_mac.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4F3F6E462CCBDFF700C41C6D /* IPlugWebView_mac.mm */; settings = {COMPILER_FLAGS = "-fobjc-arc"; }; };
-		4F3F6E512CCBDFF700C41C6D /* IPlugWebView_mac.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4F3F6E462CCBDFF700C41C6D /* IPlugWebView_mac.mm */; settings = {COMPILER_FLAGS = "-fobjc-arc"; }; };
-		4F3F6E532CCBDFF700C41C6D /* IPlugWebView_mac.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4F3F6E462CCBDFF700C41C6D /* IPlugWebView_mac.mm */; settings = {COMPILER_FLAGS = "-fobjc-arc"; }; };
-		4F3F6E552CCBDFF700C41C6D /* IPlugWebView_mac.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4F3F6E462CCBDFF700C41C6D /* IPlugWebView_mac.mm */; settings = {COMPILER_FLAGS = "-fobjc-arc"; }; };
 		4F5C5F6921BED05B00E024A7 /* swellappmain.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4FD16D4613B635C8001D0217 /* swellappmain.mm */; };
 		4F5C5F6B21BED08700E024A7 /* swell-appstub.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4F5C5F6A21BED08700E024A7 /* swell-appstub.mm */; };
 		4F5F344120C0226200487201 /* IPlugPaths.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4F5F344020C0226200487201 /* IPlugPaths.mm */; };
@@ -153,14 +146,6 @@
 		4F993F7323055C96000313AF /* IPlugProcessor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4F8F61A8202807B9003F2573 /* IPlugProcessor.cpp */; };
 		4F993F7423055C96000313AF /* IPlugProcessor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4F8F61A8202807B9003F2573 /* IPlugProcessor.cpp */; };
 		4F993F7523055C97000313AF /* IPlugProcessor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4F8F61A8202807B9003F2573 /* IPlugProcessor.cpp */; };
-		4FA0FB17247D4D2B00E25C73 /* IPlugWebViewEditorDelegate.h in Headers */ = {isa = PBXBuildFile; fileRef = 4FA0FB15247D4D2B00E25C73 /* IPlugWebViewEditorDelegate.h */; };
-		4FA0FB18247D4D2B00E25C73 /* IPlugWebViewEditorDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4FA0FB16247D4D2B00E25C73 /* IPlugWebViewEditorDelegate.mm */; };
-		4FA0FB19247D4D2B00E25C73 /* IPlugWebViewEditorDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4FA0FB16247D4D2B00E25C73 /* IPlugWebViewEditorDelegate.mm */; };
-		4FA0FB1A247D4D2B00E25C73 /* IPlugWebViewEditorDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4FA0FB16247D4D2B00E25C73 /* IPlugWebViewEditorDelegate.mm */; };
-		4FA0FB1B247D4D2B00E25C73 /* IPlugWebViewEditorDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4FA0FB16247D4D2B00E25C73 /* IPlugWebViewEditorDelegate.mm */; };
-		4FA0FB1C247D4D2B00E25C73 /* IPlugWebViewEditorDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4FA0FB16247D4D2B00E25C73 /* IPlugWebViewEditorDelegate.mm */; };
-		4FA0FB1F247D4D2B00E25C73 /* IPlugWebViewEditorDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4FA0FB16247D4D2B00E25C73 /* IPlugWebViewEditorDelegate.mm */; };
-		4FA0FB20247D4D2C00E25C73 /* IPlugWebViewEditorDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4FA0FB16247D4D2B00E25C73 /* IPlugWebViewEditorDelegate.mm */; };
 		4FA0FB21247D4DBA00E25C73 /* web in Resources */ = {isa = PBXBuildFile; fileRef = 4FC46E57231440B4000045E7 /* web */; };
 		4FAFFE5821495A4800A6E72D /* RtAudio.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4F10D3D3203A6711003EF82A /* RtAudio.cpp */; settings = {COMPILER_FLAGS = "-Wno-unreachable-code -Wno-shorten-64-to-32 -Wno-deprecated-implementations"; }; };
 		4FB6001A1567CB0A0020189A /* IPlugAPIBase.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4F78D8ED13B63BA40032E0F3 /* IPlugAPIBase.cpp */; };
@@ -186,6 +171,63 @@
 		4FF0A83221BE708700B2C9D1 /* swell-gdi.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4FD16D0B13B634BF001D0217 /* swell-gdi.mm */; settings = {COMPILER_FLAGS = "-Wno-unreachable-code"; }; };
 		B885CBC52304AE7300D73128 /* IPlugProcessor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4F8F61A8202807B9003F2573 /* IPlugProcessor.cpp */; };
 		B8E22A0C220268C4007CBF4C /* IPlugVST3_ProcessorBase.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B8E22A0A220268C4007CBF4C /* IPlugVST3_ProcessorBase.cpp */; };
+		D7D05CCC40DF4510AF463BF7 /* Brain.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D54763827AFC48D9AE378F00 /* Brain.cpp */; };
+		44AC1EA3623F460B8ADE3D51 /* BrainManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1E38801753FF4B2394042979 /* BrainManager.cpp */; };
+		46B7D5681E08481BBF561447 /* ParameterManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 15B92FBE0AD34A898F1A4012 /* ParameterManager.cpp */; };
+		3D1CB8F7E3DA4879B3BF7857 /* StateSerializer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = C8DA539AFFC74AB180B33AC2 /* StateSerializer.cpp */; };
+		C56C5188F88D497282119323 /* UIBridge.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3DD5625F0A3347EAA8A0A17E /* UIBridge.cpp */; };
+		12FC002AE2454DDB92587F68 /* MessageHandlers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2F2ABB17781C4BBD8D88B15D /* MessageHandlers.cpp */; };
+		912694BA96B84E17A98BCA36 /* SynapticUI.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 98E1D3B363484D6EB542311D /* SynapticUI.cpp */; };
+		EAE1707E00354142AE4AEC6A /* ProgressOverlayManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CA6D4E84AB1646C2B61AF5F3 /* ProgressOverlayManager.cpp */; };
+		D82E3CE027734AB093002D94 /* TabViews.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B475BE9273A1440182218907 /* TabViews.cpp */; };
+		3E392C13F2D641C0A8D9CF49 /* UIControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 8638AC5A7F694A97894C01FA /* UIControls.cpp */; };
+		36F621B1489B4E8D9C5B2048 /* DynamicParamManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3E5551D6DB4E4FE986D8B8B6 /* DynamicParamManager.cpp */; };
+		0ED62266FC9A4308B5637564 /* BrainFileListControl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4C8C02024F9844E5A496CB2C /* BrainFileListControl.cpp */; };
+		60DB770EDC964A1795FD820C /* BrainFileDropControl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 8010329C467944C98AD79228 /* BrainFileDropControl.cpp */; };
+		B5760741268C41E492D48936 /* BrainFileHelpers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F14BBDE4649E4CECA33DA78C /* BrainFileHelpers.cpp */; };
+		6841C9A235C144899AE4DD29 /* ProgressOverlay.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 86C9B522C7BF4B4BB4010BAD /* ProgressOverlay.cpp */; };
+		318C42982E7549AB80F847CA /* pffft.c in Sources */ = {isa = PBXBuildFile; fileRef = 548769CD87344F9296E2B62B /* pffft.c */; };
+		7E2BA650BBF94BBFA8A3B55D /* fftpack.c in Sources */ = {isa = PBXBuildFile; fileRef = A51F390E838043A490177166 /* fftpack.c */; };
+		65F3817474B446A1B728B7FD /* IGraphics.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E2CB140B9CF640159D6BF097 /* IGraphics.cpp */; };
+		9B5ADF3534C84A16A7805324 /* IControl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DBD508B66BA84AC794F01ABA /* IControl.cpp */; };
+		9613CD679B7E471680E081C6 /* IControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48CF86C657B746E38D38B34E /* IControls.cpp */; };
+		82E86C3AAFF84769BF9F18AB /* IGraphicsEditorDelegate.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B2AB11C465884AA4A9B04A08 /* IGraphicsEditorDelegate.cpp */; };
+		DA8B9521DD3042CAAB99E168 /* IGraphicsMac.mm in Sources */ = {isa = PBXBuildFile; fileRef = 7FD4CFCF16A94DE4AC256061 /* IGraphicsMac.mm */; };
+		074F80468BB84787AA65B144 /* IGraphicsMac_view.mm in Sources */ = {isa = PBXBuildFile; fileRef = 0F6C23BAD9814389846CB73C /* IGraphicsMac_view.mm */; };
+		36A5F28F35EE463FA38B6B7A /* IGraphicsCoreText.mm in Sources */ = {isa = PBXBuildFile; fileRef = 7A43B956924F464682DEDF61 /* IGraphicsCoreText.mm */; };
+		FEE3EC91668847969BECA16D /* IGraphicsNanoVG_src.m in Sources */ = {isa = PBXBuildFile; fileRef = D0AB29680764464CB61E9FF6 /* IGraphicsNanoVG_src.m */; settings = {COMPILER_FLAGS = "-fobjc-arc"; }; };
+		E547161788754EC6B2CD7F86 /* IGraphicsNanoVG_src.m in Sources */ = {isa = PBXBuildFile; fileRef = D0AB29680764464CB61E9FF6 /* IGraphicsNanoVG_src.m */; settings = {COMPILER_FLAGS = "-fobjc-arc"; }; };
+		E63026E73B5E4E7FBDA2AE4F /* IGraphicsNanoVG_src.m in Sources */ = {isa = PBXBuildFile; fileRef = D0AB29680764464CB61E9FF6 /* IGraphicsNanoVG_src.m */; settings = {COMPILER_FLAGS = "-fobjc-arc"; }; };
+		338F3CA6BAC644B4A7D50C85 /* IGraphicsNanoVG_src.m in Sources */ = {isa = PBXBuildFile; fileRef = D0AB29680764464CB61E9FF6 /* IGraphicsNanoVG_src.m */; settings = {COMPILER_FLAGS = "-fobjc-arc"; }; };
+		505021DAFE1A4206B9CBFA89 /* IGraphicsNanoVG_src.m in Sources */ = {isa = PBXBuildFile; fileRef = D0AB29680764464CB61E9FF6 /* IGraphicsNanoVG_src.m */; settings = {COMPILER_FLAGS = "-fobjc-arc"; }; };
+		BAFACF745FCE4F5A9AC4CDE8 /* IGraphicsNanoVG_src.m in Sources */ = {isa = PBXBuildFile; fileRef = D0AB29680764464CB61E9FF6 /* IGraphicsNanoVG_src.m */; settings = {COMPILER_FLAGS = "-fobjc-arc"; }; };
+		7C62D3EA528B4C539813A712 /* IGraphicsNanoVG_src.m in Sources */ = {isa = PBXBuildFile; fileRef = D0AB29680764464CB61E9FF6 /* IGraphicsNanoVG_src.m */; settings = {COMPILER_FLAGS = "-fobjc-arc"; }; };
+		EBC0A878B4A646A69F713F64 /* IGraphicsNanoVG_src.m in Sources */ = {isa = PBXBuildFile; fileRef = D0AB29680764464CB61E9FF6 /* IGraphicsNanoVG_src.m */; settings = {COMPILER_FLAGS = "-fobjc-arc"; }; };
+		C5F3C6172E4540EBA3454937 /* IGraphicsNanoVG_src.m in Sources */ = {isa = PBXBuildFile; fileRef = D0AB29680764464CB61E9FF6 /* IGraphicsNanoVG_src.m */; settings = {COMPILER_FLAGS = "-fobjc-arc"; }; };
+		907474F252BD4974A283FB0A /* IPopupMenuControl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AC85A1DA330D4F1AA66D93A8 /* IPopupMenuControl.cpp */; };
+		219D5FA31B2642369EA25356 /* IPopupMenuControl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AC85A1DA330D4F1AA66D93A8 /* IPopupMenuControl.cpp */; };
+		143B1518077745ACA745C134 /* IPopupMenuControl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AC85A1DA330D4F1AA66D93A8 /* IPopupMenuControl.cpp */; };
+		A9DFE980057847989DFF24B3 /* IPopupMenuControl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AC85A1DA330D4F1AA66D93A8 /* IPopupMenuControl.cpp */; };
+		2AAA446FBCDA43479B4B7A23 /* IPopupMenuControl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AC85A1DA330D4F1AA66D93A8 /* IPopupMenuControl.cpp */; };
+		B1E29B141665417C9946C0A4 /* IPopupMenuControl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AC85A1DA330D4F1AA66D93A8 /* IPopupMenuControl.cpp */; };
+		A9D4F3A698B44BD7AD8B8E37 /* IPopupMenuControl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AC85A1DA330D4F1AA66D93A8 /* IPopupMenuControl.cpp */; };
+		6BDB47DFEA804EAB92411BEF /* IPopupMenuControl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AC85A1DA330D4F1AA66D93A8 /* IPopupMenuControl.cpp */; };
+		04BB911F4E244D3C81E7D73A /* ITextEntryControl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9D663A937986415F84D18297 /* ITextEntryControl.cpp */; };
+		4B3EDB374BEF4E678CE83845 /* ITextEntryControl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9D663A937986415F84D18297 /* ITextEntryControl.cpp */; };
+		AE8DCEFC470F480EB7D5C571 /* ITextEntryControl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9D663A937986415F84D18297 /* ITextEntryControl.cpp */; };
+		0529950D06B84A3B80A24F31 /* ITextEntryControl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9D663A937986415F84D18297 /* ITextEntryControl.cpp */; };
+		E275C28F20134D529C205557 /* ITextEntryControl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9D663A937986415F84D18297 /* ITextEntryControl.cpp */; };
+		63E1C3F079DF49C5A3A45234 /* ITextEntryControl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9D663A937986415F84D18297 /* ITextEntryControl.cpp */; };
+		A5AB4A4F65AC4A62AB366353 /* ITextEntryControl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9D663A937986415F84D18297 /* ITextEntryControl.cpp */; };
+		02EB6420F73F4441A931B2DC /* ITextEntryControl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9D663A937986415F84D18297 /* ITextEntryControl.cpp */; };
+		A54F8686BCA0471F838A2DF5 /* fonts in Resources */ = {isa = PBXBuildFile; fileRef = 4FC82B4620BD522B00722133 /* fonts */; };
+		98FD8390AB3C43E184B5B498 /* fonts in Resources */ = {isa = PBXBuildFile; fileRef = 4FC82B4620BD522B00722133 /* fonts */; };
+		8E358DECDB0C4C06AAED45DB /* fonts in Resources */ = {isa = PBXBuildFile; fileRef = 4FC82B4620BD522B00722133 /* fonts */; };
+		0B88C7E8F9074A958C754ED2 /* fonts in Resources */ = {isa = PBXBuildFile; fileRef = 4FC82B4620BD522B00722133 /* fonts */; };
+		3CECCC2CA7C94B36A18127DB /* fonts in Resources */ = {isa = PBXBuildFile; fileRef = 4FC82B4620BD522B00722133 /* fonts */; };
+		361470BA959E4352BDB75A4A /* fonts in Resources */ = {isa = PBXBuildFile; fileRef = 4FC82B4620BD522B00722133 /* fonts */; };
+		E7B247477C564D1CAA099B51 /* fonts in Resources */ = {isa = PBXBuildFile; fileRef = 4FC82B4620BD522B00722133 /* fonts */; };
+		E04136E907024745937FA27F /* fonts in Resources */ = {isa = PBXBuildFile; fileRef = 4FC82B4620BD522B00722133 /* fonts */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -588,6 +630,33 @@
 		B8E22A0A220268C4007CBF4C /* IPlugVST3_ProcessorBase.cpp */ = {isa = PBXFileReference; indentWidth = 2; lastKnownFileType = sourcecode.cpp.cpp; name = IPlugVST3_ProcessorBase.cpp; path = ../../../IPlug/VST3/IPlugVST3_ProcessorBase.cpp; sourceTree = "<group>"; tabWidth = 2; };
 		B8E22A0B220268C4007CBF4C /* IPlugVST3_ProcessorBase.h */ = {isa = PBXFileReference; indentWidth = 2; lastKnownFileType = sourcecode.c.h; name = IPlugVST3_ProcessorBase.h; path = ../../../IPlug/VST3/IPlugVST3_ProcessorBase.h; sourceTree = "<group>"; tabWidth = 2; };
 		B8EA6B932203868500D23A86 /* IPlugVST3_Common.h */ = {isa = PBXFileReference; indentWidth = 2; lastKnownFileType = sourcecode.c.h; name = IPlugVST3_Common.h; path = ../../../IPlug/VST3/IPlugVST3_Common.h; sourceTree = "<group>"; tabWidth = 2; };
+		D54763827AFC48D9AE378F00 /* Brain.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Brain.cpp; path = ../plugin_src/brain/Brain.cpp; sourceTree = "<group>"; };
+		1E38801753FF4B2394042979 /* BrainManager.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = BrainManager.cpp; path = ../plugin_src/brain/BrainManager.cpp; sourceTree = "<group>"; };
+		15B92FBE0AD34A898F1A4012 /* ParameterManager.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = ParameterManager.cpp; path = ../plugin_src/params/ParameterManager.cpp; sourceTree = "<group>"; };
+		C8DA539AFFC74AB180B33AC2 /* StateSerializer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = StateSerializer.cpp; path = ../plugin_src/serialization/StateSerializer.cpp; sourceTree = "<group>"; };
+		3DD5625F0A3347EAA8A0A17E /* UIBridge.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = UIBridge.cpp; path = ../plugin_src/ui_bridge/UIBridge.cpp; sourceTree = "<group>"; };
+		2F2ABB17781C4BBD8D88B15D /* MessageHandlers.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = MessageHandlers.cpp; path = ../plugin_src/ui_bridge/MessageHandlers.cpp; sourceTree = "<group>"; };
+		98E1D3B363484D6EB542311D /* SynapticUI.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = SynapticUI.cpp; path = ../plugin_src/ui/core/SynapticUI.cpp; sourceTree = "<group>"; };
+		CA6D4E84AB1646C2B61AF5F3 /* ProgressOverlayManager.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = ProgressOverlayManager.cpp; path = ../plugin_src/ui/core/ProgressOverlayManager.cpp; sourceTree = "<group>"; };
+		B475BE9273A1440182218907 /* TabViews.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = TabViews.cpp; path = ../plugin_src/ui/tabs/TabViews.cpp; sourceTree = "<group>"; };
+		8638AC5A7F694A97894C01FA /* UIControls.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = UIControls.cpp; path = ../plugin_src/ui/controls/UIControls.cpp; sourceTree = "<group>"; };
+		3E5551D6DB4E4FE986D8B8B6 /* DynamicParamManager.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = DynamicParamManager.cpp; path = ../plugin_src/ui/dynamic/DynamicParamManager.cpp; sourceTree = "<group>"; };
+		4C8C02024F9844E5A496CB2C /* BrainFileListControl.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = BrainFileListControl.cpp; path = ../plugin_src/ui/controls/BrainFileListControl.cpp; sourceTree = "<group>"; };
+		8010329C467944C98AD79228 /* BrainFileDropControl.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = BrainFileDropControl.cpp; path = ../plugin_src/ui/controls/BrainFileDropControl.cpp; sourceTree = "<group>"; };
+		F14BBDE4649E4CECA33DA78C /* BrainFileHelpers.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = BrainFileHelpers.cpp; path = ../plugin_src/ui/controls/BrainFileHelpers.cpp; sourceTree = "<group>"; };
+		86C9B522C7BF4B4BB4010BAD /* ProgressOverlay.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = ProgressOverlay.cpp; path = ../plugin_src/ui/controls/ProgressOverlay.cpp; sourceTree = "<group>"; };
+		548769CD87344F9296E2B62B /* pffft.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = pffft.c; path = ../exdeps/pffft/pffft.c; sourceTree = "<group>"; };
+		A51F390E838043A490177166 /* fftpack.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = fftpack.c; path = ../exdeps/pffft/fftpack.c; sourceTree = "<group>"; };
+		E2CB140B9CF640159D6BF097 /* IGraphics.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = IGraphics.cpp; path = ../../../IGraphics/IGraphics.cpp; sourceTree = "<group>"; };
+		DBD508B66BA84AC794F01ABA /* IControl.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = IControl.cpp; path = ../../../IGraphics/IControl.cpp; sourceTree = "<group>"; };
+		48CF86C657B746E38D38B34E /* IControls.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = IControls.cpp; path = ../../../IGraphics/Controls/IControls.cpp; sourceTree = "<group>"; };
+		B2AB11C465884AA4A9B04A08 /* IGraphicsEditorDelegate.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = IGraphicsEditorDelegate.cpp; path = ../../../IGraphics/IGraphicsEditorDelegate.cpp; sourceTree = "<group>"; };
+		7FD4CFCF16A94DE4AC256061 /* IGraphicsMac.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = IGraphicsMac.mm; path = ../../../IGraphics/Platforms/IGraphicsMac.mm; sourceTree = "<group>"; };
+		0F6C23BAD9814389846CB73C /* IGraphicsMac_view.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = IGraphicsMac_view.mm; path = ../../../IGraphics/Platforms/IGraphicsMac_view.mm; sourceTree = "<group>"; };
+		7A43B956924F464682DEDF61 /* IGraphicsCoreText.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = IGraphicsCoreText.mm; path = ../../../IGraphics/Platforms/IGraphicsCoreText.mm; sourceTree = "<group>"; };
+		D0AB29680764464CB61E9FF6 /* IGraphicsNanoVG_src.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = IGraphicsNanoVG_src.m; path = ../../../IGraphics/Drawing/IGraphicsNanoVG_src.m; sourceTree = "<group>"; };
+		AC85A1DA330D4F1AA66D93A8 /* IPopupMenuControl.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = IPopupMenuControl.cpp; path = ../../../IGraphics/Controls/IPopupMenuControl.cpp; sourceTree = "<group>"; };
+		9D663A937986415F84D18297 /* ITextEntryControl.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = ITextEntryControl.cpp; path = ../../../IGraphics/Controls/ITextEntryControl.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -1318,7 +1387,6 @@
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4FA0FB17247D4D2B00E25C73 /* IPlugWebViewEditorDelegate.h in Headers */,
 				4F78BE1222E73DD900AD537E /* AUv3Framework.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1589,6 +1657,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A54F8686BCA0471F838A2DF5 /* fonts in Resources */,
 				4F0AB11D259C050B00653315 /* web in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1597,6 +1666,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				98FD8390AB3C43E184B5B498 /* fonts in Resources */,
 				4F0AB11C259C050300653315 /* web in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1605,6 +1675,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				8E358DECDB0C4C06AAED45DB /* fonts in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1612,6 +1683,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0B88C7E8F9074A958C754ED2 /* fonts in Resources */,
 				4F3EE1BF231438D000004786 /* SynapticResynthesis.icns in Resources */,
 				4F3EE1C0231438D000004786 /* SynapticResynthesis-macOS-MainMenu.xib in Resources */,
 				4F0AB120259C052200653315 /* web in Resources */,
@@ -1622,6 +1694,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3CECCC2CA7C94B36A18127DB /* fonts in Resources */,
 				4F78BE3C22E74CD000AD537E /* IPlugAUViewController_vSynapticResynthesis.xib in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1630,6 +1703,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				361470BA959E4352BDB75A4A /* fonts in Resources */,
 				4F0AB11B259C04BB00653315 /* web in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1638,6 +1712,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E7B247477C564D1CAA099B51 /* fonts in Resources */,
 				4F0AB11E259C051400653315 /* web in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1646,6 +1721,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E04136E907024745937FA27F /* fonts in Resources */,
 				4FA0FB21247D4DBA00E25C73 /* web in Resources */,
 				4F78D88613B6382B0032E0F3 /* SynapticResynthesis.icns in Resources */,
 				4F1B4AE42014D33600BC64D4 /* SynapticResynthesis-macOS-MainMenu.xib in Resources */,
@@ -1818,14 +1894,38 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				04BB911F4E244D3C81E7D73A /* ITextEntryControl.cpp in Sources */,
+				907474F252BD4974A283FB0A /* IPopupMenuControl.cpp in Sources */,
+				E547161788754EC6B2CD7F86 /* IGraphicsNanoVG_src.m in Sources */,
+				36A5F28F35EE463FA38B6B7A /* IGraphicsCoreText.mm in Sources */,
+				074F80468BB84787AA65B144 /* IGraphicsMac_view.mm in Sources */,
+				DA8B9521DD3042CAAB99E168 /* IGraphicsMac.mm in Sources */,
+				82E86C3AAFF84769BF9F18AB /* IGraphicsEditorDelegate.cpp in Sources */,
+				9613CD679B7E471680E081C6 /* IControls.cpp in Sources */,
+				9B5ADF3534C84A16A7805324 /* IControl.cpp in Sources */,
+				65F3817474B446A1B728B7FD /* IGraphics.cpp in Sources */,
+				7E2BA650BBF94BBFA8A3B55D /* fftpack.c in Sources */,
+				318C42982E7549AB80F847CA /* pffft.c in Sources */,
+				6841C9A235C144899AE4DD29 /* ProgressOverlay.cpp in Sources */,
+				B5760741268C41E492D48936 /* BrainFileHelpers.cpp in Sources */,
+				60DB770EDC964A1795FD820C /* BrainFileDropControl.cpp in Sources */,
+				0ED62266FC9A4308B5637564 /* BrainFileListControl.cpp in Sources */,
+				36F621B1489B4E8D9C5B2048 /* DynamicParamManager.cpp in Sources */,
+				3E392C13F2D641C0A8D9CF49 /* UIControls.cpp in Sources */,
+				D82E3CE027734AB093002D94 /* TabViews.cpp in Sources */,
+				EAE1707E00354142AE4AEC6A /* ProgressOverlayManager.cpp in Sources */,
+				912694BA96B84E17A98BCA36 /* SynapticUI.cpp in Sources */,
+				12FC002AE2454DDB92587F68 /* MessageHandlers.cpp in Sources */,
+				C56C5188F88D497282119323 /* UIBridge.cpp in Sources */,
+				3D1CB8F7E3DA4879B3BF7857 /* StateSerializer.cpp in Sources */,
+				46B7D5681E08481BBF561447 /* ParameterManager.cpp in Sources */,
+				44AC1EA3623F460B8ADE3D51 /* BrainManager.cpp in Sources */,
+				D7D05CCC40DF4510AF463BF7 /* Brain.cpp in Sources */,
 				4FDAC0EB207D76C600299363 /* IPlugTimer.cpp in Sources */,
 				4F5F344220C0226200487201 /* IPlugPaths.mm in Sources */,
 				4F1A527B205D910000CF2908 /* IPlugVST2.cpp in Sources */,
 				4F8D9707209EF5AC006E2A11 /* SynapticResynthesis.cpp in Sources */,
 				4F78D9BB13B63BA50032E0F3 /* IPlugAPIBase.cpp in Sources */,
-				4FA0FB19247D4D2B00E25C73 /* IPlugWebViewEditorDelegate.mm in Sources */,
-				4F3F6E552CCBDFF700C41C6D /* IPlugWebView_mac.mm in Sources */,
-				4F993F7223055C96000313AF /* IPlugProcessor.cpp in Sources */,
 				4F35DEAE207E5C5A00867D8F /* IPlugPluginBase.cpp in Sources */,
 				4F78D9C813B63BA50032E0F3 /* IPlugParameter.cpp in Sources */,
 			);
@@ -1835,6 +1935,33 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4B3EDB374BEF4E678CE83845 /* ITextEntryControl.cpp in Sources */,
+				219D5FA31B2642369EA25356 /* IPopupMenuControl.cpp in Sources */,
+				D7D05CCC40DF4510AF463BF7 /* Brain.cpp in Sources */,
+				44AC1EA3623F460B8ADE3D51 /* BrainManager.cpp in Sources */,
+				46B7D5681E08481BBF561447 /* ParameterManager.cpp in Sources */,
+				3D1CB8F7E3DA4879B3BF7857 /* StateSerializer.cpp in Sources */,
+				C56C5188F88D497282119323 /* UIBridge.cpp in Sources */,
+				12FC002AE2454DDB92587F68 /* MessageHandlers.cpp in Sources */,
+				912694BA96B84E17A98BCA36 /* SynapticUI.cpp in Sources */,
+				EAE1707E00354142AE4AEC6A /* ProgressOverlayManager.cpp in Sources */,
+				D82E3CE027734AB093002D94 /* TabViews.cpp in Sources */,
+				3E392C13F2D641C0A8D9CF49 /* UIControls.cpp in Sources */,
+				36F621B1489B4E8D9C5B2048 /* DynamicParamManager.cpp in Sources */,
+				0ED62266FC9A4308B5637564 /* BrainFileListControl.cpp in Sources */,
+				60DB770EDC964A1795FD820C /* BrainFileDropControl.cpp in Sources */,
+				B5760741268C41E492D48936 /* BrainFileHelpers.cpp in Sources */,
+				6841C9A235C144899AE4DD29 /* ProgressOverlay.cpp in Sources */,
+				318C42982E7549AB80F847CA /* pffft.c in Sources */,
+				7E2BA650BBF94BBFA8A3B55D /* fftpack.c in Sources */,
+				65F3817474B446A1B728B7FD /* IGraphics.cpp in Sources */,
+				9B5ADF3534C84A16A7805324 /* IControl.cpp in Sources */,
+				9613CD679B7E471680E081C6 /* IControls.cpp in Sources */,
+				82E86C3AAFF84769BF9F18AB /* IGraphicsEditorDelegate.cpp in Sources */,
+				DA8B9521DD3042CAAB99E168 /* IGraphicsMac.mm in Sources */,
+				074F80468BB84787AA65B144 /* IGraphicsMac_view.mm in Sources */,
+				36A5F28F35EE463FA38B6B7A /* IGraphicsCoreText.mm in Sources */,
+				E63026E73B5E4E7FBDA2AE4F /* IGraphicsNanoVG_src.m in Sources */,
 				4F78BE3222E7429B00AD537E /* IPlugAUv3Appex.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1843,12 +1970,36 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AE8DCEFC470F480EB7D5C571 /* ITextEntryControl.cpp in Sources */,
+				143B1518077745ACA745C134 /* IPopupMenuControl.cpp in Sources */,
+				D7D05CCC40DF4510AF463BF7 /* Brain.cpp in Sources */,
+				44AC1EA3623F460B8ADE3D51 /* BrainManager.cpp in Sources */,
+				46B7D5681E08481BBF561447 /* ParameterManager.cpp in Sources */,
+				3D1CB8F7E3DA4879B3BF7857 /* StateSerializer.cpp in Sources */,
+				C56C5188F88D497282119323 /* UIBridge.cpp in Sources */,
+				12FC002AE2454DDB92587F68 /* MessageHandlers.cpp in Sources */,
+				912694BA96B84E17A98BCA36 /* SynapticUI.cpp in Sources */,
+				EAE1707E00354142AE4AEC6A /* ProgressOverlayManager.cpp in Sources */,
+				D82E3CE027734AB093002D94 /* TabViews.cpp in Sources */,
+				3E392C13F2D641C0A8D9CF49 /* UIControls.cpp in Sources */,
+				36F621B1489B4E8D9C5B2048 /* DynamicParamManager.cpp in Sources */,
+				0ED62266FC9A4308B5637564 /* BrainFileListControl.cpp in Sources */,
+				60DB770EDC964A1795FD820C /* BrainFileDropControl.cpp in Sources */,
+				B5760741268C41E492D48936 /* BrainFileHelpers.cpp in Sources */,
+				6841C9A235C144899AE4DD29 /* ProgressOverlay.cpp in Sources */,
+				318C42982E7549AB80F847CA /* pffft.c in Sources */,
+				7E2BA650BBF94BBFA8A3B55D /* fftpack.c in Sources */,
+				65F3817474B446A1B728B7FD /* IGraphics.cpp in Sources */,
+				9B5ADF3534C84A16A7805324 /* IControl.cpp in Sources */,
+				9613CD679B7E471680E081C6 /* IControls.cpp in Sources */,
+				82E86C3AAFF84769BF9F18AB /* IGraphicsEditorDelegate.cpp in Sources */,
+				DA8B9521DD3042CAAB99E168 /* IGraphicsMac.mm in Sources */,
+				074F80468BB84787AA65B144 /* IGraphicsMac_view.mm in Sources */,
+				36A5F28F35EE463FA38B6B7A /* IGraphicsCoreText.mm in Sources */,
+				338F3CA6BAC644B4A7D50C85 /* IGraphicsNanoVG_src.m in Sources */,
 				4F1A528C205D916F00CF2908 /* IPlugAU.cpp in Sources */,
 				4FD52131202A5B9B00A4D22A /* IPlugAU_view_factory.mm in Sources */,
 				4F993F7423055C96000313AF /* IPlugProcessor.cpp in Sources */,
-				4FA0FB1B247D4D2B00E25C73 /* IPlugWebViewEditorDelegate.mm in Sources */,
-				4F3F6E472CCBDFF700C41C6D /* IPlugWebView_mac.mm in Sources */,
-				4FDAC0ED207D76C600299363 /* IPlugTimer.cpp in Sources */,
 				4F78D94513B63BA50032E0F3 /* IPlugAPIBase.cpp in Sources */,
 				4FD52136202A5BD000A4D22A /* dfx-au-utilities.c in Sources */,
 				4F5F344420C0226200487201 /* IPlugPaths.mm in Sources */,
@@ -1862,13 +2013,37 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0529950D06B84A3B80A24F31 /* ITextEntryControl.cpp in Sources */,
+				A9DFE980057847989DFF24B3 /* IPopupMenuControl.cpp in Sources */,
+				D7D05CCC40DF4510AF463BF7 /* Brain.cpp in Sources */,
+				44AC1EA3623F460B8ADE3D51 /* BrainManager.cpp in Sources */,
+				46B7D5681E08481BBF561447 /* ParameterManager.cpp in Sources */,
+				3D1CB8F7E3DA4879B3BF7857 /* StateSerializer.cpp in Sources */,
+				C56C5188F88D497282119323 /* UIBridge.cpp in Sources */,
+				12FC002AE2454DDB92587F68 /* MessageHandlers.cpp in Sources */,
+				912694BA96B84E17A98BCA36 /* SynapticUI.cpp in Sources */,
+				EAE1707E00354142AE4AEC6A /* ProgressOverlayManager.cpp in Sources */,
+				D82E3CE027734AB093002D94 /* TabViews.cpp in Sources */,
+				3E392C13F2D641C0A8D9CF49 /* UIControls.cpp in Sources */,
+				36F621B1489B4E8D9C5B2048 /* DynamicParamManager.cpp in Sources */,
+				0ED62266FC9A4308B5637564 /* BrainFileListControl.cpp in Sources */,
+				60DB770EDC964A1795FD820C /* BrainFileDropControl.cpp in Sources */,
+				B5760741268C41E492D48936 /* BrainFileHelpers.cpp in Sources */,
+				6841C9A235C144899AE4DD29 /* ProgressOverlay.cpp in Sources */,
+				318C42982E7549AB80F847CA /* pffft.c in Sources */,
+				7E2BA650BBF94BBFA8A3B55D /* fftpack.c in Sources */,
+				65F3817474B446A1B728B7FD /* IGraphics.cpp in Sources */,
+				9B5ADF3534C84A16A7805324 /* IControl.cpp in Sources */,
+				9613CD679B7E471680E081C6 /* IControls.cpp in Sources */,
+				82E86C3AAFF84769BF9F18AB /* IGraphicsEditorDelegate.cpp in Sources */,
+				DA8B9521DD3042CAAB99E168 /* IGraphicsMac.mm in Sources */,
+				074F80468BB84787AA65B144 /* IGraphicsMac_view.mm in Sources */,
+				36A5F28F35EE463FA38B6B7A /* IGraphicsCoreText.mm in Sources */,
+				505021DAFE1A4206B9CBFA89 /* IGraphicsNanoVG_src.m in Sources */,
 				4F3EE1C2231438D000004786 /* IPlugProcessor.cpp in Sources */,
 				4F3EE1C3231438D000004786 /* RtMidi.cpp in Sources */,
 				4F3EE1C7231438D000004786 /* swell-dlg.mm in Sources */,
-				4F3EE1C8231438D000004786 /* swell-ini.cpp in Sources */,
-				4F3F6E492CCBDFF700C41C6D /* IPlugWebView_mac.mm in Sources */,
-				4F3EE1C9231438D000004786 /* swellappmain.mm in Sources */,
-				4FA0FB20247D4D2C00E25C73 /* IPlugWebViewEditorDelegate.mm in Sources */,
+				4F3EE1C8231438D000004786 /* swell-ini.cpp in Sources */,				4F3EE1C9231438D000004786 /* swellappmain.mm in Sources */,
 				4F3EE1CA231438D000004786 /* swell-kb.mm in Sources */,
 				4F3EE1CC231438D000004786 /* IPlugPaths.mm in Sources */,
 				4F3EE1CD231438D000004786 /* swell-miscdlg.mm in Sources */,
@@ -1895,14 +2070,39 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4F3F6E4F2CCBDFF700C41C6D /* IPlugWebView_mac.mm in Sources */,
+				E275C28F20134D529C205557 /* ITextEntryControl.cpp in Sources */,
+				2AAA446FBCDA43479B4B7A23 /* IPopupMenuControl.cpp in Sources */,
+				D7D05CCC40DF4510AF463BF7 /* Brain.cpp in Sources */,
+				44AC1EA3623F460B8ADE3D51 /* BrainManager.cpp in Sources */,
+				46B7D5681E08481BBF561447 /* ParameterManager.cpp in Sources */,
+				3D1CB8F7E3DA4879B3BF7857 /* StateSerializer.cpp in Sources */,
+				C56C5188F88D497282119323 /* UIBridge.cpp in Sources */,
+				12FC002AE2454DDB92587F68 /* MessageHandlers.cpp in Sources */,
+				912694BA96B84E17A98BCA36 /* SynapticUI.cpp in Sources */,
+				EAE1707E00354142AE4AEC6A /* ProgressOverlayManager.cpp in Sources */,
+				D82E3CE027734AB093002D94 /* TabViews.cpp in Sources */,
+				3E392C13F2D641C0A8D9CF49 /* UIControls.cpp in Sources */,
+				36F621B1489B4E8D9C5B2048 /* DynamicParamManager.cpp in Sources */,
+				0ED62266FC9A4308B5637564 /* BrainFileListControl.cpp in Sources */,
+				60DB770EDC964A1795FD820C /* BrainFileDropControl.cpp in Sources */,
+				B5760741268C41E492D48936 /* BrainFileHelpers.cpp in Sources */,
+				6841C9A235C144899AE4DD29 /* ProgressOverlay.cpp in Sources */,
+				318C42982E7549AB80F847CA /* pffft.c in Sources */,
+				7E2BA650BBF94BBFA8A3B55D /* fftpack.c in Sources */,
+				65F3817474B446A1B728B7FD /* IGraphics.cpp in Sources */,
+				9B5ADF3534C84A16A7805324 /* IControl.cpp in Sources */,
+				9613CD679B7E471680E081C6 /* IControls.cpp in Sources */,
+				82E86C3AAFF84769BF9F18AB /* IGraphicsEditorDelegate.cpp in Sources */,
+				DA8B9521DD3042CAAB99E168 /* IGraphicsMac.mm in Sources */,
+				074F80468BB84787AA65B144 /* IGraphicsMac_view.mm in Sources */,
+				36A5F28F35EE463FA38B6B7A /* IGraphicsCoreText.mm in Sources */,
+				BAFACF745FCE4F5A9AC4CDE8 /* IGraphicsNanoVG_src.m in Sources */,
 				4F78BE1422E7406D00AD537E /* SynapticResynthesis.h in Sources */,
 				4F0D965C23099F6900BFDED0 /* IPlugProcessor.cpp in Sources */,
 				4F78BE1522E7406D00AD537E /* SynapticResynthesis.cpp in Sources */,
 				4F78BE2222E7406D00AD537E /* IPlugAUAudioUnit.mm in Sources */,
 				4F78BE2322E7406D00AD537E /* IPlugAUv3.mm in Sources */,
 				4F78BE2422E7406D00AD537E /* IPlugAUViewController.mm in Sources */,
-				4FA0FB1F247D4D2B00E25C73 /* IPlugWebViewEditorDelegate.mm in Sources */,
 				4F78BE2522E7406D00AD537E /* IPlugPluginBase.cpp in Sources */,
 				4F78BE2622E7406D00AD537E /* IPlugAPIBase.cpp in Sources */,
 				4F78BE2822E7406D00AD537E /* IPlugParameter.cpp in Sources */,
@@ -1915,6 +2115,33 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				63E1C3F079DF49C5A3A45234 /* ITextEntryControl.cpp in Sources */,
+				B1E29B141665417C9946C0A4 /* IPopupMenuControl.cpp in Sources */,
+				D7D05CCC40DF4510AF463BF7 /* Brain.cpp in Sources */,
+				44AC1EA3623F460B8ADE3D51 /* BrainManager.cpp in Sources */,
+				46B7D5681E08481BBF561447 /* ParameterManager.cpp in Sources */,
+				3D1CB8F7E3DA4879B3BF7857 /* StateSerializer.cpp in Sources */,
+				C56C5188F88D497282119323 /* UIBridge.cpp in Sources */,
+				12FC002AE2454DDB92587F68 /* MessageHandlers.cpp in Sources */,
+				912694BA96B84E17A98BCA36 /* SynapticUI.cpp in Sources */,
+				EAE1707E00354142AE4AEC6A /* ProgressOverlayManager.cpp in Sources */,
+				D82E3CE027734AB093002D94 /* TabViews.cpp in Sources */,
+				3E392C13F2D641C0A8D9CF49 /* UIControls.cpp in Sources */,
+				36F621B1489B4E8D9C5B2048 /* DynamicParamManager.cpp in Sources */,
+				0ED62266FC9A4308B5637564 /* BrainFileListControl.cpp in Sources */,
+				60DB770EDC964A1795FD820C /* BrainFileDropControl.cpp in Sources */,
+				B5760741268C41E492D48936 /* BrainFileHelpers.cpp in Sources */,
+				6841C9A235C144899AE4DD29 /* ProgressOverlay.cpp in Sources */,
+				318C42982E7549AB80F847CA /* pffft.c in Sources */,
+				7E2BA650BBF94BBFA8A3B55D /* fftpack.c in Sources */,
+				65F3817474B446A1B728B7FD /* IGraphics.cpp in Sources */,
+				9B5ADF3534C84A16A7805324 /* IControl.cpp in Sources */,
+				9613CD679B7E471680E081C6 /* IControls.cpp in Sources */,
+				82E86C3AAFF84769BF9F18AB /* IGraphicsEditorDelegate.cpp in Sources */,
+				DA8B9521DD3042CAAB99E168 /* IGraphicsMac.mm in Sources */,
+				074F80468BB84787AA65B144 /* IGraphicsMac_view.mm in Sources */,
+				36A5F28F35EE463FA38B6B7A /* IGraphicsCoreText.mm in Sources */,
+				7C62D3EA528B4C539813A712 /* IGraphicsNanoVG_src.m in Sources */,
 				4F81597C205D50EB00393585 /* baseiids.cpp in Sources */,
 				4FDAC0EC207D76C600299363 /* IPlugTimer.cpp in Sources */,
 				B8E22A0C220268C4007CBF4C /* IPlugVST3_ProcessorBase.cpp in Sources */,
@@ -1934,15 +2161,12 @@
 				4F81598E205D51F000393585 /* vstbus.cpp in Sources */,
 				4F35DEAF207E5C5A00867D8F /* IPlugPluginBase.cpp in Sources */,
 				4F81591E205D50EB00393585 /* macmain.cpp in Sources */,
-				4F993F7323055C96000313AF /* IPlugProcessor.cpp in Sources */,
-				4F3F6E532CCBDFF700C41C6D /* IPlugWebView_mac.mm in Sources */,
-				4F815986205D50EB00393585 /* flock.cpp in Sources */,
+				4F993F7323055C96000313AF /* IPlugProcessor.cpp in Sources */,				4F815986205D50EB00393585 /* flock.cpp in Sources */,
 				4F5F344320C0226200487201 /* IPlugPaths.mm in Sources */,
 				4F81598A205D50EB00393585 /* ustring.cpp in Sources */,
 				4F815980205D50EB00393585 /* fobject.cpp in Sources */,
 				4F815994205D51F000393585 /* vstparameters.cpp in Sources */,
 				4F815991205D51F000393585 /* vstcomponentbase.cpp in Sources */,
-				4FA0FB1A247D4D2B00E25C73 /* IPlugWebViewEditorDelegate.mm in Sources */,
 				4F815987205D50EB00393585 /* conststringtable.cpp in Sources */,
 				4F722020225C1EB100FF0E7C /* commoniids.cpp in Sources */,
 				4F81598D205D51F000393585 /* vstaudioeffect.cpp in Sources */,
@@ -1963,7 +2187,33 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4F3F6E4B2CCBDFF700C41C6D /* IPlugWebView_mac.mm in Sources */,
+				A5AB4A4F65AC4A62AB366353 /* ITextEntryControl.cpp in Sources */,
+				A9D4F3A698B44BD7AD8B8E37 /* IPopupMenuControl.cpp in Sources */,
+				D7D05CCC40DF4510AF463BF7 /* Brain.cpp in Sources */,
+				44AC1EA3623F460B8ADE3D51 /* BrainManager.cpp in Sources */,
+				46B7D5681E08481BBF561447 /* ParameterManager.cpp in Sources */,
+				3D1CB8F7E3DA4879B3BF7857 /* StateSerializer.cpp in Sources */,
+				C56C5188F88D497282119323 /* UIBridge.cpp in Sources */,
+				12FC002AE2454DDB92587F68 /* MessageHandlers.cpp in Sources */,
+				912694BA96B84E17A98BCA36 /* SynapticUI.cpp in Sources */,
+				EAE1707E00354142AE4AEC6A /* ProgressOverlayManager.cpp in Sources */,
+				D82E3CE027734AB093002D94 /* TabViews.cpp in Sources */,
+				3E392C13F2D641C0A8D9CF49 /* UIControls.cpp in Sources */,
+				36F621B1489B4E8D9C5B2048 /* DynamicParamManager.cpp in Sources */,
+				0ED62266FC9A4308B5637564 /* BrainFileListControl.cpp in Sources */,
+				60DB770EDC964A1795FD820C /* BrainFileDropControl.cpp in Sources */,
+				B5760741268C41E492D48936 /* BrainFileHelpers.cpp in Sources */,
+				6841C9A235C144899AE4DD29 /* ProgressOverlay.cpp in Sources */,
+				318C42982E7549AB80F847CA /* pffft.c in Sources */,
+				7E2BA650BBF94BBFA8A3B55D /* fftpack.c in Sources */,
+				65F3817474B446A1B728B7FD /* IGraphics.cpp in Sources */,
+				9B5ADF3534C84A16A7805324 /* IControl.cpp in Sources */,
+				9613CD679B7E471680E081C6 /* IControls.cpp in Sources */,
+				82E86C3AAFF84769BF9F18AB /* IGraphicsEditorDelegate.cpp in Sources */,
+				DA8B9521DD3042CAAB99E168 /* IGraphicsMac.mm in Sources */,
+				074F80468BB84787AA65B144 /* IGraphicsMac_view.mm in Sources */,
+				36A5F28F35EE463FA38B6B7A /* IGraphicsCoreText.mm in Sources */,
+				EBC0A878B4A646A69F713F64 /* IGraphicsNanoVG_src.m in Sources */,
 				4F993F7523055C97000313AF /* IPlugProcessor.cpp in Sources */,
 				4FDAC0EE207D76C600299363 /* IPlugTimer.cpp in Sources */,
 				4FB6001A1567CB0A0020189A /* IPlugAPIBase.cpp in Sources */,
@@ -1973,7 +2223,6 @@
 				4F0848292015129A00F9E881 /* IPlugAAX_Parameters.cpp in Sources */,
 				4F3862F32014BBEC0009F402 /* SynapticResynthesis.cpp in Sources */,
 				4FB600231567CB0A0020189A /* IPlugParameter.cpp in Sources */,
-				4FA0FB1C247D4D2B00E25C73 /* IPlugWebViewEditorDelegate.mm in Sources */,
 				4FB600261567CB0A0020189A /* AAX_Exports.cpp in Sources */,
 				4FB600281567CB0A0020189A /* IPlugAAX_Describe.cpp in Sources */,
 			);
@@ -1983,14 +2232,38 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				02EB6420F73F4441A931B2DC /* ITextEntryControl.cpp in Sources */,
+				6BDB47DFEA804EAB92411BEF /* IPopupMenuControl.cpp in Sources */,
+				D7D05CCC40DF4510AF463BF7 /* Brain.cpp in Sources */,
+				44AC1EA3623F460B8ADE3D51 /* BrainManager.cpp in Sources */,
+				46B7D5681E08481BBF561447 /* ParameterManager.cpp in Sources */,
+				3D1CB8F7E3DA4879B3BF7857 /* StateSerializer.cpp in Sources */,
+				C56C5188F88D497282119323 /* UIBridge.cpp in Sources */,
+				12FC002AE2454DDB92587F68 /* MessageHandlers.cpp in Sources */,
+				912694BA96B84E17A98BCA36 /* SynapticUI.cpp in Sources */,
+				EAE1707E00354142AE4AEC6A /* ProgressOverlayManager.cpp in Sources */,
+				D82E3CE027734AB093002D94 /* TabViews.cpp in Sources */,
+				3E392C13F2D641C0A8D9CF49 /* UIControls.cpp in Sources */,
+				36F621B1489B4E8D9C5B2048 /* DynamicParamManager.cpp in Sources */,
+				0ED62266FC9A4308B5637564 /* BrainFileListControl.cpp in Sources */,
+				60DB770EDC964A1795FD820C /* BrainFileDropControl.cpp in Sources */,
+				B5760741268C41E492D48936 /* BrainFileHelpers.cpp in Sources */,
+				6841C9A235C144899AE4DD29 /* ProgressOverlay.cpp in Sources */,
+				318C42982E7549AB80F847CA /* pffft.c in Sources */,
+				7E2BA650BBF94BBFA8A3B55D /* fftpack.c in Sources */,
+				65F3817474B446A1B728B7FD /* IGraphics.cpp in Sources */,
+				9B5ADF3534C84A16A7805324 /* IControl.cpp in Sources */,
+				9613CD679B7E471680E081C6 /* IControls.cpp in Sources */,
+				82E86C3AAFF84769BF9F18AB /* IGraphicsEditorDelegate.cpp in Sources */,
+				DA8B9521DD3042CAAB99E168 /* IGraphicsMac.mm in Sources */,
+				074F80468BB84787AA65B144 /* IGraphicsMac_view.mm in Sources */,
+				36A5F28F35EE463FA38B6B7A /* IGraphicsCoreText.mm in Sources */,
+				C5F3C6172E4540EBA3454937 /* IGraphicsNanoVG_src.m in Sources */,
 				B885CBC52304AE7300D73128 /* IPlugProcessor.cpp in Sources */,
 				4F10D3D9203A6719003EF82A /* RtMidi.cpp in Sources */,
 				4FD16D0513B634AA001D0217 /* swell-dlg.mm in Sources */,
-				4FD16D1613B634D2001D0217 /* swell-ini.cpp in Sources */,
-				4F3F6E512CCBDFF700C41C6D /* IPlugWebView_mac.mm in Sources */,
-				4F5C5F6921BED05B00E024A7 /* swellappmain.mm in Sources */,
+				4FD16D1613B634D2001D0217 /* swell-ini.cpp in Sources */,				4F5C5F6921BED05B00E024A7 /* swellappmain.mm in Sources */,
 				4FD16D3A13B63582001D0217 /* swell-kb.mm in Sources */,
-				4FA0FB18247D4D2B00E25C73 /* IPlugWebViewEditorDelegate.mm in Sources */,
 				4F5F344120C0226200487201 /* IPlugPaths.mm in Sources */,
 				4FD16D3C13B6358C001D0217 /* swell-miscdlg.mm in Sources */,
 				4FD16D3E13B63595001D0217 /* swell-menu.mm in Sources */,

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "MessageTags.h"
+
 namespace synaptic
 {
   /**

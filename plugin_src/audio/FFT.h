@@ -7,7 +7,7 @@
 #include "../Structs.h" // for synaptic::AudioChunk
 
 // PFFFT ordered API
-#include "../exdeps/pffft/pffft.h"
+#include "exdeps/pffft/pffft.h"
 
 
 namespace synaptic

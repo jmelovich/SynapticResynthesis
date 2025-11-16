@@ -10,7 +10,7 @@
  */
 
 #include "BrainFileHelpers.h"
-#include "../../SynapticResynthesis.h"
+#include "SynapticResynthesis.h"
 #include <algorithm>
 #include <cctype>
 #include <fstream>

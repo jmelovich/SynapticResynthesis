@@ -13,7 +13,7 @@
 
 #include "BrainFileListControl.h"
 #include "BrainFileHelpers.h"
-#include "../../SynapticResynthesis.h"
+#include "SynapticResynthesis.h"
 #include <algorithm>
 
 

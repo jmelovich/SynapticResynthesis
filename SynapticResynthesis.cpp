@@ -72,8 +72,10 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
   mDSPConfig.algorithmId = 0;
   mDSPConfig.enableOverlapAdd = true;
 
+#if SR_USE_WEB_UI
 #ifdef DEBUG
   SetEnableDevTools(true);
+  #endif
 #endif
 
 #if SR_USE_WEB_UI

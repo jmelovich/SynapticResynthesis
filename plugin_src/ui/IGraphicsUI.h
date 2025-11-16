@@ -13,6 +13,8 @@
 #pragma once
 
 #include "IPlug_include_in_plug_hdr.h"
+
+#if !SR_USE_WEB_UI && IPLUG_EDITOR
 #include "IControls.h"
 #include <memory>
 
@@ -32,7 +34,6 @@ namespace {
 
 inline void BuildIGraphicsLayout(iplug::igraphics::IGraphics* pGraphics)
 {
-#if IPLUG_EDITOR
   using namespace ui;
   if (!pGraphics) return;
 
@@ -41,25 +42,29 @@ inline void BuildIGraphicsLayout(iplug::igraphics::IGraphics* pGraphics)
   g_SynapticUI.reset();
   g_SynapticUI = std::make_unique<SynapticUI>(pGraphics);
   g_SynapticUI->build();
-#endif
 }
 
 inline ui::SynapticUI* GetSynapticUI()
 {
-#if IPLUG_EDITOR
   return g_SynapticUI.get();
-#else
-  return nullptr;
-#endif
 }
 
 inline void ResetSynapticUI()
 {
-#if IPLUG_EDITOR
   g_SynapticUI.reset();
-#endif
 }
 
 } // namespace synaptic
+
+#else // SR_USE_WEB_UI or !IPLUG_EDITOR
+
+namespace synaptic {
+// Stub implementations for WebView mode
+inline void BuildIGraphicsLayout(void*) {}
+inline void* GetSynapticUI() { return nullptr; }
+inline void ResetSynapticUI() {}
+} // namespace synaptic
+
+#endif // !SR_USE_WEB_UI && IPLUG_EDITOR
 
 
