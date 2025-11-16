@@ -172,6 +172,8 @@
 		B885CBC52304AE7300D73128 /* IPlugProcessor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4F8F61A8202807B9003F2573 /* IPlugProcessor.cpp */; };
 		B8E22A0C220268C4007CBF4C /* IPlugVST3_ProcessorBase.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B8E22A0A220268C4007CBF4C /* IPlugVST3_ProcessorBase.cpp */; };
 		D7D05CCC40DF4510AF463BF7 /* Brain.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D54763827AFC48D9AE378F00 /* Brain.cpp */; };
+		9BFFFFFFFFFFFFFFFFFFFFFF /* PlatformFileDialogs.mm in Sources */ = {isa = PBXBuildFile; fileRef = 9AFFFFFFFFFFFFFFFFFFFFFF /* PlatformFileDialogs.mm */; };
+		9AFFFFFFFFFFFFFFFFFFFFFF /* PlatformFileDialogs.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = PlatformFileDialogs.mm; path = ../plugin_src/PlatformFileDialogs.mm; sourceTree = "<group>"; };
 		44AC1EA3623F460B8ADE3D51 /* BrainManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1E38801753FF4B2394042979 /* BrainManager.cpp */; };
 		46B7D5681E08481BBF561447 /* ParameterManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 15B92FBE0AD34A898F1A4012 /* ParameterManager.cpp */; };
 		3D1CB8F7E3DA4879B3BF7857 /* StateSerializer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = C8DA539AFFC74AB180B33AC2 /* StateSerializer.cpp */; };
@@ -1921,6 +1923,7 @@
 				46B7D5681E08481BBF561447 /* ParameterManager.cpp in Sources */,
 				44AC1EA3623F460B8ADE3D51 /* BrainManager.cpp in Sources */,
 				D7D05CCC40DF4510AF463BF7 /* Brain.cpp in Sources */,
+				9BFFFFFFFFFFFFFFFFFFFFFF /* PlatformFileDialogs.mm in Sources */,
 				4FDAC0EB207D76C600299363 /* IPlugTimer.cpp in Sources */,
 				4F5F344220C0226200487201 /* IPlugPaths.mm in Sources */,
 				4F1A527B205D910000CF2908 /* IPlugVST2.cpp in Sources */,
@@ -1938,6 +1941,7 @@
 				4B3EDB374BEF4E678CE83845 /* ITextEntryControl.cpp in Sources */,
 				219D5FA31B2642369EA25356 /* IPopupMenuControl.cpp in Sources */,
 				D7D05CCC40DF4510AF463BF7 /* Brain.cpp in Sources */,
+				9BFFFFFFFFFFFFFFFFFFFFFF /* PlatformFileDialogs.mm in Sources */,
 				44AC1EA3623F460B8ADE3D51 /* BrainManager.cpp in Sources */,
 				46B7D5681E08481BBF561447 /* ParameterManager.cpp in Sources */,
 				3D1CB8F7E3DA4879B3BF7857 /* StateSerializer.cpp in Sources */,
@@ -1973,6 +1977,7 @@
 				AE8DCEFC470F480EB7D5C571 /* ITextEntryControl.cpp in Sources */,
 				143B1518077745ACA745C134 /* IPopupMenuControl.cpp in Sources */,
 				D7D05CCC40DF4510AF463BF7 /* Brain.cpp in Sources */,
+				9BFFFFFFFFFFFFFFFFFFFFFF /* PlatformFileDialogs.mm in Sources */,
 				44AC1EA3623F460B8ADE3D51 /* BrainManager.cpp in Sources */,
 				46B7D5681E08481BBF561447 /* ParameterManager.cpp in Sources */,
 				3D1CB8F7E3DA4879B3BF7857 /* StateSerializer.cpp in Sources */,
@@ -2016,6 +2021,7 @@
 				0529950D06B84A3B80A24F31 /* ITextEntryControl.cpp in Sources */,
 				A9DFE980057847989DFF24B3 /* IPopupMenuControl.cpp in Sources */,
 				D7D05CCC40DF4510AF463BF7 /* Brain.cpp in Sources */,
+				9BFFFFFFFFFFFFFFFFFFFFFF /* PlatformFileDialogs.mm in Sources */,
 				44AC1EA3623F460B8ADE3D51 /* BrainManager.cpp in Sources */,
 				46B7D5681E08481BBF561447 /* ParameterManager.cpp in Sources */,
 				3D1CB8F7E3DA4879B3BF7857 /* StateSerializer.cpp in Sources */,
@@ -2073,6 +2079,7 @@
 				E275C28F20134D529C205557 /* ITextEntryControl.cpp in Sources */,
 				2AAA446FBCDA43479B4B7A23 /* IPopupMenuControl.cpp in Sources */,
 				D7D05CCC40DF4510AF463BF7 /* Brain.cpp in Sources */,
+				9BFFFFFFFFFFFFFFFFFFFFFF /* PlatformFileDialogs.mm in Sources */,
 				44AC1EA3623F460B8ADE3D51 /* BrainManager.cpp in Sources */,
 				46B7D5681E08481BBF561447 /* ParameterManager.cpp in Sources */,
 				3D1CB8F7E3DA4879B3BF7857 /* StateSerializer.cpp in Sources */,
@@ -2118,6 +2125,7 @@
 				63E1C3F079DF49C5A3A45234 /* ITextEntryControl.cpp in Sources */,
 				B1E29B141665417C9946C0A4 /* IPopupMenuControl.cpp in Sources */,
 				D7D05CCC40DF4510AF463BF7 /* Brain.cpp in Sources */,
+				9BFFFFFFFFFFFFFFFFFFFFFF /* PlatformFileDialogs.mm in Sources */,
 				44AC1EA3623F460B8ADE3D51 /* BrainManager.cpp in Sources */,
 				46B7D5681E08481BBF561447 /* ParameterManager.cpp in Sources */,
 				3D1CB8F7E3DA4879B3BF7857 /* StateSerializer.cpp in Sources */,
@@ -2190,6 +2198,7 @@
 				A5AB4A4F65AC4A62AB366353 /* ITextEntryControl.cpp in Sources */,
 				A9D4F3A698B44BD7AD8B8E37 /* IPopupMenuControl.cpp in Sources */,
 				D7D05CCC40DF4510AF463BF7 /* Brain.cpp in Sources */,
+				9BFFFFFFFFFFFFFFFFFFFFFF /* PlatformFileDialogs.mm in Sources */,
 				44AC1EA3623F460B8ADE3D51 /* BrainManager.cpp in Sources */,
 				46B7D5681E08481BBF561447 /* ParameterManager.cpp in Sources */,
 				3D1CB8F7E3DA4879B3BF7857 /* StateSerializer.cpp in Sources */,
@@ -2235,6 +2244,7 @@
 				02EB6420F73F4441A931B2DC /* ITextEntryControl.cpp in Sources */,
 				6BDB47DFEA804EAB92411BEF /* IPopupMenuControl.cpp in Sources */,
 				D7D05CCC40DF4510AF463BF7 /* Brain.cpp in Sources */,
+				9BFFFFFFFFFFFFFFFFFFFFFF /* PlatformFileDialogs.mm in Sources */,
 				44AC1EA3623F460B8ADE3D51 /* BrainManager.cpp in Sources */,
 				46B7D5681E08481BBF561447 /* ParameterManager.cpp in Sources */,
 				3D1CB8F7E3DA4879B3BF7857 /* StateSerializer.cpp in Sources */,
