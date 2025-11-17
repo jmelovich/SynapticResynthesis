@@ -60,8 +60,8 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
 , mProgressOverlayMgr(nullptr) // C++ UI mode - no UIBridge needed
 #endif
 {
-  GetParam(kInGain)->InitGain("Input Gain", 0.0, -70, 0.);
-  GetParam(kOutGain)->InitGain("Output Gain", 0.0, -70, 0.);
+  GetParam(kInGain)->InitGain("Input Gain", 0.0, -70, 12.);
+  GetParam(kOutGain)->InitGain("Output Gain", 0.0, -70, 12.);
   GetParam(kAGC)->InitBool("AGC", false);
 
   // Initialize DSP config with defaults
