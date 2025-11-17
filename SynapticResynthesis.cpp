@@ -6,6 +6,7 @@
 #include "Extras/WebView/IPlugWebViewEditorDelegate.h"
 #else
 #include "plugin_src/ui/IGraphicsUI.h"
+#include "plugin_src/ui/controls/UIControls.h"
 #endif
 #include "plugin_src/transformers/TransformerFactory.h"
 #include "plugin_src/PlatformFileDialogs.h"
@@ -63,6 +64,7 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
   GetParam(kInGain)->InitGain("Input Gain", 0.0, -70, 12.);
   GetParam(kOutGain)->InitGain("Output Gain", 0.0, -70, 12.);
   GetParam(kAGC)->InitBool("AGC", false);
+  GetParam(kWindowLock)->InitBool("Window Lock", true); // Default to locked (synchronized)
 
   // Initialize DSP config with defaults
   mDSPConfig.chunkSize = 3000;
@@ -164,12 +166,33 @@ void SynapticResynthesis::DrainUiQueueOnMainThread()
       if (impAW > 0 && analysisWindowIdx >= 0)
       {
         const int idx = std::clamp(impAW - 1, 0, 3);
+
+        // Check if we need to unlock BEFORE setting the analysis window parameter
+        // (to prevent OnParamChange from syncing output window)
+        if (GetParam(kWindowLock)->Bool())
+        {
+          const int currentOutputWindowIdx = GetParam(kOutputWindow)->Int();
+
+          // If imported analysis window differs from current output window, unlock FIRST
+          if (idx != currentOutputWindowIdx)
+          {
+            // Unlock the windows since they're now different
+            GetParam(kWindowLock)->Set(0.0); // Set to unlocked directly
+            SetParameterFromUI(kWindowLock, 0.0); // Also notify UI
+            MarkHostStateDirty(); // Mark state as dirty so unlock gets saved
+          }
+        }
+
+        // Now set the analysis window parameter (won't trigger sync if we just unlocked)
         SetPendingUpdate(PendingUpdate::SuppressAnalysisReanalyze);
         SetParameterFromUI(analysisWindowIdx, (double) idx);
         mDSPConfig.analysisWindowMode = impAW;
       }
       // Update analysis window instance and Brain pointer, but suppress auto-reanalysis because data already analyzed in file
       UpdateBrainAnalysisWindow();
+
+      // Force UI controls to update immediately after import
+      SyncWindowControls();
 
       // Refresh windowing and latency to reflect new settings
       UpdateChunkerWindowing();
@@ -547,11 +570,35 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
   {
     mParamManager.HandleCoreParameterChange(paramIdx, GetParam(paramIdx), mDSPConfig);
     UpdateChunkerWindowing();
+
+    // If window lock is enabled, sync analysis window to match output window
+    if (GetParam(kWindowLock)->Bool())
+    {
+      const int outputWindowIdx = GetParam(kOutputWindow)->Int();
+      const int analysisWindowIdx = GetParam(kAnalysisWindow)->Int();
+
+      if (outputWindowIdx != analysisWindowIdx)
+      {
+        SyncAnalysisToOutputWindow();
+      }
+    }
   }
   // Handle analysis window (coordinated by ParameterManager, with background reanalysis)
   else if (paramIdx == mParamManager.GetAnalysisWindowParamIdx())
   {
     bool analysisWindowChanged = mParamManager.HandleAnalysisWindowChange(paramIdx, GetParam(paramIdx), mDSPConfig, mAnalysisWindow, mBrain);
+
+    // If window lock is enabled, sync output window to match analysis window
+    if (GetParam(kWindowLock)->Bool())
+    {
+      const int analysisWindowIdx = GetParam(kAnalysisWindow)->Int();
+      const int outputWindowIdx = GetParam(kOutputWindow)->Int();
+
+      if (analysisWindowIdx != outputWindowIdx)
+      {
+        SyncOutputToAnalysisWindow();
+      }
+    }
 
     // Only trigger reanalysis if window mode actually changed AND not suppressed
     if (analysisWindowChanged && !CheckAndClearPendingUpdate(PendingUpdate::SuppressAnalysisReanalyze))
@@ -565,22 +612,7 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
           SetPendingUpdate(PendingUpdate::MarkDirty);
         });
 #else
-      mProgressOverlayMgr.Show("Reanalyzing", "Starting...", 0.0f);
-      mBrainManager.ReanalyzeAllChunksAsync((int)GetSampleRate(),
-        [this](const std::string& fileName, int currentChunk, int totalChunks)
-        {
-          // Now reports per-chunk progress across all files
-          const float p = (totalChunks > 0) ? ((float)currentChunk / (float)totalChunks * 100.0f) : 50.0f;
-          char buf[256];
-          snprintf(buf, sizeof(buf), "%s (chunk %d/%d)", fileName.c_str(), currentChunk, totalChunks);
-          mProgressOverlayMgr.Update(buf, p);
-        },
-        [this]()
-        {
-          mProgressOverlayMgr.Hide();
-          SetPendingUpdate(PendingUpdate::BrainSummary);
-          SetPendingUpdate(PendingUpdate::MarkDirty);
-        });
+      TriggerBrainReanalysisAsync();
 #endif
     }
     SetPendingUpdate(PendingUpdate::DSPConfig);
@@ -625,6 +657,39 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
     SetPendingUpdate(PendingUpdate::RebuildMorph);
     #endif
 #endif
+  }
+  // Handle window lock toggle
+  else if (paramIdx == kWindowLock)
+  {
+    // When lock is toggled ON, sync the clicked control's window to match the other window
+    if (GetParam(kWindowLock)->Bool())
+    {
+      const int analysisWindowIdx = GetParam(kAnalysisWindow)->Int();
+      const int outputWindowIdx = GetParam(kOutputWindow)->Int();
+
+      if (analysisWindowIdx != outputWindowIdx)
+      {
+        // Determine which window control's lock was clicked
+        int clickedWindowParam = synaptic::ui::LockButtonControl::GetLastClickedWindowParam();
+
+        if (clickedWindowParam == kOutputWindow)
+        {
+          // Output window lock was clicked - sync output to analysis
+          SyncOutputToAnalysisWindow();
+        }
+        else if (clickedWindowParam == kAnalysisWindow)
+        {
+          // Analysis window lock was clicked - sync analysis to output
+          SyncAnalysisToOutputWindow();
+        }
+        else
+        {
+          // Fallback: sync output to analysis
+          SyncOutputToAnalysisWindow();
+        }
+      }
+    }
+    // When unlocked, no automatic syncing happens - windows can diverge
   }
   // Handle dynamic parameters using ParameterManager
   else
@@ -729,6 +794,85 @@ void SynapticResynthesis::SetParameterFromUI(int paramIdx, double value)
   BeginInformHostOfParamChangeFromUI(paramIdx);
   SendParameterValueFromUI(paramIdx, norm);
   EndInformHostOfParamChangeFromUI(paramIdx);
+}
+
+void SynapticResynthesis::SyncWindowControls()
+{
+#if !SR_USE_WEB_UI && IPLUG_EDITOR
+  if (!GetUI()) return;
+
+  // Find and sync all controls bound to window parameters
+  auto* graphics = GetUI();
+  int numControls = graphics->NControls();
+
+  for (int i = 0; i < numControls; ++i)
+  {
+    auto* ctrl = graphics->GetControl(i);
+    if (!ctrl) continue;
+
+    const int paramIdx = ctrl->GetParamIdx();
+    if (paramIdx == kOutputWindow || paramIdx == kAnalysisWindow || paramIdx == kWindowLock)
+    {
+      if (const IParam* pParam = GetParam(paramIdx))
+      {
+        ctrl->SetValueFromDelegate(pParam->GetNormalized());
+        ctrl->SetDirty(false);
+      }
+    }
+  }
+
+  // Also mark all controls as dirty to force redraw
+  graphics->SetAllControlsDirty();
+#endif
+}
+
+void SynapticResynthesis::TriggerBrainReanalysisAsync()
+{
+#if !SR_USE_WEB_UI
+  mProgressOverlayMgr.Show("Reanalyzing", "Starting...", 0.0f);
+  mBrainManager.ReanalyzeAllChunksAsync((int)GetSampleRate(),
+    [this](const std::string& fileName, int currentChunk, int totalChunks)
+    {
+      const float p = (totalChunks > 0) ? ((float)currentChunk / (float)totalChunks * 100.0f) : 50.0f;
+      char buf[256];
+      snprintf(buf, sizeof(buf), "%s (chunk %d/%d)", fileName.c_str(), currentChunk, totalChunks);
+      mProgressOverlayMgr.Update(buf, p);
+    },
+    [this]()
+    {
+      mProgressOverlayMgr.Hide();
+      SetPendingUpdate(PendingUpdate::BrainSummary);
+      SetPendingUpdate(PendingUpdate::MarkDirty);
+    });
+#endif
+}
+
+void SynapticResynthesis::SyncAnalysisToOutputWindow()
+{
+  const int outputWindowIdx = GetParam(kOutputWindow)->Int();
+
+  // Update analysis window to match output window
+  mDSPConfig.analysisWindowMode = 1 + std::clamp(outputWindowIdx, 0, 3);
+  UpdateBrainAnalysisWindow();
+  SetParameterFromUI(kAnalysisWindow, (double)outputWindowIdx);
+
+  // Trigger reanalysis and UI update
+  SetPendingUpdate(PendingUpdate::DSPConfig);
+  TriggerBrainReanalysisAsync();
+  SyncWindowControls();
+}
+
+void SynapticResynthesis::SyncOutputToAnalysisWindow()
+{
+  const int analysisWindowIdx = GetParam(kAnalysisWindow)->Int();
+
+  // Update output window to match analysis window
+  mDSPConfig.outputWindowMode = 1 + std::clamp(analysisWindowIdx, 0, 3);
+  UpdateChunkerWindowing();
+  SetParameterFromUI(kOutputWindow, (double)analysisWindowIdx);
+
+  // UI update only (no reanalysis needed for output window)
+  SyncWindowControls();
 }
 
 void SynapticResynthesis::UpdateBrainAnalysisWindow()

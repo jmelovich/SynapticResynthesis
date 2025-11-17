@@ -235,6 +235,8 @@ END
 #include "..\config.h"
 ROBOTO_FN TTF ROBOTO_FN
 FORK_AWESOME_FN TTF FORK_AWESOME_FN
+LOCK_LOCKED_FN PNG LOCK_LOCKED_FN
+LOCK_UNLOCKED_FN PNG LOCK_UNLOCKED_FN
 /////////////////////////////////////////////////////////////////////////////
 #endif    // not APSTUDIO_INVOKED
 

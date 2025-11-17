@@ -82,7 +82,7 @@ void BuildDSPTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, fl
 
   // AUTOTUNE CARD
   {
-    const float cardH = 210.f;
+    const float cardH = 190.f;
     const int col = nextCol();
     IRECT autotuneCard = columnRect(col, colY[col], cardH);
     auto* autotuneCardPanel = new CardPanel(autotuneCard, "AUTOTUNE");
@@ -176,12 +176,27 @@ void BuildDSPTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, fl
 
     float rowY = audioCard.T + layout.cardPadding + 28.f;
 
-    // Output Window
+    // Output Window with lock
     IRECT outputWindowRow = IRECT(audioCard.L + layout.cardPadding, rowY, audioCard.R - layout.cardPadding, rowY + layout.controlHeight);
-    ui.attach(new ITextControl(outputWindowRow.GetFromLeft(180.f), "Output Window", kLabelText), ControlGroup::DSP);
+    const float labelWidth = 180.f;
+    const float lockSize = 24.f;
+    const float lockGap = 8.f;
+
+    ui.attach(new ITextControl(outputWindowRow.GetFromLeft(labelWidth), "Output Window", kLabelText), ControlGroup::DSP);
+
+    // Tab switch centered in remaining space (ignore label for centering calculation)
     const float outputTabSwitchWidth = 200.f + 80.f;
+    const float availableWidth = outputWindowRow.W();
+    const float tabSwitchStartX = audioCard.L + layout.cardPadding + (availableWidth - outputTabSwitchWidth) * 0.5f;
+
+    IRECT tabSwitchRect = IRECT(
+      tabSwitchStartX,
+      rowY,
+      tabSwitchStartX + outputTabSwitchWidth,
+      rowY + layout.controlHeight
+    );
     ui.attach(new IVTabSwitchControl(
-      outputWindowRow.GetFromLeft(outputTabSwitchWidth).GetTranslated(180.f + 12.f, 0.f),
+      tabSwitchRect,
       kOutputWindow,
       {"Hann", "Hamming", "Blackman", "Rect"},
       "",
@@ -189,6 +204,15 @@ void BuildDSPTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, fl
       EVShape::Rectangle,
       EDirection::Horizontal
     ), ControlGroup::DSP);
+
+    // Lock button positioned to the left of tab switch
+    IRECT lockButtonRect = IRECT(
+      tabSwitchStartX - lockSize - lockGap,
+      rowY + (layout.controlHeight - lockSize) * 0.5f,
+      tabSwitchStartX - lockGap,
+      rowY + (layout.controlHeight - lockSize) * 0.5f + lockSize
+    );
+    ui.attach(new LockButtonControl(lockButtonRect, kWindowLock, kOutputWindow), ControlGroup::DSP);
 
     rowY += layout.controlHeight + 12.f;
 
@@ -318,7 +342,7 @@ void BuildBrainTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, 
 
   // BRAIN ANALYSIS CARD
   {
-    const float cardH = 165.f;
+    const float cardH = 175.f; // Increased by 10px for bottom padding
     const int col = nextCol();
     IRECT analysisCard = columnRect(col, colY[col], cardH);
     ui.attach(new CardPanel(analysisCard, "BRAIN ANALYSIS"), ControlGroup::Brain);
@@ -343,12 +367,26 @@ void BuildBrainTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, 
 
     rowY += layout.controlHeight + 10.f;
 
-    // Analysis Window
+    // Analysis Window with lock
     IRECT analysisWindowRow = IRECT(analysisCard.L + layout.cardPadding, rowY, analysisCard.R - layout.cardPadding, rowY + layout.controlHeight);
+    const float lockSize = 24.f;
+    const float lockGap = 8.f;
+
     ui.attach(new ITextControl(analysisWindowRow.GetFromLeft(labelWidth), "Analysis Window", kLabelText), ControlGroup::Brain);
+
+    // Tab switch centered in remaining space (ignore label for centering calculation)
     float tabSwitchWidth = controlWidth + 80.f;
+    const float availableWidth = analysisWindowRow.W();
+    const float tabSwitchStartX = analysisCard.L + layout.cardPadding + (availableWidth - tabSwitchWidth) * 0.5f;
+
+    IRECT tabSwitchRect = IRECT(
+      tabSwitchStartX,
+      rowY,
+      tabSwitchStartX + tabSwitchWidth,
+      rowY + layout.controlHeight
+    );
     ui.attach(new IVTabSwitchControl(
-      analysisWindowRow.GetFromLeft(tabSwitchWidth).GetTranslated(labelWidth + 12.f, 0.f),
+      tabSwitchRect,
       kAnalysisWindow,
       {"Hann", "Hamming", "Blackman", "Rect"},
       "",
@@ -356,6 +394,15 @@ void BuildBrainTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, 
       EVShape::Rectangle,
       EDirection::Horizontal
     ), ControlGroup::Brain);
+
+    // Lock button positioned to the left of tab switch
+    IRECT lockButtonRect = IRECT(
+      tabSwitchStartX - lockSize - lockGap,
+      rowY + (layout.controlHeight - lockSize) * 0.5f,
+      tabSwitchStartX - lockGap,
+      rowY + (layout.controlHeight - lockSize) * 0.5f + lockSize
+    );
+    ui.attach(new LockButtonControl(lockButtonRect, kWindowLock, kAnalysisWindow), ControlGroup::Brain);
 
     colY[col] = analysisCard.B + layout.sectionGap;
   }

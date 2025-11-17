@@ -12,6 +12,7 @@
 #include "UIControls.h"
 #include "../styles/UIStyles.h"
 #include "../IconsForkAwesome.h"
+#include "config.h"
 
 using namespace iplug;
 using namespace igraphics;
@@ -119,6 +120,118 @@ void BrainStatusControl::Draw(IGraphics& g)
   snprintf(statusText, sizeof(statusText), "Files: %d | Storage: %s", mFileCount, mStorageMode.c_str());
 
   g.DrawText(kSmallText, statusText, mRECT);
+}
+
+LockButtonControl::LockButtonControl(const IRECT& bounds, int paramIdx, int associatedWindowParamIdx)
+: IControl(bounds, paramIdx)
+, mAssociatedWindowParamIdx(associatedWindowParamIdx)
+{
+}
+
+// Static member initialization
+int LockButtonControl::sLastClickedWindowParam = -1;
+
+void LockButtonControl::OnInit()
+{
+  // Load bitmaps on initialization (when IGraphics is available)
+  mLockedBitmap = GetUI()->LoadBitmap(LOCK_LOCKED_FN, 1, false);
+  mUnlockedBitmap = GetUI()->LoadBitmap(LOCK_UNLOCKED_FN, 1, false);
+}
+
+void LockButtonControl::Draw(IGraphics& g)
+{
+  // Draw the appropriate bitmap based on parameter value
+  bool isLocked = GetValue() > 0.5;
+  const IBitmap& bitmap = isLocked ? mLockedBitmap : mUnlockedBitmap;
+
+  if (bitmap.IsValid())
+  {
+    g.DrawFittedBitmap(bitmap, mRECT);
+  }
+}
+
+void LockButtonControl::OnMouseDown(float x, float y, const IMouseMod& mod)
+{
+  // Store which window control's lock was clicked
+  sLastClickedWindowParam = mAssociatedWindowParamIdx;
+
+  // Toggle the parameter value
+  SetValue(GetValue() > 0.5 ? 0.0 : 1.0);
+  SetDirty(true);
+}
+
+WindowSelectorWithLock::WindowSelectorWithLock(const IRECT& bounds,
+                                               int windowParamIdx,
+                                               int lockParamIdx,
+                                               const char* label,
+                                               const std::vector<const char*>& options,
+                                               const IVStyle& style)
+: IContainerBase(bounds)
+, mTabSwitch(nullptr)
+, mLockButton(nullptr)
+, mWindowParamIdx(windowParamIdx)
+, mLockParamIdx(lockParamIdx)
+, mLabel(label)
+, mOptions(options)
+, mStyle(style)
+{
+  // Child controls will be created in OnAttached() when IGraphics is available
+}
+
+void WindowSelectorWithLock::OnAttached()
+{
+  // Now we have access to IGraphics, so we can create child controls
+  const float lockButtonSize = 24.f;
+  const float gap = 6.f;
+
+  // Lock button on the left, tab switch takes remaining space
+  IRECT lockButtonRect = IRECT(
+    mRECT.L,
+    mRECT.T + (mRECT.H() - lockButtonSize) * 0.5f,
+    mRECT.L + lockButtonSize,
+    mRECT.T + (mRECT.H() - lockButtonSize) * 0.5f + lockButtonSize
+  );
+
+  IRECT tabSwitchRect = mRECT;
+  tabSwitchRect.L += (lockButtonSize + gap);
+
+  // Create lock button first (on the left)
+  mLockButton = new LockButtonControl(lockButtonRect, mLockParamIdx, mWindowParamIdx);
+  AddChildControl(mLockButton);
+
+  // Create tab switch control for window selection
+  mTabSwitch = new IVTabSwitchControl(
+    tabSwitchRect,
+    mWindowParamIdx,
+    mOptions,
+    mLabel,
+    mStyle,
+    EVShape::Rectangle,
+    EDirection::Horizontal
+  );
+  AddChildControl(mTabSwitch);
+}
+
+void WindowSelectorWithLock::OnResize()
+{
+  // Recalculate layout if container is resized
+  const float lockButtonSize = 24.f;
+  const float gap = 6.f;
+
+  IRECT lockButtonRect = IRECT(
+    mRECT.L,
+    mRECT.T + (mRECT.H() - lockButtonSize) * 0.5f,
+    mRECT.L + lockButtonSize,
+    mRECT.T + (mRECT.H() - lockButtonSize) * 0.5f + lockButtonSize
+  );
+
+  IRECT tabSwitchRect = mRECT;
+  tabSwitchRect.L += (lockButtonSize + gap);
+
+  if (mLockButton)
+    mLockButton->SetTargetAndDrawRECTs(lockButtonRect);
+  if (mTabSwitch)
+    mTabSwitch->SetTargetAndDrawRECTs(tabSwitchRect);
 }
 
 } // namespace ui

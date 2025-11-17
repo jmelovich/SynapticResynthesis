@@ -72,6 +72,7 @@ enum EParams
   kAutotuneMode,
   kAutotuneToleranceOctaves,
   kMorphMode,
+  kWindowLock,
   // Dynamic transformer parameters are indexed after this sentinel
   kNumParams
 };
@@ -125,6 +126,10 @@ private:
   void SyncAndSendDSPConfig();
   void SetParameterFromUI(int paramIdx, double value);
   void UpdateBrainAnalysisWindow();
+  void SyncWindowControls(); // Sync window controls with their parameter values
+  void TriggerBrainReanalysisAsync(); // Start async brain reanalysis with progress overlay
+  void SyncAnalysisToOutputWindow(); // Sync analysis window to match output window
+  void SyncOutputToAnalysisWindow(); // Sync output window to match analysis window
 
   // UI state synchronization helpers (C++ UI only)
   void SyncBrainUIState();
