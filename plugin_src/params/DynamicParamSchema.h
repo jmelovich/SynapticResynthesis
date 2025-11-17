@@ -19,6 +19,7 @@ namespace synaptic
   {
     std::string id;           // unique, stable identifier
     std::string label;        // display name
+    std::string tooltip;      // tooltip description (optional)
     ParamType type = ParamType::Number;
     ControlType control = ControlType::NumberBox;
     // Numeric constraints (for Number)

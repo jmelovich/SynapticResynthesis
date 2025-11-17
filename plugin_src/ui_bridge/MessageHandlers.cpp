@@ -374,7 +374,7 @@ bool SynapticResynthesis::HandleBrainImportMsg()
   return true;
 }
 
-bool SynapticResynthesis::HandleBrainResetMsg()
+bool SynapticResynthesis::HandleBrainEjectMsg()
 {
   mBrainManager.Reset();
 #if SR_USE_WEB_UI
