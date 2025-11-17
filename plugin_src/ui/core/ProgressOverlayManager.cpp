@@ -11,13 +11,15 @@
 
 #ifdef _WIN32
   #include <windows.h>
+#elif defined(__APPLE__)
+  #include <CoreFoundation/CoreFoundation.h>
 #endif
 
 namespace synaptic {
 namespace ui {
 
 namespace {
-  // Helper function to pump Windows messages and ensure UI updates are painted
+  // Helper function to pump platform messages and ensure UI updates are painted
   // This is necessary for synchronous operations where we need UI feedback before blocking
   void PumpMessagesAndWaitForPaint()
   {
@@ -39,6 +41,16 @@ namespace {
       }
       // Final delay to ensure paint completes
       Sleep(50);
+    #elif defined(__APPLE__)
+      // On macOS, process events in the run loop to force UI updates
+      // Run the event loop multiple times to ensure paint completes
+      for (int i = 0; i < 3; i++)
+      {
+        // Process all pending events
+        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.05, true);
+      }
+      // Additional delay to ensure rendering completes
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
     #else
       // On other platforms, just yield briefly
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
