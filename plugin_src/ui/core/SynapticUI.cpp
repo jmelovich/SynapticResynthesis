@@ -61,7 +61,11 @@ void SynapticUI::build()
   mGraphics->EnableMouseOver(true);
   mGraphics->EnableTooltips(true);
   mGraphics->AttachTextEntryControl();
-  mGraphics->AttachPanelBackground(kBGDark);
+  
+  // Attach background panel and keep reference for resizing
+  mBackgroundPanel = new IPanelControl(bounds, kBGDark);
+  mGraphics->AttachControl(mBackgroundPanel);
+  mGraphics->GetControl(0)->SetDelegate(*mGraphics->GetDelegate()); // Ensure it's at the bottom
 
   float yPos = mLayout.padding;
 
@@ -124,10 +128,13 @@ void SynapticUI::rebuild()
   mTransformerCardPanel = nullptr;
   mMorphCardPanel = nullptr;
   mAudioProcessingCardPanel = nullptr;
+  mBackgroundPanel = nullptr;
   mGraphics->RemoveAllControls();
 
-  // Background
-  mGraphics->AttachPanelBackground(kBGDark);
+  // Attach background panel and keep reference for resizing
+  mBackgroundPanel = new IPanelControl(bounds, kBGDark);
+  mGraphics->AttachControl(mBackgroundPanel);
+  mGraphics->GetControl(0)->SetDelegate(*mGraphics->GetDelegate()); // Ensure it's at the bottom
 
   float yPos = mLayout.padding;
 
@@ -509,11 +516,17 @@ void SynapticUI::resizeWindowToFitContent()
     mGraphics->Resize(currentWidth, static_cast<int>(requiredHeight), currentScale, true);
   }
 
-  // Always update progress overlay bounds to ensure it covers the entire window
+  // Always update background panel and progress overlay bounds to ensure they cover the entire window
   // (regardless of whether we resized or not, in case previous resizes were missed)
+  const IRECT currentBounds = mGraphics->GetBounds();
+  
+  if (mBackgroundPanel)
+  {
+    mBackgroundPanel->SetTargetAndDrawRECTs(currentBounds);
+  }
+  
   if (mProgressOverlay)
   {
-    const IRECT currentBounds = mGraphics->GetBounds();
     mProgressOverlay->UpdateBounds(currentBounds);
   }
 #endif

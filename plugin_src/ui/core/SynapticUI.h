@@ -170,6 +170,9 @@ private:
   // Progress overlay
   class ProgressOverlay* mProgressOverlay { nullptr };
 
+  // Background panel (need reference to resize with window)
+  ig::IControl* mBackgroundPanel { nullptr };
+
   // Cached context for rebuilding dynamic params on resize
   RebuildContext mRebuildContext;
 };
