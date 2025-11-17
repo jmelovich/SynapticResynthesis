@@ -46,50 +46,6 @@ void BuildDSPTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, fl
     return best;
   };
 
-  // BRAIN ANALYSIS CARD
-  {
-    const float cardH = 165.f;
-    const int col = nextCol();
-    IRECT analysisCard = columnRect(col, colY[col], cardH);
-    ui.attach(new CardPanel(analysisCard, "BRAIN ANALYSIS"), ControlGroup::DSP);
-
-    IRECT warnRect = analysisCard.GetPadded(-layout.cardPadding).GetFromTop(34.f).GetTranslated(0.f, 28.f);
-    ui.attach(new WarningBox(warnRect, "Changing these settings triggers Brain reanalysis"), ControlGroup::DSP);
-
-    float rowY = warnRect.B + 14.f;
-    float labelWidth = 180.f;
-    float controlWidth = 200.f;
-
-    // Chunk Size - Using deferred control to prevent triggering rechunking during drag
-    IRECT chunkSizeRow = IRECT(analysisCard.L + layout.cardPadding, rowY, analysisCard.R - layout.cardPadding, rowY + layout.controlHeight);
-    ui.attach(new ITextControl(chunkSizeRow.GetFromLeft(labelWidth), "Chunk Size", kLabelText), ControlGroup::DSP);
-    ui.attach(new DeferredNumberBoxControl(
-      chunkSizeRow.GetFromLeft(controlWidth).GetTranslated(labelWidth + 8.f, 0.f),
-      kChunkSize,
-      nullptr,
-      "",
-      kSynapticStyle
-    ), ControlGroup::DSP);
-
-    rowY += layout.controlHeight + 10.f;
-
-    // Analysis Window
-    IRECT analysisWindowRow = IRECT(analysisCard.L + layout.cardPadding, rowY, analysisCard.R - layout.cardPadding, rowY + layout.controlHeight);
-    ui.attach(new ITextControl(analysisWindowRow.GetFromLeft(labelWidth), "Analysis Window", kLabelText), ControlGroup::DSP);
-    float tabSwitchWidth = controlWidth + 80.f;
-    ui.attach(new IVTabSwitchControl(
-      analysisWindowRow.GetFromLeft(tabSwitchWidth).GetTranslated(labelWidth + 12.f, 0.f),
-      kAnalysisWindow,
-      {"Hann", "Hamming", "Blackman", "Rect"},
-      "",
-      kSynapticStyle,
-      EVShape::Rectangle,
-      EDirection::Horizontal
-    ), ControlGroup::DSP);
-
-    colY[col] = analysisCard.B + layout.sectionGap;
-  }
-
   // TRANSFORMER CARD (with space for dynamic params)
   IRECT transformerCard;
   {
@@ -358,6 +314,50 @@ void BuildBrainTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, 
     ui.setCreateNewBrainButton(createButton); // Store reference for state updates
 
     colY[col] = libraryCard.B + layout.sectionGap;
+  }
+
+  // BRAIN ANALYSIS CARD
+  {
+    const float cardH = 165.f;
+    const int col = nextCol();
+    IRECT analysisCard = columnRect(col, colY[col], cardH);
+    ui.attach(new CardPanel(analysisCard, "BRAIN ANALYSIS"), ControlGroup::Brain);
+
+    IRECT warnRect = analysisCard.GetPadded(-layout.cardPadding).GetFromTop(34.f).GetTranslated(0.f, 28.f);
+    ui.attach(new WarningBox(warnRect, "Changing these settings triggers Brain reanalysis"), ControlGroup::Brain);
+
+    float rowY = warnRect.B + 14.f;
+    float labelWidth = 180.f;
+    float controlWidth = 200.f;
+
+    // Chunk Size - Using deferred control to prevent triggering rechunking during drag
+    IRECT chunkSizeRow = IRECT(analysisCard.L + layout.cardPadding, rowY, analysisCard.R - layout.cardPadding, rowY + layout.controlHeight);
+    ui.attach(new ITextControl(chunkSizeRow.GetFromLeft(labelWidth), "Chunk Size", kLabelText), ControlGroup::Brain);
+    ui.attach(new DeferredNumberBoxControl(
+      chunkSizeRow.GetFromLeft(controlWidth).GetTranslated(labelWidth + 8.f, 0.f),
+      kChunkSize,
+      nullptr,
+      "",
+      kSynapticStyle
+    ), ControlGroup::Brain);
+
+    rowY += layout.controlHeight + 10.f;
+
+    // Analysis Window
+    IRECT analysisWindowRow = IRECT(analysisCard.L + layout.cardPadding, rowY, analysisCard.R - layout.cardPadding, rowY + layout.controlHeight);
+    ui.attach(new ITextControl(analysisWindowRow.GetFromLeft(labelWidth), "Analysis Window", kLabelText), ControlGroup::Brain);
+    float tabSwitchWidth = controlWidth + 80.f;
+    ui.attach(new IVTabSwitchControl(
+      analysisWindowRow.GetFromLeft(tabSwitchWidth).GetTranslated(labelWidth + 12.f, 0.f),
+      kAnalysisWindow,
+      {"Hann", "Hamming", "Blackman", "Rect"},
+      "",
+      kSynapticStyle,
+      EVShape::Rectangle,
+      EDirection::Horizontal
+    ), ControlGroup::Brain);
+
+    colY[col] = analysisCard.B + layout.sectionGap;
   }
 
   // MANAGEMENT CARD
