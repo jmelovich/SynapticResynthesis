@@ -755,6 +755,15 @@ void SynapticResynthesis::SyncBrainUIState()
   // Update brain state (storage info, button visibility, control states)
   // Single source of truth: all UI state is derived from UseExternal()
   ui->updateBrainState(mBrainManager.UseExternal(), mBrainManager.ExternalPath());
+
+  // Update the UI toggle control to reflect the current setting
+  // Note: We don't change the flag here - we just sync the UI to match it
+  auto* compactToggle = ui->getCompactModeToggle();
+  if (compactToggle)
+  {
+    compactToggle->SetValue(synaptic::Brain::sUseCompactBrainFormat ? 1.0 : 0.0);
+    compactToggle->SetDirty(false); // Don't trigger change notification
+  }
 #endif
 }
 
@@ -794,6 +803,10 @@ int SynapticResynthesis::UnserializeState(const IByteChunk& chunk, int startPos)
 
   // Use StateSerializer to deserialize brain state
   pos = mStateSerializer.DeserializeBrainState(chunk, pos, mBrain, mBrainManager);
+
+  // When loading project state, sync the compact mode setting from the loaded brain
+  // This ensures the toggle matches what format was loaded
+  synaptic::Brain::sUseCompactBrainFormat = mBrain.WasLastLoadedInCompactFormat();
 
   // Re-link window pointer and notify UI
   mBrain.SetWindow(&mAnalysisWindow);

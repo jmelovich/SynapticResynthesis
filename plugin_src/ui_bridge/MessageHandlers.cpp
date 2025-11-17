@@ -363,6 +363,11 @@ bool SynapticResynthesis::HandleBrainImportMsg()
     {
       // Completion callback
       mProgressOverlayMgr.Hide();
+      
+      // When importing a brain, sync the compact mode setting from the imported brain
+      // This ensures the toggle matches what format was loaded
+      synaptic::Brain::sUseCompactBrainFormat = mBrain.WasLastLoadedInCompactFormat();
+      
       SetPendingUpdate(PendingUpdate::BrainSummary);
       SetPendingUpdate(PendingUpdate::MarkDirty);
     });
@@ -412,6 +417,18 @@ bool SynapticResynthesis::HandleBrainCreateNewMsg()
       SetPendingUpdate(PendingUpdate::DSPConfig);
       SetPendingUpdate(PendingUpdate::MarkDirty);
     });
+  return true;
+}
+
+bool SynapticResynthesis::HandleBrainSetCompactModeMsg(int enabled)
+{
+  // Update the static flag that controls brain serialization format
+  synaptic::Brain::sUseCompactBrainFormat = (enabled != 0);
+  
+  // Mark the brain as dirty so it will be resaved with the new format on next serialization
+  mBrainManager.SetDirty(true);
+  MarkHostStateDirty();
+  
   return true;
 }
 

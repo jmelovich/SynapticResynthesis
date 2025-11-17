@@ -362,7 +362,7 @@ void BuildBrainTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, 
 
   // MANAGEMENT CARD
   {
-    const float managementCardHeight = 160.f;
+    const float managementCardHeight = 220.f;
     const int col = nextCol();
     IRECT managementCard = columnRect(col, colY[col], managementCardHeight);
     ui.attach(new CardPanel(managementCard, "BRAIN MANAGEMENT"), ControlGroup::Brain);
@@ -403,6 +403,35 @@ void BuildBrainTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, 
         pDelegate->SendArbitraryMsgFromUI(kMsgTagBrainReset, kNoTag, 0, nullptr);
       }
     }, "Reset Brain", kButtonStyle), ControlGroup::Brain);
+
+    btnY += btnHeight + btnGapV + 4.f;
+
+    // Compact Mode toggle
+    const float toggleWidth = 200.f;
+    const float toggleHeight = 40.f;
+    const float toggleStartX = managementCard.L + (managementCard.W() - toggleWidth) / 2.f;
+    IRECT compactToggleRect = IRECT(toggleStartX, btnY, toggleStartX + toggleWidth, btnY + toggleHeight);
+    auto* compactToggle = new IVToggleControl(
+      compactToggleRect,
+      [](IControl* pCaller) {
+        auto* pToggle = dynamic_cast<IVToggleControl*>(pCaller);
+        if (pToggle) {
+          bool isCompact = pToggle->GetValue() > 0.5;
+          int value = isCompact ? 1 : 0;
+          auto* pGraphics = pCaller->GetUI();
+          auto* pDelegate = dynamic_cast<iplug::IEditorDelegate*>(pGraphics->GetDelegate());
+          if (pDelegate) {
+            pDelegate->SendArbitraryMsgFromUI(kMsgTagBrainSetCompactMode, value, 0, nullptr);
+          }
+        }
+      },
+      "Compact Mode",
+      kSynapticStyle,
+      "OFF",
+      "ON"
+    );
+    ui.attach(compactToggle, ControlGroup::Brain);
+    ui.setCompactModeToggle(compactToggle);
 
     colY[col] = managementCard.B + layout.sectionGap;
   }

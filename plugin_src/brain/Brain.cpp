@@ -15,8 +15,13 @@
 
 namespace synaptic
 {
+  // Initialize compact brain format flag (disabled by default for backwards compatibility)
+  bool Brain::sUseCompactBrainFormat = true;
+
   static constexpr uint32_t kSnapshotMagic = 0x53424252; // 'SBBR' Synaptic Brain BRain
   static constexpr uint16_t kSnapshotVersion = 3; // v3: added extended features
+  static constexpr uint16_t kSnapshotVersionCompact = 100; // v100: compact format (metadata + reconstructed audio only, stored as iplug::sample)
+  static constexpr uint16_t kSnapshotVersionCompactF32 = 101; // v101: compact format (metadata + reconstructed audio only, stored as float32)
 
   static void PutString(iplug::IByteChunk& chunk, const std::string& s)
   {
@@ -626,6 +631,110 @@ namespace synaptic
   {
     std::lock_guard<std::mutex> lock(mutex_);
     out.Put(&kSnapshotMagic);
+
+    // Check if we should use compact format
+    if (sUseCompactBrainFormat)
+    {
+      // Compact format: save only metadata + reconstructed original audio
+      // New writes use float32 for audio payload to reduce size; we keep v100 reader for backwards compatibility.
+      out.Put(&kSnapshotVersionCompactF32);
+      int32_t chunkSize = mChunkSize;
+      out.Put(&chunkSize);
+      int32_t winMode = mWindow ? Window::TypeToInt(mWindow->GetType()) : 1;
+      out.Put(&winMode);
+
+      // Save file count
+      int32_t nFiles = (int32_t)files_.size();
+      out.Put(&nFiles);
+
+      // For each file, reconstruct original audio and save it
+      for (const auto& f : files_)
+      {
+        // File metadata
+        int32_t fid = f.id;
+        out.Put(&fid);
+        PutString(out, f.displayName);
+
+        // Determine channel count from first valid chunk
+        int numChannels = 0;
+        for (int gi : f.chunkIndices)
+        {
+          if (gi >= 0 && gi < (int)chunks_.size())
+          {
+            const BrainChunk& bc = chunks_[gi];
+            if (!bc.audio.channelSamples.empty())
+            {
+              numChannels = (int)bc.audio.channelSamples.size();
+              break;
+            }
+          }
+        }
+
+        if (numChannels <= 0)
+        {
+          // Empty file - save zero channels and frames
+          int32_t zero = 0;
+          out.Put(&zero); // channels
+          out.Put(&zero); // frames
+          continue;
+        }
+
+        // Reconstruct original audio from overlapping chunks
+        const int hop = std::max(1, mChunkSize / 2);
+        const int lastValidFrames = std::max(0, mChunkSize - f.tailPaddingFrames);
+        const int totalLen = f.chunkIndices.empty() ? 0 :
+                             (int)((int)f.chunkIndices.size() - 1) * hop + lastValidFrames;
+
+        std::vector<std::vector<sample>> planar(numChannels, std::vector<sample>(std::max(0, totalLen), 0.0));
+
+        // Reconstruct via overlap-add (same logic as rechunking)
+        for (int ord = 0; ord < (int)f.chunkIndices.size(); ++ord)
+        {
+          const int gi = f.chunkIndices[ord];
+          if (gi < 0 || gi >= (int)chunks_.size()) continue;
+          const BrainChunk& bc = chunks_[gi];
+          const bool isLast = (bc.chunkIndexInFile == (f.chunkCount - 1));
+          const int valid = isLast ? lastValidFrames : mChunkSize;
+          const int start = ord * hop;
+          const int srcChans = (int)bc.audio.channelSamples.size();
+
+          for (int ch = 0; ch < numChannels; ++ch)
+          {
+            const auto& src = (ch < srcChans) ? bc.audio.channelSamples[ch] : std::vector<sample>();
+            auto& dst = planar[ch];
+            const int copyN = std::min(valid, (int)src.size());
+            const int maxWrite = std::min(copyN, (int)dst.size() - start);
+            if (maxWrite > 0)
+            {
+              std::memcpy(dst.data() + start, src.data(), sizeof(sample) * maxWrite);
+            }
+          }
+        }
+
+        // Save reconstructed audio
+        int32_t chans = numChannels;
+        out.Put(&chans);
+        int32_t frames = totalLen;
+        out.Put(&frames);
+
+        // Store audio as float32 to avoid 64-bit sample inflation in compact mode.
+        std::vector<float> tmp;
+        tmp.resize((size_t) frames);
+        for (int ch = 0; ch < numChannels; ++ch)
+        {
+          if (frames > 0)
+          {
+            for (int f = 0; f < frames; ++f)
+              tmp[f] = (float) planar[ch][f];
+            out.PutBytes(tmp.data(), (int)(sizeof(float) * frames));
+          }
+        }
+      }
+
+      return true;
+    }
+
+    // Standard format: save full chunked data with analysis
     out.Put(&kSnapshotVersion);
     int32_t chunkSize = mChunkSize;
     out.Put(&chunkSize);
@@ -709,7 +818,154 @@ namespace synaptic
     std::lock_guard<std::mutex> lock(mutex_);
     int pos = startPos;
     uint32_t magic = 0; pos = in.Get(&magic, pos); if (pos < 0 || magic != kSnapshotMagic) return -1;
-    uint16_t ver = 0; pos = in.Get(&ver, pos); if (pos < 0 || ver > kSnapshotVersion) return -1;
+    uint16_t ver = 0; pos = in.Get(&ver, pos); if (pos < 0) return -1;
+
+    // Check for compact formats (v100 = native sample type, v101 = float32)
+    if (ver == kSnapshotVersionCompact || ver == kSnapshotVersionCompactF32)
+    {
+      // Mark that we loaded a compact format brain
+      mLastLoadedWasCompact = true;
+
+      // Compact format: load metadata + reconstructed audio, then re-chunk
+      int32_t chunkSize = 0; pos = in.Get(&chunkSize, pos); if (pos < 0) return -1;
+      int32_t winMode = 1; pos = in.Get(&winMode, pos); if (pos < 0) return -1;
+      mSavedAnalysisWindowType = Window::IntToType(winMode);
+
+      // Load file count
+      int32_t nFiles = 0; pos = in.Get(&nFiles, pos); if (pos < 0 || nFiles < 0) return -1;
+
+      // Clear existing data
+      files_.clear();
+      idToFileIndex_.clear();
+      chunks_.clear();
+      mChunkSize = chunkSize;
+      nextFileId_ = 1;
+
+      // Load each file and re-chunk it
+      for (int i = 0; i < nFiles; ++i)
+      {
+        int32_t fid = 0;
+        pos = in.Get(&fid, pos); if (pos < 0) return -1;
+
+        std::string name;
+        if (!GetString(in, pos, name)) return -1;
+
+        int32_t chans = 0;
+        pos = in.Get(&chans, pos); if (pos < 0 || chans < 0) return -1;
+
+        int32_t frames = 0;
+        pos = in.Get(&frames, pos); if (pos < 0 || frames < 0) return -1;
+
+        if (chans == 0 || frames == 0)
+        {
+          // Empty file - skip
+          continue;
+        }
+
+        // Load reconstructed audio
+        std::vector<std::vector<iplug::sample>> planar(chans, std::vector<iplug::sample>(frames, 0.0));
+        if (ver == kSnapshotVersionCompact)
+        {
+          // v100: audio stored in native sample type (iplug::sample)
+          for (int ch = 0; ch < chans; ++ch)
+          {
+            if (frames > 0)
+            {
+              pos = in.GetBytes(planar[ch].data(), (int)(sizeof(iplug::sample) * frames), pos);
+              if (pos < 0) return -1;
+            }
+          }
+        }
+        else // v101: audio stored as float32
+        {
+          std::vector<float> tmp;
+          tmp.resize((size_t) frames);
+          for (int ch = 0; ch < chans; ++ch)
+          {
+            if (frames > 0)
+            {
+              pos = in.GetBytes(tmp.data(), (int)(sizeof(float) * frames), pos);
+              if (pos < 0) return -1;
+              for (int f = 0; f < frames; ++f)
+                planar[ch][f] = (iplug::sample) tmp[f];
+            }
+          }
+        }
+
+        // Re-chunk the audio (similar to AddAudioFileFromMemory but from PCM data)
+        const int totalFrames = frames;
+        const int expectedChunks = EstimateChunkCount(totalFrames, chunkSize);
+
+        BrainFile fileRec;
+        fileRec.id = fid;
+        fileRec.displayName = name;
+        fileRec.chunkIndices.reserve(expectedChunks);
+
+        int numChunks = expectedChunks;
+        for (int c = 0; c < numChunks; ++c)
+        {
+          const int start = c * chunkSize / 2;
+          const int framesInChunk = std::min(chunkSize, totalFrames - start);
+          if (framesInChunk <= 0) break;
+
+          BrainChunk chunk;
+          chunk.fileId = fid;
+          chunk.chunkIndexInFile = c;
+          chunk.audio.numFrames = chunkSize;
+          chunk.audio.channelSamples.assign(chans, std::vector<sample>(chunkSize, 0.0));
+
+          // Copy audio frames (zero-pad tail)
+          for (int ch = 0; ch < chans; ++ch)
+          {
+            for (int f = 0; f < framesInChunk; ++f)
+              chunk.audio.channelSamples[ch][f] = planar[ch][start + f];
+            for (int f = framesInChunk; f < chunkSize; ++f)
+              chunk.audio.channelSamples[ch][f] = 0.0f;
+          }
+
+          // Analyze metrics for this chunk over valid frames
+          // Note: mWindow should be set by caller before deserialization
+          if (mWindow)
+          {
+            // Use a sample rate of 44100 as default (will be re-analyzed if needed)
+            AnalyzeChunk(chunk, framesInChunk, 44100.0);
+          }
+
+          const int chunkGlobalIndex = (int)chunks_.size();
+          chunks_.push_back(std::move(chunk));
+          fileRec.chunkIndices.push_back(chunkGlobalIndex);
+        }
+
+        fileRec.chunkCount = (int)fileRec.chunkIndices.size();
+
+        // Compute tail padding for last chunk
+        const int totalFramesMod = totalFrames % chunkSize;
+        if (fileRec.chunkCount > 0)
+        {
+          fileRec.tailPaddingFrames = (totalFramesMod == 0) ? 0 : (chunkSize - totalFramesMod);
+        }
+        else
+        {
+          fileRec.tailPaddingFrames = 0;
+        }
+
+        idToFileIndex_[fid] = (int)files_.size();
+        files_.push_back(std::move(fileRec));
+
+        // Update nextFileId_ to prevent ID conflicts
+        if (fid >= nextFileId_)
+          nextFileId_ = fid + 1;
+      }
+
+      return pos;
+    }
+
+    // Standard format deserialization
+    if (ver > kSnapshotVersion) return -1;
+
+    // Mark that we loaded a standard format brain
+    mLastLoadedWasCompact = false;
+
     int32_t chunkSize = 0; pos = in.Get(&chunkSize, pos); if (pos < 0) return -1; mChunkSize = chunkSize;
 
     // Handle window type: v1 used string, v2 uses int

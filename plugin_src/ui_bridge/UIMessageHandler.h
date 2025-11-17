@@ -71,6 +71,9 @@ namespace synaptic
         case ::kMsgTagBrainCreateNew:
           return plugin->HandleBrainCreateNewMsg();
 
+        case ::kMsgTagBrainSetCompactMode:
+          return plugin->HandleBrainSetCompactModeMsg(ctrlTag);
+
         case ::kMsgTagResizeToFit:
           return plugin->HandleResizeToFitMsg(dataSize, pData);
 

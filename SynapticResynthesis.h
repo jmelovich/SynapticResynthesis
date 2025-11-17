@@ -115,6 +115,7 @@ private:
   bool HandleBrainResetMsg();
   bool HandleBrainDetachMsg();
   bool HandleBrainCreateNewMsg();
+  bool HandleBrainSetCompactModeMsg(int enabled);
   bool HandleResizeToFitMsg(int dataSize, const void* pData);
 
   // === Helper Methods ===

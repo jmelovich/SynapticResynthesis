@@ -99,6 +99,8 @@ public:
   void setBrainStatusControl(class BrainStatusControl* ctrl);
   void setBrainDropControl(class BrainFileDropControl* ctrl);
   void setCreateNewBrainButton(ig::IControl* ctrl);
+  void setCompactModeToggle(ig::IVToggleControl* ctrl);
+  ig::IVToggleControl* getCompactModeToggle() const { return mCompactModeToggle; }
   void updateBrainFileList(const std::vector<struct BrainFileEntry>& files);
   void updateBrainState(bool useExternal, const std::string& externalPath);
 
@@ -162,6 +164,7 @@ private:
   class BrainStatusControl* mBrainStatusControl { nullptr };
   class BrainFileDropControl* mBrainDropControl { nullptr };
   ig::IControl* mCreateNewBrainButton { nullptr };
+  ig::IVToggleControl* mCompactModeToggle { nullptr };
   bool mHasBrainLoaded { false }; // Tracks if brain is loaded (for Create New Brain button visibility)
 
   // Progress overlay

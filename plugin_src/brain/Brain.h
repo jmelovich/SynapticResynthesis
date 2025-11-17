@@ -53,6 +53,22 @@ namespace synaptic
   class Brain
   {
   public:
+    /**
+     * @brief Global flag to enable compact brain format
+     *
+     * When true, .sbrain files save only reconstructed original audio + metadata.
+     * This dramatically reduces file size (~100MB input = ~100MB output vs 800MB).
+     * On load, files are automatically re-chunked with saved settings.
+     *
+     * When false (default), saves full chunked data with all analysis (faster load, larger files).
+     *
+     * Usage:
+     *   Brain::sUseCompactBrainFormat = true;   // Enable compact mode
+     *   brain.SerializeSnapshotToChunk(chunk);  // Saves in compact format
+     *   brain.DeserializeSnapshotFromChunk(...);// Auto-detects and re-chunks
+     */
+    static bool sUseCompactBrainFormat;
+
     void Reset()
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -60,6 +76,7 @@ namespace synaptic
       files_.clear();
       idToFileIndex_.clear();
       chunks_.clear();
+      mLastLoadedWasCompact = false; // Reset format tracking
     }
 
     // Set the window to use for FFT analysis
@@ -114,6 +131,9 @@ namespace synaptic
     // Accessor for saved analysis window type as stored in snapshot
     Window::Type GetSavedAnalysisWindowType() const { return mSavedAnalysisWindowType; }
 
+    // Check if the last loaded brain was in compact format
+    bool WasLastLoadedInCompactFormat() const { return mLastLoadedWasCompact; }
+
   private:
     static float ComputeRMS(const std::vector<iplug::sample>& buffer, int offset, int count);
     static double ComputeZeroCrossingFreq(const std::vector<iplug::sample>& buffer, int offset, int count, double sampleRate);
@@ -130,6 +150,8 @@ namespace synaptic
     const class Window* mWindow = nullptr;
     // Saved in snapshot for import; defaults to Hann if unknown
     Window::Type mSavedAnalysisWindowType = Window::Type::Hann;
+    // Track if the last loaded brain was in compact format (for UI sync)
+    bool mLastLoadedWasCompact = false;
   };
 }
 

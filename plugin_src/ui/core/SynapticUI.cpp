@@ -556,6 +556,11 @@ void SynapticUI::setCreateNewBrainButton(IControl* ctrl)
   mCreateNewBrainButton = ctrl;
 }
 
+void SynapticUI::setCompactModeToggle(IVToggleControl* ctrl)
+{
+  mCompactModeToggle = ctrl;
+}
+
 void SynapticUI::updateBrainFileList(const std::vector<BrainFileEntry>& files)
 {
 #if IPLUG_EDITOR
