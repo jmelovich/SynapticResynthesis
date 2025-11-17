@@ -39,6 +39,15 @@ public:
   explicit ProgressOverlayManager(UIBridge* uiBridge = nullptr);
 
   /**
+   * @brief Set the SynapticUI pointer for immediate updates
+   * @param ui Pointer to SynapticUI (for C++ UI mode)
+   *
+   * Call this once after UI is created to enable immediate overlay updates
+   * for synchronous operations like project save.
+   */
+  void SetSynapticUI(SynapticUI* ui) { mSynapticUI = ui; }
+
+  /**
    * @brief Show progress overlay (thread-safe)
    * @param title Operation title
    * @param message Current progress message
@@ -66,8 +75,30 @@ public:
    */
   void ProcessPendingUpdates(SynapticUI* ui);
 
+  /**
+   * @brief Force immediate display of overlay (for synchronous operations)
+   * @param title Operation title
+   * @param message Current progress message
+   *
+   * Use this for synchronous blocking operations where the normal queued
+   * updates won't be processed until after the operation completes.
+   * Requires SetSynapticUI() to have been called for C++ UI mode.
+   *
+   * This function marks the UI dirty and yields briefly to allow the overlay
+   * to actually render before returning.
+   */
+  void ShowImmediate(const std::string& title, const std::string& message);
+
+  /**
+   * @brief Force immediate hiding of overlay (for synchronous operations)
+   *
+   * Requires SetSynapticUI() to have been called for C++ UI mode.
+   */
+  void HideImmediate();
+
 private:
   UIBridge* mUIBridge;
+  SynapticUI* mSynapticUI = nullptr;  // For immediate updates in C++ UI mode
 
   enum class UpdateType { None, Show, Update, Hide };
 

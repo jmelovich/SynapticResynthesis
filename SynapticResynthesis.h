@@ -175,5 +175,5 @@ private:
   int mPendingImportIdleTicks { 0 }; // countdown in idle ticks before starting batch
 
   // === Progress overlay management ===
-  synaptic::ui::ProgressOverlayManager mProgressOverlayMgr;
+  mutable synaptic::ui::ProgressOverlayManager mProgressOverlayMgr;
 };

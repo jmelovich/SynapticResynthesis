@@ -353,6 +353,15 @@ void SynapticResynthesis::OnUIOpen()
 {
   // Ensure UI gets current values when window opens
   Plugin::OnUIOpen();
+
+#if !SR_USE_WEB_UI && IPLUG_EDITOR
+  // Set the SynapticUI pointer in ProgressOverlayManager for immediate updates
+  // This enables progress overlays to be shown during synchronous operations like project save
+  if (auto* ui = synaptic::GetSynapticUI())
+  {
+    mProgressOverlayMgr.SetSynapticUI(ui);
+  }
+#endif
 #if SR_USE_WEB_UI
   mUIBridge.SendTransformerParams(mTransformer);
   mUIBridge.SendMorphParams(mMorph);
@@ -774,8 +783,8 @@ bool SynapticResynthesis::SerializeState(IByteChunk& chunk) const
 {
   if (!Plugin::SerializeState(chunk)) return false;
 
-  // Use StateSerializer to append brain state
-  return mStateSerializer.SerializeBrainState(chunk, mBrain, mBrainManager);
+  // Use StateSerializer to append brain state (with progress overlay for external file writes)
+  return mStateSerializer.SerializeBrainState(chunk, mBrain, mBrainManager, &mProgressOverlayMgr);
 }
 
 int SynapticResynthesis::UnserializeState(const IByteChunk& chunk, int startPos)

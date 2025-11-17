@@ -1,6 +1,7 @@
 #include "StateSerializer.h"
 #include "plugin_src/brain/BrainManager.h"
 #include "plugin_src/brain/Brain.h"
+#include "plugin_src/ui/core/ProgressOverlayManager.h"
 #include "IPlugPaths.h"
 #include <cstdio>
 #include <cstring>
@@ -12,7 +13,8 @@ namespace synaptic
   bool StateSerializer::sEnableInlineBrains = false;
   bool StateSerializer::SerializeBrainState(iplug::IByteChunk& chunk,
                                            const Brain& brain,
-                                           const BrainManager& brainMgr) const
+                                           const BrainManager& brainMgr,
+                                           ui::ProgressOverlayManager* progressMgr) const
   {
     // Append brain section with tag
     chunk.Put(&kBrainSectionTag);
@@ -35,6 +37,13 @@ namespace synaptic
       // If brain has changed, sync it to external file now to persist on project save
       if (brainMgr.IsDirty())
       {
+        // Show progress overlay immediately before the blocking save operation
+        // This ensures the overlay is visible during the file write
+        if (progressMgr)
+        {
+          progressMgr->ShowImmediate("Saving Brain", "Writing brain to external file...");
+        }
+
         iplug::IByteChunk blob;
         brain.SerializeSnapshotToChunk(blob);
 
@@ -44,6 +53,12 @@ namespace synaptic
           fwrite(blob.GetData(), 1, (size_t)blob.Size(), fp);
           fclose(fp);
           brainMgr.SetDirty(false);
+        }
+
+        // Hide progress overlay immediately after save completes
+        if (progressMgr)
+        {
+          progressMgr->HideImmediate();
         }
       }
     }
