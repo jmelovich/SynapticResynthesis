@@ -813,7 +813,7 @@ namespace synaptic
     return true;
   }
 
-  int Brain::DeserializeSnapshotFromChunk(const iplug::IByteChunk& in, int startPos)
+  int Brain::DeserializeSnapshotFromChunk(const iplug::IByteChunk& in, int startPos, ProgressFn onProgress)
   {
     std::lock_guard<std::mutex> lock(mutex_);
     int pos = startPos;
@@ -840,6 +840,36 @@ namespace synaptic
       chunks_.clear();
       mChunkSize = chunkSize;
       nextFileId_ = 1;
+
+      // Pre-scan to calculate total chunks for progress reporting
+      int totalEstimatedChunks = 0;
+      int scanPos = pos;
+      for (int i = 0; i < nFiles; ++i)
+      {
+        int32_t fid = 0;
+        scanPos = in.Get(&fid, scanPos); if (scanPos < 0) break;
+
+        std::string name;
+        int32_t len = 0;
+        scanPos = in.Get(&len, scanPos); if (scanPos < 0 || len < 0) break;
+        if (len > 0) scanPos += len; // skip name bytes
+
+        int32_t chans = 0;
+        scanPos = in.Get(&chans, scanPos); if (scanPos < 0 || chans < 0) break;
+
+        int32_t frames = 0;
+        scanPos = in.Get(&frames, scanPos); if (scanPos < 0 || frames < 0) break;
+
+        if (chans > 0 && frames > 0)
+        {
+          totalEstimatedChunks += EstimateChunkCount(frames, chunkSize);
+          // Skip audio data
+          size_t bytesToSkip = (size_t)chans * (size_t)frames * (ver == kSnapshotVersionCompact ? sizeof(iplug::sample) : sizeof(float));
+          scanPos += (int)bytesToSkip;
+        }
+      }
+
+      int currentChunk = 0;
 
       // Load each file and re-chunk it
       for (int i = 0; i < nFiles; ++i)
@@ -934,6 +964,11 @@ namespace synaptic
           const int chunkGlobalIndex = (int)chunks_.size();
           chunks_.push_back(std::move(chunk));
           fileRec.chunkIndices.push_back(chunkGlobalIndex);
+
+          // Report progress per chunk
+          ++currentChunk;
+          if (onProgress && totalEstimatedChunks > 0)
+            onProgress(name, currentChunk, totalEstimatedChunks);
         }
 
         fileRec.chunkCount = (int)fileRec.chunkIndices.size();

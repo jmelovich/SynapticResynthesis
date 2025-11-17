@@ -153,7 +153,7 @@ namespace synaptic
           // Deserialize brain
           iplug::IByteChunk in;
           in.PutBytes(data.data(), (int)data.size());
-          brain.DeserializeSnapshotFromChunk(in, 0);
+          brain.DeserializeSnapshotFromChunk(in, 0, nullptr);
         }
       }
     }
@@ -167,7 +167,7 @@ namespace synaptic
       // Check if inline brains are enabled
       if (sEnableInlineBrains && sz > 0)
       {
-        int consumed = brain.DeserializeSnapshotFromChunk(chunk, pos);
+        int consumed = brain.DeserializeSnapshotFromChunk(chunk, pos, nullptr);
         if (consumed >= 0)
           pos = consumed;
         else

@@ -310,9 +310,9 @@ namespace synaptic
         return;
       }
 
-      // File selected - update progress (1 of 2 = 50%)
+      // File selected - update progress (1 of 3 = ~33%)
       if (onProgress)
-        onProgress("Importing brain...", 1, 2);
+        onProgress("Reading brain file...", 1, 3);
 
       // Read file
       FILE* fp = fopen(openPath.c_str(), "rb");
@@ -331,10 +331,20 @@ namespace synaptic
       fread(data.data(), 1, (size_t)sz, fp);
       fclose(fp);
 
-      // Deserialize
+      // Show initial loading progress
+      if (onProgress)
+        onProgress("Loading brain data...", 2, 3);
+
+      // Deserialize with progress callback for compact brain rechunking/analysis
       iplug::IByteChunk in;
       in.PutBytes(data.data(), (int)data.size());
-      mBrain->DeserializeSnapshotFromChunk(in, 0);
+      mBrain->DeserializeSnapshotFromChunk(in, 0,
+        [onProgress](const std::string& fileName, int current, int total)
+        {
+          // For compact brains, this shows rechunking and analysis progress
+          if (onProgress)
+            onProgress("Rechunking & Analyzing: " + fileName, current, total);
+        });
       mBrain->SetWindow(mAnalysisWindow);
 
       mExternalBrainPath = openPath;

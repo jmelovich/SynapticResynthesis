@@ -126,7 +126,7 @@ namespace synaptic
 
     // Snapshot serialization (unified for project state and .sbrain files)
     bool SerializeSnapshotToChunk(iplug::IByteChunk& out) const;
-    int DeserializeSnapshotFromChunk(const iplug::IByteChunk& in, int startPos);
+    int DeserializeSnapshotFromChunk(const iplug::IByteChunk& in, int startPos, ProgressFn onProgress = nullptr);
 
     // Accessor for saved analysis window type as stored in snapshot
     Window::Type GetSavedAnalysisWindowType() const { return mSavedAnalysisWindowType; }
