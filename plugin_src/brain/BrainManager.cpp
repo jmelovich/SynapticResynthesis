@@ -62,7 +62,7 @@ namespace synaptic
         return true;
       }
 
-      case ::kMsgTagBrainReset:
+      case ::kMsgTagBrainEject:
       {
         Reset();
         return true;

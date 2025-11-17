@@ -62,8 +62,8 @@ namespace synaptic
         case ::kMsgTagBrainImport:
           return plugin->HandleBrainImportMsg();
 
-        case ::kMsgTagBrainReset:
-          return plugin->HandleBrainResetMsg();
+        case ::kMsgTagBrainEject:
+          return plugin->HandleBrainEjectMsg();
 
         case ::kMsgTagBrainDetach:
           return plugin->HandleBrainDetachMsg();

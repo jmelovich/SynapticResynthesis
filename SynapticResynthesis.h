@@ -113,7 +113,7 @@ private:
   bool HandleBrainRemoveFileMsg(int fileId);
   bool HandleBrainExportMsg();
   bool HandleBrainImportMsg();
-  bool HandleBrainResetMsg();
+  bool HandleBrainEjectMsg();
   bool HandleBrainDetachMsg();
   bool HandleBrainCreateNewMsg();
   bool HandleBrainSetCompactModeMsg(int enabled);

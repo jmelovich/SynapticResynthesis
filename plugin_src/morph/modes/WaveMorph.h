@@ -101,6 +101,7 @@ namespace synaptic
       ExposedParamDesc p1;
       p1.id = "waveMorphStart";
       p1.label = "Wave Start Freq";
+      p1.tooltip = "Normalized frequency (0-1) where wave morphing begins. Lower values start morphing from lower frequencies.";
       p1.type = ParamType::Number;
       p1.control = ControlType::Slider;
       p1.minValue = 0.0; p1.maxValue = 1.0; p1.step = 0.01; p1.defaultNumber = 0.03;
@@ -109,6 +110,7 @@ namespace synaptic
       ExposedParamDesc p2;
       p2.id = "waveHarmonics";
       p2.label = "Wave Harmonics";
+      p2.tooltip = "Number of harmonics to extract and re-synthesize. Higher values preserve more harmonic content but increase computation.";
       p2.type = ParamType::Number;
       p2.control = ControlType::NumberBox;
       p2.minValue = 2; p2.maxValue = 100; p2.step = 1; p2.defaultNumber = 20;
@@ -117,6 +119,7 @@ namespace synaptic
       ExposedParamDesc p3;
       p3.id = "morphAmount";
       p3.label = "Morph Amount";
+      p3.tooltip = "Blends magnitude spectrum between source and transformed chunks. 0 = source only, 1 = transformed only.";
       p3.type = ParamType::Number;
       p3.control = ControlType::Slider;
       p3.minValue = 0.0; p3.maxValue = 1.0; p3.step = 0.01; p3.defaultNumber = 1.0;
@@ -125,6 +128,7 @@ namespace synaptic
       ExposedParamDesc p4;
       p4.id = "phaseMorphAmount";
       p4.label = "Phase Morph Amount";
+      p4.tooltip = "Blends phase spectrum between source and transformed chunks. Affects timing and transient preservation.";
       p4.type = ParamType::Number;
       p4.control = ControlType::Slider;
       p4.minValue = 0.0; p4.maxValue = 1.0; p4.step = 0.01; p4.defaultNumber = 1.0;
@@ -133,6 +137,7 @@ namespace synaptic
       ExposedParamDesc p5;
       p5.id = "waveShape";
       p5.label = "Wave Shape";
+      p5.tooltip = "Waveform shape used for harmonic extraction and resynthesis. Square = odd harmonics, Sawtooth = all harmonics, Triangle = odd harmonics with rolloff.";
       p5.type = ParamType::Enum;
       p5.control = ControlType::Select;
       p5.options.push_back({"square", "Square"});
@@ -143,6 +148,7 @@ namespace synaptic
       ExposedParamDesc p6;
       p6.id = "morphDomain";
       p6.label = "Morph Domain";
+      p6.tooltip = "Choose morphing domain: Log (logarithmic magnitude) or Cepstral (cepstral coefficients). Cepstral allows finer control with Emphasis parameter.";
       p6.type = ParamType::Enum;
       p6.control = ControlType::Select;
       p6.options.push_back({"log", "Log"});
@@ -156,6 +162,7 @@ namespace synaptic
         ExposedParamDesc p7;
         p7.id = "emphasis";
         p7.label = "Emphasis";
+        p7.tooltip = "Emphasis factor for cepstral morphing. Higher values emphasize formant structure and timbral characteristics.";
         p7.type = ParamType::Number;
         p7.control = ControlType::Slider;
         p7.minValue = 0.0; p7.maxValue = 1.0; p7.step = 0.01; p7.defaultNumber = 0.0;
