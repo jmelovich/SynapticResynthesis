@@ -46,6 +46,20 @@ def main():
       print("copying " + img + " to " + dst)
       shutil.copy(projectpath + "/resources/img/" + img, dst)
 
+  # Copy imgs directory (with 's') including subdirectories
+  if os.path.exists(projectpath + "/resources/imgs/"):
+    for root, dirs, files in os.walk(projectpath + "/resources/imgs/"):
+      # Create relative path structure in destination
+      relpath = os.path.relpath(root, projectpath + "/resources/")
+      dstdir = os.path.join(dst, relpath)
+      if not os.path.exists(dstdir):
+        os.makedirs(dstdir, 0o0755)
+      for file in files:
+        srcfile = os.path.join(root, file)
+        dstfile = os.path.join(dstdir, file)
+        print("copying " + file + " to " + dstdir)
+        shutil.copy(srcfile, dstfile)
+
   if os.path.exists(projectpath + "/resources/fonts/"):
     fonts = os.listdir(projectpath + "/resources/fonts/")
     for font in fonts:
