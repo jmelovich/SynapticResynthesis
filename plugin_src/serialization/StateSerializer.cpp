@@ -35,7 +35,9 @@ namespace synaptic
       chunk.PutStr(brainMgr.ExternalPath().c_str());
 
       // If brain has changed, sync it to external file now to persist on project save
-      if (brainMgr.IsDirty())
+      // BUT: skip saving if a rechunk/reanalysis operation is in progress or pending
+      // because the brain's metadata might not match the actual analyzed data yet
+      if (brainMgr.IsDirty() && !brainMgr.IsOperationInProgress())
       {
         // Show progress overlay immediately before the blocking save operation
         // This ensures the overlay is visible during the file write
