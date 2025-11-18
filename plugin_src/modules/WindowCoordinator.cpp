@@ -46,10 +46,11 @@ void WindowCoordinator::UpdateChunkerWindowing(const DSPConfig& config, IChunkBu
   // Set up output window first
   mOutputWindow->Set(Window::IntToType(config.outputWindowMode), config.chunkSize);
 
-  // Configure overlap behavior based on user setting, window type, and transformer capabilities
-  const bool isRectangular = (config.outputWindowMode == 4); // Rectangular
+  // Configure overlap behavior based on user setting and transformer capabilities
+  // Note: Rectangular windows have mOverlap=0.0, so they'll use hopSize=chunkSize in the OLA path
+  // This still works correctly but uses the more efficient bulk processing code
   const bool transformerWantsOverlap = transformer ? transformer->WantsOverlapAdd() : true;
-  const bool shouldUseOverlap = config.enableOverlapAdd && !isRectangular && transformerWantsOverlap;
+  const bool shouldUseOverlap = config.enableOverlapAdd && transformerWantsOverlap;
 
   mChunker->EnableOverlap(shouldUseOverlap);
   mChunker->SetOutputWindow(*mOutputWindow);
