@@ -476,7 +476,7 @@ namespace synaptic
       if (chunkSizeChanged && ctx.brainManager && ctx.progressOverlayMgr)
       {
         ctx.progressOverlayMgr->Show("Rechunking", "Starting...", 0.0f, true);
-        
+
         // Capture context for async callback
         auto* plugin = ctx.plugin;
         auto* config = ctx.config;
@@ -560,12 +560,16 @@ namespace synaptic
     // Handle output window
     else if (paramIdx == mParamIdxOutputWindow)
     {
+      // Remember old window mode (if locked, both windows have the same mode)
+      const int oldWindowMode = ctx.config->outputWindowMode;
+
       HandleCoreParameterChange(paramIdx, ctx.plugin->GetParam(paramIdx), *ctx.config);
       if (ctx.windowCoordinator && ctx.currentTransformer)
         ctx.windowCoordinator->UpdateChunkerWindowing(*ctx.config, ctx.currentTransformer->get());
 
       // If window lock is enabled, sync analysis window to match output window
-      if (ctx.plugin->GetParam(::kWindowLock)->Bool())
+      const bool windowsAreLocked = ctx.plugin->GetParam(::kWindowLock)->Bool();
+      if (windowsAreLocked)
       {
         const int outputWindowIdx = ctx.plugin->GetParam(::kOutputWindow)->Int();
         const int analysisWindowIdx = ctx.plugin->GetParam(::kAnalysisWindow)->Int();
@@ -573,7 +577,57 @@ namespace synaptic
         if (outputWindowIdx != analysisWindowIdx)
         {
           if (ctx.windowCoordinator)
-            ctx.windowCoordinator->SyncAnalysisToOutputWindow(ctx.plugin, *ctx.config);
+          {
+            // Sync analysis to output WITHOUT triggering reanalysis yet
+            ctx.windowCoordinator->SyncAnalysisToOutputWindow(ctx.plugin, *ctx.config, false);
+
+            // Now trigger reanalysis with proper rollback handling for BOTH windows
+            auto* plugin = ctx.plugin;
+            auto* config = ctx.config;
+            auto* windowCoordinator = ctx.windowCoordinator;
+            auto* currentTransformer = ctx.currentTransformer;
+            auto setPendingUpdate = ctx.setPendingUpdate;
+
+            ctx.windowCoordinator->TriggerBrainReanalysisAsync(
+              (int)ctx.plugin->GetSampleRate(),
+              [this, plugin, config, windowCoordinator, currentTransformer, setPendingUpdate,
+               oldWindowMode, paramIdx](bool wasCancelled)
+              {
+                if (!wasCancelled)
+                {
+                  if (setPendingUpdate)
+                  {
+                    setPendingUpdate((uint32_t)PendingUpdate::BrainSummary);
+                    setPendingUpdate((uint32_t)PendingUpdate::MarkDirty);
+                  }
+                }
+                else
+                {
+                  // Rollback BOTH windows since they were locked together
+                  config->outputWindowMode = oldWindowMode;
+                  config->analysisWindowMode = oldWindowMode;
+
+                  if (windowCoordinator)
+                  {
+                    windowCoordinator->UpdateBrainAnalysisWindow(*config);
+                    if (currentTransformer)
+                      windowCoordinator->UpdateChunkerWindowing(*config, currentTransformer->get());
+                  }
+
+                  // Set suppress flag to prevent rollback from triggering new reanalysis
+                  setPendingUpdate((uint32_t)PendingUpdate::SuppressAnalysisReanalyze);
+
+                  // Rollback analysis window parameter FIRST (so output window sees them as matched)
+                  const int oldIdx = oldWindowMode - 1;
+                  RollbackParameter(plugin, ::kAnalysisWindow, (double)oldIdx, nullptr);
+
+                  // Then rollback output window parameter (now they're already synced, won't trigger another sync)
+                  RollbackParameter(plugin, paramIdx, (double)oldIdx, "Reanalysis (Output Window)");
+
+                  DBGMSG("Reanalysis CANCELLED - rolled back both locked windows to mode %d\n", oldWindowMode);
+                }
+              });
+          }
           if (ctx.setPendingUpdate)
             ctx.setPendingUpdate((uint32_t)PendingUpdate::DSPConfig);
         }
@@ -582,12 +636,16 @@ namespace synaptic
     // Handle analysis window (with background reanalysis)
     else if (paramIdx == mParamIdxAnalysisWindow)
     {
-      // Remember old window mode so we can roll back if user cancels reanalysis
+      // Remember old window mode (if locked, both windows have the same mode)
       const int oldWindowMode = ctx.config->analysisWindowMode;
 
       // Skip triggering reanalysis if operation is already in progress (e.g., during rollback)
       if (ctx.brainManager && ctx.brainManager->IsOperationInProgress())
       {
+        // Clear suppress flag even if we're not triggering operation
+        if (ctx.checkAndClearPendingUpdate)
+          ctx.checkAndClearPendingUpdate((uint32_t)PendingUpdate::SuppressAnalysisReanalyze);
+
         // Just sync config without triggering operation
         HandleCoreParameterChange(paramIdx, ctx.plugin->GetParam(paramIdx), *ctx.config);
         if (ctx.windowCoordinator)
@@ -599,7 +657,8 @@ namespace synaptic
                                                                *ctx.config, *ctx.analysisWindow, *ctx.brain);
 
       // If window lock is enabled, sync output window to match analysis window
-      if (ctx.plugin->GetParam(::kWindowLock)->Bool())
+      const bool windowsAreLocked = ctx.plugin->GetParam(::kWindowLock)->Bool();
+      if (windowsAreLocked)
       {
         const int analysisWindowIdx = ctx.plugin->GetParam(::kAnalysisWindow)->Int();
         const int outputWindowIdx = ctx.plugin->GetParam(::kOutputWindow)->Int();
@@ -625,11 +684,13 @@ namespace synaptic
           auto* plugin = ctx.plugin;
           auto* config = ctx.config;
           auto* windowCoordinator = ctx.windowCoordinator;
+          auto* currentTransformer = ctx.currentTransformer;
           auto setPendingUpdate = ctx.setPendingUpdate;
 
           ctx.windowCoordinator->TriggerBrainReanalysisAsync(
             (int)ctx.plugin->GetSampleRate(),
-            [plugin, config, windowCoordinator, setPendingUpdate, oldWindowMode, paramIdx](bool wasCancelled)
+            [this, plugin, config, windowCoordinator, currentTransformer, setPendingUpdate,
+             oldWindowMode, windowsAreLocked, paramIdx](bool wasCancelled)
             {
               if (!wasCancelled)
               {
@@ -643,12 +704,35 @@ namespace synaptic
               {
                 // Rollback DSP config and dependent state
                 config->analysisWindowMode = oldWindowMode;
-                if (windowCoordinator)
-                  windowCoordinator->UpdateBrainAnalysisWindow(*config);
 
-                // Rollback parameter and UI (convert mode 1-4 to enum index 0-3)
+                // If windows were locked, rollback BOTH windows (they should have same mode)
+                if (windowsAreLocked)
+                {
+                  config->outputWindowMode = oldWindowMode;
+                }
+
+                if (windowCoordinator)
+                {
+                  windowCoordinator->UpdateBrainAnalysisWindow(*config);
+                  if (currentTransformer)
+                    windowCoordinator->UpdateChunkerWindowing(*config, currentTransformer->get());
+                }
+
+                // Set suppress flag to prevent rollback from triggering new reanalysis
+                setPendingUpdate((uint32_t)PendingUpdate::SuppressAnalysisReanalyze);
+
+                // Rollback parameter(s) and UI (convert mode 1-4 to enum index 0-3)
                 const int oldIdx = oldWindowMode - 1;
-                RollbackParameter(plugin, paramIdx, (double)oldIdx, "Reanalysis");
+                RollbackParameter(plugin, paramIdx, (double)oldIdx, "Reanalysis (Analysis Window)");
+
+                // If windows were locked, also rollback output window
+                if (windowsAreLocked)
+                {
+                  RollbackParameter(plugin, ::kOutputWindow, (double)oldIdx, nullptr);
+                }
+
+                DBGMSG("Reanalysis CANCELLED - rolled back %s to mode %d\n",
+                       windowsAreLocked ? "both locked windows" : "analysis window", oldWindowMode);
               }
             });
         }
