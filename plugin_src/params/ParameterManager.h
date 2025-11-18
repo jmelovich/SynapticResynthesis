@@ -10,9 +10,20 @@
 #include "plugin_src/modules/DSPConfig.h"
 #include <vector>
 #include <string>
+#include <functional>
+#include <memory>
 
 namespace synaptic
 {
+  // Forward declarations
+  class AudioStreamChunker;
+  class Brain;
+  class Window;
+  class BrainManager;
+  class WindowCoordinator;
+  namespace ui {
+    class ProgressOverlayManager;
+  }
   /**
    * @brief Binding between IParam and transformer parameter
    */
@@ -23,6 +34,43 @@ namespace synaptic
     int paramIdx = -1;
     // For enums, map index<->string value
     std::vector<std::string> enumValues; // order corresponds to indices 0..N-1
+  };
+
+  /**
+   * @brief Context for parameter change coordination
+   * 
+   * Bundles all dependencies needed to handle parameter changes.
+   * Reduces parameter passing and makes the API cleaner.
+   */
+  struct ParameterChangeContext
+  {
+    // Core plugin reference
+    iplug::Plugin* plugin = nullptr;
+    
+    // Configuration
+    DSPConfig* config = nullptr;
+    
+    // DSP components
+    AudioStreamChunker* chunker = nullptr;
+    Brain* brain = nullptr;
+    Window* analysisWindow = nullptr;
+    
+    // Transformers/Morphs (use shared_ptr to keep alive during async operations)
+    std::shared_ptr<IChunkBufferTransformer>* currentTransformer = nullptr;
+    std::shared_ptr<IChunkBufferTransformer>* pendingTransformer = nullptr;
+    std::shared_ptr<IMorph>* currentMorph = nullptr;
+    std::shared_ptr<IMorph>* pendingMorph = nullptr;
+    
+    // Coordinators/Managers
+    WindowCoordinator* windowCoordinator = nullptr;
+    BrainManager* brainManager = nullptr;
+    ui::ProgressOverlayManager* progressOverlayMgr = nullptr;
+    
+    // Callbacks for plugin state management
+    std::function<void(uint32_t)> setPendingUpdate;  // Set pending update flags
+    std::function<bool(uint32_t)> checkAndClearPendingUpdate;  // Check and clear flags
+    std::function<int()> computeLatency;  // Compute current latency
+    std::function<void(int)> setLatency;  // Update plugin latency
   };
 
   /**
@@ -211,6 +259,45 @@ namespace synaptic
     int GetAutotuneModeParamIdx() const { return mParamIdxAutotuneMode; }
     int GetAutotuneToleranceOctavesParamIdx() const { return mParamIdxAutotuneToleranceOctaves; }
     int GetMorphModeParamIdx() const { return mParamIdxMorphMode; }
+
+    // === Phase 3: Centralized Parameter Coordination ===
+
+    /**
+     * @brief Handle ALL parameter changes with centralized coordination
+     * 
+     * This is the main entry point for parameter changes. It routes to specific
+     * handlers based on parameter type and coordinates all necessary side effects.
+     * 
+     * @param paramIdx Parameter index that changed
+     * @param ctx Context with all dependencies needed for coordination
+     */
+    void OnParamChange(int paramIdx, ParameterChangeContext& ctx);
+
+    // === Parameter Utility Methods ===
+
+    /**
+     * @brief Set parameter from UI and inform host
+     * @param plugin Plugin instance
+     * @param paramIdx Parameter index to update
+     * @param value New parameter value (unnormalized)
+     */
+    static void SetParameterFromUI(iplug::Plugin* plugin, int paramIdx, double value);
+
+    /**
+     * @brief Rollback parameter to old value after cancelled operation
+     * @param plugin Plugin instance
+     * @param paramIdx Parameter index to rollback
+     * @param oldValue Old parameter value to restore
+     * @param debugName Operation name for debug logging (can be nullptr)
+     */
+    static void RollbackParameter(iplug::Plugin* plugin, int paramIdx, double oldValue, const char* debugName);
+
+    /**
+     * @brief Sync UI control to match parameter value (C++ UI only)
+     * @param plugin Plugin instance
+     * @param paramIdx Parameter index to sync
+     */
+    static void SyncControlToParameter(iplug::Plugin* plugin, int paramIdx);
 
   private:
     // Transformer parameter bindings (union across all transformers)

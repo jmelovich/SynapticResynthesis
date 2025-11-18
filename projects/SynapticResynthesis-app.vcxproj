@@ -327,6 +327,7 @@
     <ClCompile Include="..\..\..\IPlug\IPlugProcessor.cpp" />
     <ClCompile Include="..\..\..\IPlug\IPlugTimer.cpp" />
     <ClCompile Include="..\plugin_src\brain\BrainManager.cpp" />
+    <ClCompile Include="..\plugin_src\modules\WindowCoordinator.cpp" />
     <ClCompile Include="..\plugin_src\ui_bridge\MessageHandlers.cpp" />
     <ClCompile Include="..\plugin_src\params\ParameterManager.cpp" />
     <ClCompile Include="..\plugin_src\serialization\StateSerializer.cpp" />

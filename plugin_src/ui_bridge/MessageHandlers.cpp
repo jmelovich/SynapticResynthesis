@@ -4,6 +4,7 @@
 #include "SynapticResynthesis.h"
 #include "json.hpp"
 #include "plugin_src/transformers/TransformerFactory.h"
+#include "plugin_src/modules/WindowCoordinator.h"
 
 // NOTE: Do NOT include "IPlug_include_in_plug_src.h" here - it defines global symbols
 // that should only be included in the main SynapticResynthesis.cpp file
@@ -32,7 +33,7 @@ bool SynapticResynthesis::HandleSetChunkSizeMsg(int newSize)
   const int paramIdx = mParamManager.GetChunkSizeParamIdx();
   if (paramIdx >= 0)
   {
-    SetParameterFromUI(paramIdx, (double)newSize);
+    synaptic::ParameterManager::SetParameterFromUI(this, paramIdx, (double)newSize);
   }
   return true;
 }
@@ -45,10 +46,10 @@ bool SynapticResynthesis::HandleSetOutputWindowMsg(int mode)
   if (paramIdx >= 0)
   {
     const int idx = mDSPConfig.outputWindowMode - 1;
-    SetParameterFromUI(paramIdx, (double)idx);
+    synaptic::ParameterManager::SetParameterFromUI(this, paramIdx, (double)idx);
   }
 
-  UpdateChunkerWindowing();
+  mWindowCoordinator.UpdateChunkerWindowing(mDSPConfig, mTransformer.get());
 
   // Update and send DSP config to UI
   SyncAndSendDSPConfig();
@@ -64,7 +65,7 @@ bool SynapticResynthesis::HandleSetAnalysisWindowMsg(int mode)
   if (paramIdx >= 0)
   {
     const int idx = mDSPConfig.analysisWindowMode - 1;
-    SetParameterFromUI(paramIdx, (double)idx);
+    synaptic::ParameterManager::SetParameterFromUI(this, paramIdx, (double)idx);
   }
   return true;
 }
@@ -76,7 +77,7 @@ bool SynapticResynthesis::HandleSetAlgorithmMsg(int algorithmId)
   const int paramIdx = mParamManager.GetAlgorithmParamIdx();
   if (paramIdx >= 0)
   {
-    SetParameterFromUI(paramIdx, (double)mDSPConfig.algorithmId);
+    synaptic::ParameterManager::SetParameterFromUI(this, paramIdx, (double)mDSPConfig.algorithmId);
   }
 
   // Create new transformer in pending slot for thread-safe swap
@@ -99,7 +100,7 @@ bool SynapticResynthesis::HandleSetAlgorithmMsg(int algorithmId)
   // Store for thread-safe swap in ProcessBlock
   mPendingTransformer = std::move(newTransformer);
 
-  UpdateChunkerWindowing();
+  mWindowCoordinator.UpdateChunkerWindowing(mDSPConfig, mPendingTransformer.get());
 
   // Send transformer params and DSP config to UI (use pending transformer since swap hasn't happened yet)
 #if SR_USE_WEB_UI
@@ -182,7 +183,7 @@ bool SynapticResynthesis::HandleTransformerSetParamMsg(const void* jsonData, int
           }
           normalized = GetParam(it->paramIdx)->ToNormalized((double)idx);
         }
-        SetParameterFromUI(it->paramIdx, GetParam(it->paramIdx)->FromNormalized(normalized));
+        synaptic::ParameterManager::SetParameterFromUI(this, it->paramIdx, GetParam(it->paramIdx)->FromNormalized(normalized));
       }
       mUIBridge.SendTransformerParams(mTransformer);
       mUIBridge.SendMorphParams(mMorph);

@@ -15,6 +15,7 @@
 #include "plugin_src/audio/Window.h"
 #include "plugin_src/morph/IMorph.h"
 #include "plugin_src/modules/DSPConfig.h"
+#include "plugin_src/modules/WindowCoordinator.h"
 #include "plugin_src/ui_bridge/UIBridge.h"
 #include "plugin_src/params/ParameterManager.h"
 #include "plugin_src/brain/BrainManager.h"
@@ -121,22 +122,13 @@ private:
   bool HandleResizeToFitMsg(int dataSize, const void* pData);
 
   // === Helper Methods ===
-  void UpdateChunkerWindowing();
   void MarkHostStateDirty();
   void DrainUiQueueOnMainThread();
   void SyncAndSendDSPConfig();
-  void SetParameterFromUI(int paramIdx, double value);
-  void UpdateBrainAnalysisWindow();
-  void SyncWindowControls(); // Sync window controls with their parameter values
-  void SyncControlToParameter(int paramIdx); // Sync a specific control with its parameter value
-  void TriggerBrainReanalysisAsync(); // Start async brain reanalysis with progress overlay
-  void SyncAnalysisToOutputWindow(); // Sync analysis window to match output window
-  void SyncOutputToAnalysisWindow(); // Sync output window to match analysis window
 
-  // Cancellation support helpers
+  // Progress callback helper (for direct BrainManager calls)
   synaptic::BrainManager::ProgressFn MakeProgressCallback();
   synaptic::BrainManager::CompletionFn MakeStandardCompletionCallback();
-  void RollbackParameter(int paramIdx, double oldValue, const char* debugName);
 
   // UI state synchronization helpers (C++ UI only)
   void SyncBrainUIState();
@@ -151,6 +143,7 @@ private:
   synaptic::UIBridge mUIBridge;
   synaptic::ParameterManager mParamManager;
   synaptic::BrainManager mBrainManager;
+  synaptic::WindowCoordinator mWindowCoordinator;
   synaptic::StateSerializer mStateSerializer;
 
   // === DSP Components ===

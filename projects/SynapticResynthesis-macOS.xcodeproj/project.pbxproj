@@ -175,6 +175,7 @@
 		9BFFFFFFFFFFFFFFFFFFFFFF /* PlatformFileDialogs.mm in Sources */ = {isa = PBXBuildFile; fileRef = 9AFFFFFFFFFFFFFFFFFFFFFF /* PlatformFileDialogs.mm */; };
 		9AFFFFFFFFFFFFFFFFFFFFFF /* PlatformFileDialogs.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = PlatformFileDialogs.mm; path = ../plugin_src/PlatformFileDialogs.mm; sourceTree = "<group>"; };
 		44AC1EA3623F460B8ADE3D51 /* BrainManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1E38801753FF4B2394042979 /* BrainManager.cpp */; };
+		WCFFFFFFFFFFFFFFFFFFFFFF /* WindowCoordinator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = WCRFFFFFFFFFFFFFFFFFFFFF /* WindowCoordinator.cpp */; };
 		46B7D5681E08481BBF561447 /* ParameterManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 15B92FBE0AD34A898F1A4012 /* ParameterManager.cpp */; };
 		3D1CB8F7E3DA4879B3BF7857 /* StateSerializer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = C8DA539AFFC74AB180B33AC2 /* StateSerializer.cpp */; };
 		C56C5188F88D497282119323 /* UIBridge.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3DD5625F0A3347EAA8A0A17E /* UIBridge.cpp */; };
@@ -634,6 +635,7 @@
 		B8EA6B932203868500D23A86 /* IPlugVST3_Common.h */ = {isa = PBXFileReference; indentWidth = 2; lastKnownFileType = sourcecode.c.h; name = IPlugVST3_Common.h; path = ../../../IPlug/VST3/IPlugVST3_Common.h; sourceTree = "<group>"; tabWidth = 2; };
 		D54763827AFC48D9AE378F00 /* Brain.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Brain.cpp; path = ../plugin_src/brain/Brain.cpp; sourceTree = "<group>"; };
 		1E38801753FF4B2394042979 /* BrainManager.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = BrainManager.cpp; path = ../plugin_src/brain/BrainManager.cpp; sourceTree = "<group>"; };
+		WCRFFFFFFFFFFFFFFFFFFFFF /* WindowCoordinator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = WindowCoordinator.cpp; path = ../plugin_src/modules/WindowCoordinator.cpp; sourceTree = "<group>"; };
 		15B92FBE0AD34A898F1A4012 /* ParameterManager.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = ParameterManager.cpp; path = ../plugin_src/params/ParameterManager.cpp; sourceTree = "<group>"; };
 		C8DA539AFFC74AB180B33AC2 /* StateSerializer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = StateSerializer.cpp; path = ../plugin_src/serialization/StateSerializer.cpp; sourceTree = "<group>"; };
 		3DD5625F0A3347EAA8A0A17E /* UIBridge.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = UIBridge.cpp; path = ../plugin_src/ui_bridge/UIBridge.cpp; sourceTree = "<group>"; };
@@ -1943,6 +1945,7 @@
 				D7D05CCC40DF4510AF463BF7 /* Brain.cpp in Sources */,
 				9BFFFFFFFFFFFFFFFFFFFFFF /* PlatformFileDialogs.mm in Sources */,
 				44AC1EA3623F460B8ADE3D51 /* BrainManager.cpp in Sources */,
+				WCFFFFFFFFFFFFFFFFFFFFFF /* WindowCoordinator.cpp in Sources */,
 				46B7D5681E08481BBF561447 /* ParameterManager.cpp in Sources */,
 				3D1CB8F7E3DA4879B3BF7857 /* StateSerializer.cpp in Sources */,
 				C56C5188F88D497282119323 /* UIBridge.cpp in Sources */,
@@ -1979,6 +1982,7 @@
 				D7D05CCC40DF4510AF463BF7 /* Brain.cpp in Sources */,
 				9BFFFFFFFFFFFFFFFFFFFFFF /* PlatformFileDialogs.mm in Sources */,
 				44AC1EA3623F460B8ADE3D51 /* BrainManager.cpp in Sources */,
+				WCFFFFFFFFFFFFFFFFFFFFFF /* WindowCoordinator.cpp in Sources */,
 				46B7D5681E08481BBF561447 /* ParameterManager.cpp in Sources */,
 				3D1CB8F7E3DA4879B3BF7857 /* StateSerializer.cpp in Sources */,
 				C56C5188F88D497282119323 /* UIBridge.cpp in Sources */,
@@ -2023,6 +2027,7 @@
 				D7D05CCC40DF4510AF463BF7 /* Brain.cpp in Sources */,
 				9BFFFFFFFFFFFFFFFFFFFFFF /* PlatformFileDialogs.mm in Sources */,
 				44AC1EA3623F460B8ADE3D51 /* BrainManager.cpp in Sources */,
+				WCFFFFFFFFFFFFFFFFFFFFFF /* WindowCoordinator.cpp in Sources */,
 				46B7D5681E08481BBF561447 /* ParameterManager.cpp in Sources */,
 				3D1CB8F7E3DA4879B3BF7857 /* StateSerializer.cpp in Sources */,
 				C56C5188F88D497282119323 /* UIBridge.cpp in Sources */,
@@ -2081,6 +2086,7 @@
 				D7D05CCC40DF4510AF463BF7 /* Brain.cpp in Sources */,
 				9BFFFFFFFFFFFFFFFFFFFFFF /* PlatformFileDialogs.mm in Sources */,
 				44AC1EA3623F460B8ADE3D51 /* BrainManager.cpp in Sources */,
+				WCFFFFFFFFFFFFFFFFFFFFFF /* WindowCoordinator.cpp in Sources */,
 				46B7D5681E08481BBF561447 /* ParameterManager.cpp in Sources */,
 				3D1CB8F7E3DA4879B3BF7857 /* StateSerializer.cpp in Sources */,
 				C56C5188F88D497282119323 /* UIBridge.cpp in Sources */,
@@ -2127,6 +2133,7 @@
 				D7D05CCC40DF4510AF463BF7 /* Brain.cpp in Sources */,
 				9BFFFFFFFFFFFFFFFFFFFFFF /* PlatformFileDialogs.mm in Sources */,
 				44AC1EA3623F460B8ADE3D51 /* BrainManager.cpp in Sources */,
+				WCFFFFFFFFFFFFFFFFFFFFFF /* WindowCoordinator.cpp in Sources */,
 				46B7D5681E08481BBF561447 /* ParameterManager.cpp in Sources */,
 				3D1CB8F7E3DA4879B3BF7857 /* StateSerializer.cpp in Sources */,
 				C56C5188F88D497282119323 /* UIBridge.cpp in Sources */,
@@ -2200,6 +2207,7 @@
 				D7D05CCC40DF4510AF463BF7 /* Brain.cpp in Sources */,
 				9BFFFFFFFFFFFFFFFFFFFFFF /* PlatformFileDialogs.mm in Sources */,
 				44AC1EA3623F460B8ADE3D51 /* BrainManager.cpp in Sources */,
+				WCFFFFFFFFFFFFFFFFFFFFFF /* WindowCoordinator.cpp in Sources */,
 				46B7D5681E08481BBF561447 /* ParameterManager.cpp in Sources */,
 				3D1CB8F7E3DA4879B3BF7857 /* StateSerializer.cpp in Sources */,
 				C56C5188F88D497282119323 /* UIBridge.cpp in Sources */,
@@ -2246,6 +2254,7 @@
 				D7D05CCC40DF4510AF463BF7 /* Brain.cpp in Sources */,
 				9BFFFFFFFFFFFFFFFFFFFFFF /* PlatformFileDialogs.mm in Sources */,
 				44AC1EA3623F460B8ADE3D51 /* BrainManager.cpp in Sources */,
+				WCFFFFFFFFFFFFFFFFFFFFFF /* WindowCoordinator.cpp in Sources */,
 				46B7D5681E08481BBF561447 /* ParameterManager.cpp in Sources */,
 				3D1CB8F7E3DA4879B3BF7857 /* StateSerializer.cpp in Sources */,
 				C56C5188F88D497282119323 /* UIBridge.cpp in Sources */,
