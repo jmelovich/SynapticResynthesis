@@ -235,21 +235,25 @@ void SynapticUI::SyncControlWithParam(IControl* ctrl, Plugin* plugin)
 void SynapticUI::RemoveAndClearControls(std::vector<IControl*>& paramControls, std::vector<IControl*>& dspControls)
 {
 #if IPLUG_EDITOR
-  if (!paramControls.empty())
+  if (!mGraphics || paramControls.empty())
   {
-    for (auto* ctrl : paramControls)
-    {
-      if (ctrl)
-      {
-        mGraphics->RemoveControl(ctrl);
-        // Also remove from dspControls
-        auto it = std::find(dspControls.begin(), dspControls.end(), ctrl);
-        if (it != dspControls.end())
-          dspControls.erase(it);
-      }
-    }
-    paramControls.clear();
+    paramControls.clear(); // Clear even if graphics is null to prevent stale pointers
+    return;
   }
+  
+  for (auto* ctrl : paramControls)
+  {
+    // Check if control exists in graphics before removing (prevents crash from stale pointers)
+    if (ctrl && mGraphics->GetControlIdx(ctrl) >= 0)
+    {
+      mGraphics->RemoveControl(ctrl);
+      // Also remove from dspControls
+      auto it = std::find(dspControls.begin(), dspControls.end(), ctrl);
+      if (it != dspControls.end())
+        dspControls.erase(it);
+    }
+  }
+  paramControls.clear();
 #endif
 }
 
