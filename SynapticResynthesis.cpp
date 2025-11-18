@@ -443,6 +443,9 @@ void SynapticResynthesis::OnIdle()
 
       // Re-sync brain UI state after rebuild (brain controls were wiped and need to be repopulated)
       SyncBrainUIState();
+
+      // Sync window controls after rebuild (they get recreated during rebuild and need current values)
+      mWindowCoordinator.SyncWindowControls(GetUI());
     }
 
     CheckAndClearPendingUpdate(PendingUpdate::RebuildTransformer);
