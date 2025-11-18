@@ -50,25 +50,6 @@ namespace {
     }
     return kNumParams + (int) unionDescs.size();
   }
-
-#if !SR_USE_WEB_UI && IPLUG_EDITOR
-  // Helper to get the active C++ UI instance for this plugin's IGraphics.
-  // Ensures we only talk to a SynapticUI whose graphics() matches this
-  // instance's GetUI(), which avoids use-after-free and cross-instance access.
-  static synaptic::ui::SynapticUI* GetActiveCppUIForGraphics(iplug::igraphics::IGraphics* graphics)
-  {
-    if (!graphics)
-      return nullptr;
-
-    if (auto* ui = synaptic::GetSynapticUI())
-    {
-      if (ui->graphics() == graphics)
-        return ui;
-    }
-
-    return nullptr;
-  }
-#endif
 }
 
 SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
@@ -116,8 +97,13 @@ mEditorInitFunc = [this]() {
     return igraphics::MakeGraphics(*this, PLUG_WIDTH, PLUG_HEIGHT, PLUG_FPS, GetScaleForScreen(PLUG_WIDTH, PLUG_HEIGHT));
   };
 
-  mLayoutFunc = [&](igraphics::IGraphics* pGraphics) {
-    synaptic::BuildIGraphicsLayout(pGraphics);
+  mLayoutFunc = [this](igraphics::IGraphics* pGraphics) {
+    // Create instance-owned UI instead of using global singleton
+    if (pGraphics)
+    {
+      mUI = std::make_unique<synaptic::ui::SynapticUI>(pGraphics);
+      mUI->build();
+    }
   };
   #endif
 #endif
@@ -399,14 +385,10 @@ void SynapticResynthesis::OnUIOpen()
   Plugin::OnUIOpen();
 
 #if !SR_USE_WEB_UI && IPLUG_EDITOR
-  // Bind this instance's progress overlay manager to the active C++ UI, if any.
-  if (auto* ui = GetActiveCppUIForGraphics(GetUI()))
+  // Bind this instance's progress overlay manager to our instance-owned UI
+  if (mUI)
   {
-    mProgressOverlayMgr.SetSynapticUI(ui);
-  }
-  else
-  {
-    mProgressOverlayMgr.SetSynapticUI(nullptr);
+    mProgressOverlayMgr.SetSynapticUI(mUI.get());
   }
 #endif
 #if SR_USE_WEB_UI
@@ -414,13 +396,20 @@ void SynapticResynthesis::OnUIOpen()
   mUIBridge.SendMorphParams(mMorph);
   SyncAndSendDSPConfig();
   mUIBridge.SendBrainSummary(mBrain);
-#else
-  // For C++ UI, rebuild dynamic parameter controls and brain file list
-  #if IPLUG_EDITOR
-  // Small delay to ensure UI is fully initialized
-  static int initCounter = 0;
-  initCounter = 0; // Reset on UI open
-  #endif
+#endif
+}
+
+void SynapticResynthesis::OnUIClose()
+{
+  Plugin::OnUIClose();
+
+#if !SR_USE_WEB_UI && IPLUG_EDITOR
+  // Clean up instance-owned UI and detach from progress overlay manager
+  mProgressOverlayMgr.SetSynapticUI(nullptr);
+  mUI.reset();
+  
+  // Reset flag so UI will be rebuilt if reopened
+  mNeedsInitialUIRebuild = true;
 #endif
 }
 
@@ -431,7 +420,7 @@ void SynapticResynthesis::OnIdle()
 
   // Update C++ UI on first idle call after UI open, and process any queued UI work
 #if !SR_USE_WEB_UI && IPLUG_EDITOR
-  if (auto* ui = GetActiveCppUIForGraphics(GetUI()))
+  if (mUI)
   {
     if (mNeedsInitialUIRebuild)
     {
@@ -446,7 +435,7 @@ void SynapticResynthesis::OnIdle()
     }
 
     // Process progress overlay updates from background threads
-    mProgressOverlayMgr.ProcessPendingUpdates(ui);
+    mProgressOverlayMgr.ProcessPendingUpdates(mUI.get());
 
     // Handle transformer/morph parameter UI rebuild on UI thread
     // Simply rebuild the entire UI - this is reliable and always works correctly
@@ -460,8 +449,8 @@ void SynapticResynthesis::OnIdle()
         mPendingMorph ? mPendingMorph : mMorph;
 
       // Update cached context with shared_ptr copies before rebuilding
-      ui->setDynamicParamContext(currentTransformer, currentMorph, &mParamManager, this);
-      ui->rebuild();
+      mUI->setDynamicParamContext(currentTransformer, currentMorph, &mParamManager, this);
+      mUI->rebuild();
 
       // Re-sync brain UI state after rebuild (brain controls were wiped and need to be repopulated)
       SyncBrainUIState();
@@ -473,6 +462,7 @@ void SynapticResynthesis::OnIdle()
       CheckAndClearPendingUpdate(PendingUpdate::RebuildMorph);
     }
   }
+#endif
 
   // Coalesce pending dropped files and start async batch import
   if (mPendingImportScheduled.load())
@@ -518,12 +508,6 @@ void SynapticResynthesis::OnIdle()
       }
     }
   }
-
-  if (!GetUI())
-  {
-    mNeedsInitialUIRebuild = true;
-  }
-#endif
 }
 
 void SynapticResynthesis::OnRestoreState()
@@ -646,8 +630,7 @@ synaptic::BrainManager::CompletionFn SynapticResynthesis::MakeStandardCompletion
 void SynapticResynthesis::SyncBrainUIState()
 {
 #if !SR_USE_WEB_UI && IPLUG_EDITOR
-  auto* ui = GetActiveCppUIForGraphics(GetUI());
-  if (!ui) return;
+  if (!mUI) return;
 
   // Convert Brain summary to UI format
   auto brainSummary = mBrain.GetSummary();
@@ -656,15 +639,15 @@ void SynapticResynthesis::SyncBrainUIState()
   {
     uiEntries.push_back({s.id, s.name, s.chunkCount});
   }
-  ui->updateBrainFileList(uiEntries);
+  mUI->updateBrainFileList(uiEntries);
 
   // Update brain state (storage info, button visibility, control states)
   // Single source of truth: all UI state is derived from UseExternal()
-  ui->updateBrainState(mBrainManager.UseExternal(), mBrainManager.ExternalPath());
+  mUI->updateBrainState(mBrainManager.UseExternal(), mBrainManager.ExternalPath());
 
   // Update the UI toggle control to reflect the current setting
   // Note: We don't change the flag here - we just sync the UI to match it
-  auto* compactToggle = ui->getCompactModeToggle();
+  auto* compactToggle = mUI->getCompactModeToggle();
   if (compactToggle)
   {
     compactToggle->SetValue(synaptic::Brain::sUseCompactBrainFormat ? 1.0 : 0.0);
@@ -676,21 +659,20 @@ void SynapticResynthesis::SyncBrainUIState()
 void SynapticResynthesis::SyncAllUIState()
 {
 #if !SR_USE_WEB_UI && IPLUG_EDITOR
-  auto* ui = GetActiveCppUIForGraphics(GetUI());
-  if (!ui) return;
+  if (!mUI) return;
 
   // Update context with shared_ptr copies to prevent race conditions
-  ui->setDynamicParamContext(mTransformer, mMorph, &mParamManager, this);
+  mUI->setDynamicParamContext(mTransformer, mMorph, &mParamManager, this);
 
   // Rebuild dynamic params
-  ui->rebuildDynamicParams(synaptic::ui::DynamicParamType::Transformer, mTransformer.get(), mParamManager, this);
-  ui->rebuildDynamicParams(synaptic::ui::DynamicParamType::Morph, mMorph.get(), mParamManager, this);
+  mUI->rebuildDynamicParams(synaptic::ui::DynamicParamType::Transformer, mTransformer.get(), mParamManager, this);
+  mUI->rebuildDynamicParams(synaptic::ui::DynamicParamType::Morph, mMorph.get(), mParamManager, this);
 
   // Sync brain state
   SyncBrainUIState();
 
   // Resize to fit
-  ui->resizeWindowToFitContent();
+  mUI->resizeWindowToFitContent();
 #endif
 }
 
@@ -699,12 +681,10 @@ bool SynapticResynthesis::SerializeState(IByteChunk& chunk) const
   if (!Plugin::SerializeState(chunk)) return false;
 
   // Use StateSerializer to append brain state.
-  // For C++ UI mode, only pass the overlay manager if this instance currently
-  // has an active graphics/UI bound, to avoid dereferencing stale UI pointers.
+  // For C++ UI mode, only pass the overlay manager if this instance currently has a UI open.
 #if !SR_USE_WEB_UI && IPLUG_EDITOR
   auto* self = const_cast<SynapticResynthesis*>(this);
-  auto* ui = GetActiveCppUIForGraphics(self->GetUI());
-  synaptic::ui::ProgressOverlayManager* overlayMgr = ui ? &self->mProgressOverlayMgr : nullptr;
+  synaptic::ui::ProgressOverlayManager* overlayMgr = self->mUI ? &self->mProgressOverlayMgr : nullptr;
   return mStateSerializer.SerializeBrainState(chunk, mBrain, mBrainManager, overlayMgr);
 #else
   return mStateSerializer.SerializeBrainState(chunk, mBrain, mBrainManager, &mProgressOverlayMgr);

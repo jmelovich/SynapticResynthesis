@@ -94,6 +94,7 @@ public:
   void ProcessMidiMsg(const IMidiMsg& msg) override;
   void OnReset() override;
   void OnUIOpen() override;
+  void OnUIClose() override;
   void OnIdle() override;
   void OnRestoreState() override;
   bool OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData) override;
@@ -174,6 +175,11 @@ private:
 
   // C++ UI initialization flag
   bool mNeedsInitialUIRebuild { true };
+
+#if !SR_USE_WEB_UI && IPLUG_EDITOR
+  // Instance-owned UI (each plugin instance has its own UI)
+  std::unique_ptr<synaptic::ui::SynapticUI> mUI;
+#endif
 
   // === Pending file-drop batching for async import ===
   std::vector<synaptic::BrainManager::FileData> mPendingImportFiles;
