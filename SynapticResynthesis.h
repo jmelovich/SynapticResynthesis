@@ -117,6 +117,7 @@ private:
   bool HandleBrainDetachMsg();
   bool HandleBrainCreateNewMsg();
   bool HandleBrainSetCompactModeMsg(int enabled);
+  bool HandleCancelOperationMsg();
   bool HandleResizeToFitMsg(int dataSize, const void* pData);
 
   // === Helper Methods ===
@@ -127,9 +128,15 @@ private:
   void SetParameterFromUI(int paramIdx, double value);
   void UpdateBrainAnalysisWindow();
   void SyncWindowControls(); // Sync window controls with their parameter values
+  void SyncControlToParameter(int paramIdx); // Sync a specific control with its parameter value
   void TriggerBrainReanalysisAsync(); // Start async brain reanalysis with progress overlay
   void SyncAnalysisToOutputWindow(); // Sync analysis window to match output window
   void SyncOutputToAnalysisWindow(); // Sync output window to match analysis window
+
+  // Cancellation support helpers
+  synaptic::BrainManager::ProgressFn MakeProgressCallback();
+  synaptic::BrainManager::CompletionFn MakeStandardCompletionCallback();
+  void RollbackParameter(int paramIdx, double oldValue, const char* debugName);
 
   // UI state synchronization helpers (C++ UI only)
   void SyncBrainUIState();

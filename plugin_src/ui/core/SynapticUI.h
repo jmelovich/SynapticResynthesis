@@ -105,7 +105,7 @@ public:
   void updateBrainState(bool useExternal, const std::string& externalPath);
 
   // Progress overlay management
-  void ShowProgressOverlay(const std::string& title, const std::string& message, float progress = 0.0f);
+  void ShowProgressOverlay(const std::string& title, const std::string& message, float progress = 0.0f, bool showCancelButton = true);
   void UpdateProgressOverlay(const std::string& message, float progress);
   void HideProgressOverlay();
 

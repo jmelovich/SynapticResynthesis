@@ -515,7 +515,7 @@ void BuildBrainTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, 
       "OFF",
       "ON"
     );
-    compactToggle->SetTooltip("Enable compact storage format for brain files. Reduces file size but may slightly increase load times");
+    compactToggle->SetTooltip("Enable compact storage format for brain files. This reduces file size by around 8x, storing only the file audio themselves (32bit) and some metadata; but this is at the cost of load times, as chunking & analysis must be performed every load.");
     ui.attach(compactToggle, ControlGroup::Brain);
     ui.setCompactModeToggle(compactToggle);
 

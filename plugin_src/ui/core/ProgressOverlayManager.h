@@ -52,8 +52,9 @@ public:
    * @param title Operation title
    * @param message Current progress message
    * @param progress Progress value (0-100)
+   * @param showCancelButton Whether to show cancel button
    */
-  void Show(const std::string& title, const std::string& message, float progress);
+  void Show(const std::string& title, const std::string& message, float progress, bool showCancelButton = true);
 
   /**
    * @brief Update progress overlay (thread-safe)
@@ -107,6 +108,7 @@ private:
     std::string title;
     std::string message;
     float progress = 0.0f;
+    bool showCancelButton = true;
   };
 
   PendingUpdate mPendingUpdate;

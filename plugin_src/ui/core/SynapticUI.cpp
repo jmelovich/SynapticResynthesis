@@ -643,12 +643,12 @@ void SynapticUI::updateBrainState(bool useExternal, const std::string& externalP
 #endif
 }
 
-void SynapticUI::ShowProgressOverlay(const std::string& title, const std::string& message, float progress)
+void SynapticUI::ShowProgressOverlay(const std::string& title, const std::string& message, float progress, bool showCancelButton)
 {
 #if IPLUG_EDITOR
   if (mProgressOverlay)
   {
-    mProgressOverlay->Show(title, message, progress);
+    mProgressOverlay->Show(title, message, progress, showCancelButton);
   }
 #endif
 }

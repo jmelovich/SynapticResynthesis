@@ -63,12 +63,12 @@ ProgressOverlayManager::ProgressOverlayManager(UIBridge* uiBridge)
 {
 }
 
-void ProgressOverlayManager::Show(const std::string& title, const std::string& message, float progress)
+void ProgressOverlayManager::Show(const std::string& title, const std::string& message, float progress, bool showCancelButton)
 {
   if (mUIBridge)
   {
     // WebUI: use bridge directly (already thread-safe via queue)
-    mUIBridge->ShowProgressOverlay(title, message, progress);
+    mUIBridge->ShowProgressOverlay(title, message, progress, showCancelButton);
   }
   else
   {
@@ -78,6 +78,7 @@ void ProgressOverlayManager::Show(const std::string& title, const std::string& m
     mPendingUpdate.title = title;
     mPendingUpdate.message = message;
     mPendingUpdate.progress = progress;
+    mPendingUpdate.showCancelButton = showCancelButton;
     mHasUpdate = true;
   }
 }
@@ -140,9 +141,9 @@ void ProgressOverlayManager::ProcessPendingUpdates(SynapticUI* ui)
   // Apply update on UI thread
   switch (update.type)
   {
-    case UpdateType::Show:
-      ui->ShowProgressOverlay(update.title, update.message, update.progress);
-      break;
+      case UpdateType::Show:
+        ui->ShowProgressOverlay(update.title, update.message, update.progress, update.showCancelButton);
+        break;
 
     case UpdateType::Update:
       ui->UpdateProgressOverlay(update.message, update.progress);
@@ -162,12 +163,12 @@ void ProgressOverlayManager::ShowImmediate(const std::string& title, const std::
   if (mUIBridge)
   {
     // WebUI: use bridge directly
-    mUIBridge->ShowProgressOverlay(title, message, 0.0f);
+    mUIBridge->ShowProgressOverlay(title, message, 0.0f, false);
   }
   else if (mSynapticUI)
   {
     // C++ UI: show immediately on current thread (must be main thread)
-    mSynapticUI->ShowProgressOverlay(title, message, 0.0f);
+    mSynapticUI->ShowProgressOverlay(title, message, 0.0f, false);
 
     // Force the UI to update by marking all controls dirty
     if (auto* graphics = mSynapticUI->graphics())

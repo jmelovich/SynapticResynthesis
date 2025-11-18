@@ -72,7 +72,7 @@ namespace synaptic
 
     // === Asynchronous Operations (with callbacks) ===
 
-    using CompletionFn = std::function<void()>;
+    using CompletionFn = std::function<void(bool wasCancelled)>;
     using ProgressFn = std::function<void(const std::string& message, int current, int total)>;
 
     /**
@@ -149,6 +149,21 @@ namespace synaptic
     bool IsOperationInProgress() const { return mOperationInProgress; }
 
     /**
+     * @brief Request cancellation of current operation
+     */
+    void RequestCancellation() { mCancellationRequested = true; }
+
+    /**
+     * @brief Check if cancellation has been requested
+     */
+    bool IsCancellationRequested() const { return mCancellationRequested; }
+
+    /**
+     * @brief Reset cancellation flag before starting new operation
+     */
+    void ResetCancellationFlag() { mCancellationRequested = false; }
+
+    /**
      * @brief Get pending imported chunk size (for UI param sync)
      * @return Chunk size, or -1 if none pending
      */
@@ -196,6 +211,7 @@ namespace synaptic
 
     // Threading coordination
     std::atomic<bool> mOperationInProgress{false};
+    std::atomic<bool> mCancellationRequested{false};
 
     // Import coordination (for param sync)
     std::atomic<int> mPendingImportedChunkSize{-1};

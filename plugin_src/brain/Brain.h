@@ -94,7 +94,8 @@ namespace synaptic
                                int targetSampleRate,
                                int targetChannels,
                                int chunkSizeSamples,
-                               ProgressFn onProgress = nullptr);
+                               ProgressFn onProgress = nullptr,
+                               std::atomic<bool>* cancelFlag = nullptr);
 
     // Remove a previously-added file and all of its chunks.
     void RemoveFile(int fileId);
@@ -108,13 +109,13 @@ namespace synaptic
     const BrainChunk* GetChunkByGlobalIndex(int idx) const;
 
     // Re-chunk all files to a new chunk size
-    struct RechunkStats { int filesProcessed = 0; int filesRechunked = 0; int newTotalChunks = 0; };
-    RechunkStats RechunkAllFiles(int newChunkSizeSamples, int targetSampleRate, ProgressFn onProgress = nullptr);
+    struct RechunkStats { int filesProcessed = 0; int filesRechunked = 0; int newTotalChunks = 0; bool wasCancelled = false; };
+    RechunkStats RechunkAllFiles(int newChunkSizeSamples, int targetSampleRate, ProgressFn onProgress = nullptr, std::atomic<bool>* cancelFlag = nullptr);
     int GetChunkSize() const { return mChunkSize; }
 
     // Re-analyze all existing chunks (no rechunking). Uses current window (SetWindow) and provided sampleRate.
-    struct ReanalyzeStats { int filesProcessed = 0; int chunksProcessed = 0; };
-    ReanalyzeStats ReanalyzeAllChunks(int targetSampleRate, ProgressFn onProgress = nullptr);
+    struct ReanalyzeStats { int filesProcessed = 0; int chunksProcessed = 0; bool wasCancelled = false; };
+    ReanalyzeStats ReanalyzeAllChunks(int targetSampleRate, ProgressFn onProgress = nullptr, std::atomic<bool>* cancelFlag = nullptr);
 
     // Helper: Estimate chunk count from audio length
     // Formula: (totalFrames * 2) / chunkSize - 1 (accounts for 50% overlap)

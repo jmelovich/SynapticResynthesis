@@ -24,6 +24,7 @@ enum EMsgTags
   kMsgTagBrainDetach = 107,
   kMsgTagBrainCreateNew = 109,
   kMsgTagBrainSetCompactMode = 110,
+  kMsgTagCancelOperation = 111,
   // Window resize
   kMsgTagResizeToFit = 108,
   // C++ -> UI JSON updates use msgTag = -1, with id fields "brainSummary"

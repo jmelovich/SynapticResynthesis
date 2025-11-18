@@ -232,7 +232,8 @@ namespace synaptic
                                     int targetSampleRate,
                                     int targetChannels,
                                     int chunkSizeSamples,
-                                    ProgressFn onProgress)
+                                    ProgressFn onProgress,
+                                    std::atomic<bool>* cancelFlag)
   {
     if (!data || dataSize == 0 || targetSampleRate <= 0 || targetChannels <= 0 || chunkSizeSamples <= 0)
       return -1;
@@ -267,17 +268,16 @@ namespace synaptic
     const int totalFrames = (int) framesRead;
     const int expectedChunks = EstimateChunkCount(totalFrames, chunkSizeSamples);
 
-    // Prepare file record
-    std::lock_guard<std::mutex> lock(mutex_);
+    // Prepare file record (ID will be assigned on commit)
     mChunkSize = chunkSizeSamples;
-    const int fileId = nextFileId_++;
     BrainFile fileRec;
-    fileRec.id = fileId;
     fileRec.displayName = displayName;
 
-    // Chunking with progress reporting
+    // Chunking with progress reporting - build chunks first, commit at end
     int numChunks = expectedChunks;
     fileRec.chunkIndices.reserve(numChunks);
+    std::vector<BrainChunk> newChunks;
+    newChunks.reserve(numChunks);
 
     for (int c = 0; c < numChunks; ++c)
     {
@@ -287,7 +287,7 @@ namespace synaptic
         break;
 
       BrainChunk chunk;
-      chunk.fileId = fileId;
+      chunk.fileId = 0;  // Will be set on commit
       chunk.chunkIndexInFile = c;
       chunk.audio.numFrames = chunkSizeSamples;
       chunk.audio.channelSamples.assign(targetChannels, std::vector<sample>(chunkSizeSamples, 0.0));
@@ -301,18 +301,36 @@ namespace synaptic
           chunk.audio.channelSamples[ch][i] = 0.0f;
       }
 
-      // Analyze metrics for this chunk over valid frames
+      // Analyze metrics for this chunk over valid frames (no lock needed, working on local data)
       if (mWindow) {
         AnalyzeChunk(chunk, framesInChunk, (double) targetSampleRate);
       }
 
-      const int chunkGlobalIndex = (int) chunks_.size();
-      chunks_.push_back(std::move(chunk));
-      fileRec.chunkIndices.push_back(chunkGlobalIndex);
+      newChunks.push_back(std::move(chunk));
 
       // Report progress per chunk (if callback provided)
       if (onProgress)
         onProgress(displayName, c + 1, expectedChunks);
+
+      // Check for cancellation after each chunk
+      if (cancelFlag && cancelFlag->load())
+      {
+        // Cancelled: discard all chunks for this file, return failure
+        return -1;
+      }
+    }
+
+    // Only commit chunks and file record if not cancelled
+    std::lock_guard<std::mutex> lock(mutex_);
+    const int fileId = nextFileId_++;
+    fileRec.id = fileId;
+
+    const int startGlobalIndex = (int) chunks_.size();
+    for (int i = 0; i < (int)newChunks.size(); ++i)
+    {
+      newChunks[i].fileId = fileId;  // Set file ID now
+      chunks_.push_back(std::move(newChunks[i]));
+      fileRec.chunkIndices.push_back(startGlobalIndex + i);
     }
 
     fileRec.chunkCount = (int) fileRec.chunkIndices.size();
@@ -394,7 +412,7 @@ namespace synaptic
     return v;
   }
 
-  Brain::RechunkStats Brain::RechunkAllFiles(int newChunkSizeSamples, int targetSampleRate, ProgressFn onProgress)
+  Brain::RechunkStats Brain::RechunkAllFiles(int newChunkSizeSamples, int targetSampleRate, ProgressFn onProgress, std::atomic<bool>* cancelFlag)
   {
     RechunkStats stats;
     if (newChunkSizeSamples <= 0 || targetSampleRate <= 0) return stats;
@@ -403,7 +421,6 @@ namespace synaptic
     std::vector<BrainFile> filesSnapshot;
     std::vector<BrainChunk> chunksSnapshot;
     int oldChunkSize = 0;
-    const Window& window = *mWindow;
     {
       std::unique_lock<std::mutex> lock(mutex_);
       filesSnapshot = files_;
@@ -531,6 +548,13 @@ namespace synaptic
         ++currentChunk;
         if (onProgress)
           onProgress(f.displayName, currentChunk, estimatedNewChunks);
+
+        // Check for cancellation after each chunk
+        if (cancelFlag && cancelFlag->load())
+        {
+          stats.wasCancelled = true;
+          return stats;  // Early exit without committing changes
+        }
       }
 
       f.chunkCount = (int) f.chunkIndices.size();
@@ -563,22 +587,25 @@ namespace synaptic
     return stats;
   }
 
-  Brain::ReanalyzeStats Brain::ReanalyzeAllChunks(int targetSampleRate, ProgressFn onProgress)
+  Brain::ReanalyzeStats Brain::ReanalyzeAllChunks(int targetSampleRate, ProgressFn onProgress, std::atomic<bool>* cancelFlag)
   {
     ReanalyzeStats stats;
     if (targetSampleRate <= 0) return stats;
-    // Snapshot file list and calculate total chunks under lock
+
+    // Snapshot all chunks under lock to avoid committing partial changes on cancellation
     std::vector<BrainFile> filesSnapshot;
+    std::vector<BrainChunk> chunksSnapshot;
     int totalChunks = 0;
     {
       std::unique_lock<std::mutex> lock(mutex_);
       filesSnapshot = files_;
+      chunksSnapshot = chunks_;  // Deep copy all chunks
       totalChunks = (int)chunks_.size();
     }
 
     int currentChunk = 0;
 
-    // Iterate files and re-run analysis on their chunks
+    // Iterate files and re-run analysis on their chunks (working on snapshot)
     for (const auto& f : filesSnapshot)
     {
       ++stats.filesProcessed;
@@ -586,31 +613,35 @@ namespace synaptic
       std::vector<int> idxs = f.chunkIndices;
       for (int gi : idxs)
       {
-        BrainChunk* cptr = nullptr;
-        {
-          std::unique_lock<std::mutex> lock(mutex_);
-          if (gi >= 0 && gi < (int) chunks_.size()) cptr = &chunks_[gi];
-        }
-        if (!cptr) continue;
-        BrainChunk local;
-        {
-          std::unique_lock<std::mutex> lock(mutex_);
-          local = *cptr; // copy to avoid holding lock during analysis
-        }
-        const int validFrames = std::min(local.audio.numFrames, (int) (local.audio.channelSamples.empty() ? 0 : local.audio.channelSamples[0].size()));
-        AnalyzeChunk(local, validFrames, (double) targetSampleRate);
-        {
-          std::unique_lock<std::mutex> lock(mutex_);
-          if (gi >= 0 && gi < (int) chunks_.size()) chunks_[gi] = std::move(local);
-        }
+        if (gi < 0 || gi >= (int)chunksSnapshot.size()) continue;
+
+        BrainChunk& chunk = chunksSnapshot[gi];
+        const int validFrames = std::min(chunk.audio.numFrames, (int) (chunk.audio.channelSamples.empty() ? 0 : chunk.audio.channelSamples[0].size()));
+
+        // Reanalyze directly on the snapshot (no lock needed as we're working on local copy)
+        AnalyzeChunk(chunk, validFrames, (double) targetSampleRate);
         ++stats.chunksProcessed;
 
         // Report progress per chunk
         ++currentChunk;
         if (onProgress)
           onProgress(f.displayName, currentChunk, totalChunks);
+
+        // Check for cancellation after each chunk
+        if (cancelFlag && cancelFlag->load())
+        {
+          stats.wasCancelled = true;
+          return stats;  // Early exit - snapshot is discarded, original chunks unchanged
+        }
       }
     }
+
+    // Only commit all changes if operation completed successfully (not cancelled)
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      chunks_ = std::move(chunksSnapshot);
+    }
+
     return stats;
   }
 

@@ -464,21 +464,22 @@ void SynapticResynthesis::OnIdle()
 
         if (!files.empty())
         {
-          mProgressOverlayMgr.Show("Importing Files", "Starting...", 0.0f);
+          mProgressOverlayMgr.Show("Importing Files", "Starting...", 0.0f, true);
           mBrainManager.AddMultipleFilesAsync(std::move(files), (int)GetSampleRate(), NInChansConnected(), mDSPConfig.chunkSize,
-            [this](const std::string& fileName, int cumulativeChunk, int totalChunksAllFiles)
-            {
-              // Reports cumulative chunk progress across all files
-              const float p = (totalChunksAllFiles > 0) ? ((float)cumulativeChunk / (float)totalChunksAllFiles * 100.0f) : 50.0f;
-              char buf[256];
-              snprintf(buf, sizeof(buf), "%s (chunk %d/%d)", fileName.c_str(), cumulativeChunk, totalChunksAllFiles);
-              mProgressOverlayMgr.Update(buf, p);
-            },
-            [this]()
+            MakeProgressCallback(),
+            [this](bool wasCancelled)
             {
               mProgressOverlayMgr.Hide();
-              SetPendingUpdate(PendingUpdate::BrainSummary);
-              MarkHostStateDirty();
+              if (!wasCancelled)
+              {
+                SetPendingUpdate(PendingUpdate::BrainSummary);
+                MarkHostStateDirty();
+              }
+              else
+              {
+                DBGMSG("Multi-file import CANCELLED - partial files may have been imported\n");
+                // Note: Partial imports are intentional - successfully imported files are kept
+              }
             }
           );
         }
@@ -517,6 +518,19 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
   // Handle chunk size parameter (coordinated by ParameterManager)
   if (paramIdx == mParamManager.GetChunkSizeParamIdx())
   {
+    // Remember old chunk size so we can roll back if user cancels rechunk
+    const int oldChunkSize = mDSPConfig.chunkSize;
+
+    // Skip triggering rechunk if operation is already in progress (e.g., during rollback)
+    if (mBrainManager.IsOperationInProgress())
+    {
+      // Just sync config without triggering operation
+      mParamManager.HandleCoreParameterChange(paramIdx, GetParam(paramIdx), mDSPConfig);
+      UpdateChunkerWindowing();
+      SetLatency(ComputeLatencySamples());
+      return;
+    }
+
     bool chunkSizeChanged = mParamManager.HandleChunkSizeChange(paramIdx, GetParam(paramIdx), mDSPConfig, this, mChunker, mAnalysisWindow);
     UpdateChunkerWindowing();
     SetLatency(ComputeLatencySamples());
@@ -525,21 +539,29 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
     // Only trigger background rechunk if chunk size actually changed (not just parameter editing)
     if (chunkSizeChanged)
     {
-      mProgressOverlayMgr.Show("Rechunking", "Starting...", 0.0f);
+      mProgressOverlayMgr.Show("Rechunking", "Starting...", 0.0f, true);
       mBrainManager.RechunkAllFilesAsync(mDSPConfig.chunkSize, (int)GetSampleRate(),
-        [this](const std::string& fileName, int currentChunk, int totalChunks)
-        {
-          // Now reports per-chunk progress across all files
-          const float p = (totalChunks > 0) ? ((float)currentChunk / (float)totalChunks * 100.0f) : 50.0f;
-          char buf[256];
-          snprintf(buf, sizeof(buf), "%s (chunk %d/%d)", fileName.c_str(), currentChunk, totalChunks);
-          mProgressOverlayMgr.Update(buf, p);
-        },
-        [this]()
+        MakeProgressCallback(),
+        [this, oldChunkSize, paramIdx](bool wasCancelled)
         {
           mProgressOverlayMgr.Hide();
-          SetPendingUpdate(PendingUpdate::BrainSummary);
-          SetPendingUpdate(PendingUpdate::MarkDirty);
+          if (!wasCancelled)
+          {
+            SetPendingUpdate(PendingUpdate::BrainSummary);
+            SetPendingUpdate(PendingUpdate::MarkDirty);
+          }
+          else
+          {
+            // Rollback DSP config and dependent state
+            mDSPConfig.chunkSize = oldChunkSize;
+            mChunker.SetChunkSize(oldChunkSize);
+            UpdateBrainAnalysisWindow();
+            UpdateChunkerWindowing();
+            SetLatency(ComputeLatencySamples());
+
+            // Rollback parameter and UI
+            RollbackParameter(paramIdx, (double)oldChunkSize, "Rechunking");
+          }
         }
       );
     }
@@ -586,6 +608,18 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
   // Handle analysis window (coordinated by ParameterManager, with background reanalysis)
   else if (paramIdx == mParamManager.GetAnalysisWindowParamIdx())
   {
+    // Remember old window mode so we can roll back if user cancels reanalysis
+    const int oldWindowMode = mDSPConfig.analysisWindowMode;
+
+    // Skip triggering reanalysis if operation is already in progress (e.g., during rollback)
+    if (mBrainManager.IsOperationInProgress())
+    {
+      // Just sync config without triggering operation
+      mParamManager.HandleCoreParameterChange(paramIdx, GetParam(paramIdx), mDSPConfig);
+      UpdateBrainAnalysisWindow();
+      return;
+    }
+
     bool analysisWindowChanged = mParamManager.HandleAnalysisWindowChange(paramIdx, GetParam(paramIdx), mDSPConfig, mAnalysisWindow, mBrain);
 
     // If window lock is enabled, sync output window to match analysis window
@@ -606,13 +640,38 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
 #if SR_USE_WEB_UI
       mBrainManager.ReanalyzeAllChunksAsync((int)GetSampleRate(),
         [](const std::string&, int, int){},  // Empty progress callback (silent background operation)
-        [this]()
+        [this](bool wasCancelled)
         {
-          SetPendingUpdate(PendingUpdate::BrainSummary);
-          SetPendingUpdate(PendingUpdate::MarkDirty);
+          if (!wasCancelled)
+          {
+            SetPendingUpdate(PendingUpdate::BrainSummary);
+            SetPendingUpdate(PendingUpdate::MarkDirty);
+          }
         });
 #else
-      TriggerBrainReanalysisAsync();
+      // C++ UI: show overlay and trigger background reanalysis with rollback support
+      mProgressOverlayMgr.Show("Reanalyzing", "Starting...", 0.0f, true);
+      mBrainManager.ReanalyzeAllChunksAsync((int)GetSampleRate(),
+        MakeProgressCallback(),
+        [this, oldWindowMode, paramIdx](bool wasCancelled)
+        {
+          mProgressOverlayMgr.Hide();
+          if (!wasCancelled)
+          {
+            SetPendingUpdate(PendingUpdate::BrainSummary);
+            SetPendingUpdate(PendingUpdate::MarkDirty);
+          }
+          else
+          {
+            // Rollback DSP config and dependent state
+            mDSPConfig.analysisWindowMode = oldWindowMode;
+            UpdateBrainAnalysisWindow();
+
+            // Rollback parameter and UI (convert mode 1-4 to enum index 0-3)
+            const int oldIdx = oldWindowMode - 1;
+            RollbackParameter(paramIdx, (double)oldIdx, "Reanalysis");
+          }
+        });
 #endif
     }
     SetPendingUpdate(PendingUpdate::DSPConfig);
@@ -826,24 +885,80 @@ void SynapticResynthesis::SyncWindowControls()
 #endif
 }
 
+void SynapticResynthesis::SyncControlToParameter(int paramIdx)
+{
+#if !SR_USE_WEB_UI && IPLUG_EDITOR
+  if (!GetUI()) return;
+
+  // Find and sync any control bound to this parameter
+  auto* graphics = GetUI();
+  int numControls = graphics->NControls();
+
+  for (int i = 0; i < numControls; ++i)
+  {
+    auto* ctrl = graphics->GetControl(i);
+    if (ctrl && ctrl->GetParamIdx() == paramIdx)
+    {
+      if (const IParam* pParam = GetParam(paramIdx))
+      {
+        ctrl->SetValueFromDelegate(pParam->GetNormalized());
+        ctrl->SetDirty(true);
+      }
+    }
+  }
+
+  // Force redraw
+  graphics->SetAllControlsDirty();
+#endif
+}
+
+synaptic::BrainManager::ProgressFn SynapticResynthesis::MakeProgressCallback()
+{
+  return [this](const std::string& fileName, int current, int total)
+  {
+    const float p = (total > 0) ? ((float)current / (float)total * 100.0f) : 50.0f;
+    char buf[256];
+    snprintf(buf, sizeof(buf), "%s (chunk %d/%d)", fileName.c_str(), current, total);
+    mProgressOverlayMgr.Update(buf, p);
+  };
+}
+
+synaptic::BrainManager::CompletionFn SynapticResynthesis::MakeStandardCompletionCallback()
+{
+  return [this](bool wasCancelled)
+  {
+    mProgressOverlayMgr.Hide();
+    if (!wasCancelled)
+    {
+      SetPendingUpdate(PendingUpdate::BrainSummary);
+      SetPendingUpdate(PendingUpdate::MarkDirty);
+    }
+  };
+}
+
+void SynapticResynthesis::RollbackParameter(int paramIdx, double oldValue, const char* debugName)
+{
+  if (paramIdx < 0) return;
+
+  GetParam(paramIdx)->Set(oldValue);
+  SetParameterFromUI(paramIdx, oldValue);
+  SyncControlToParameter(paramIdx);
+  MarkHostStateDirty();
+
+  if (debugName)
+  {
+    DBGMSG("%s CANCELLED - rolled back parameter to %g\n", debugName, oldValue);
+  }
+}
+
 void SynapticResynthesis::TriggerBrainReanalysisAsync()
 {
 #if !SR_USE_WEB_UI
-  mProgressOverlayMgr.Show("Reanalyzing", "Starting...", 0.0f);
+  mProgressOverlayMgr.Show("Reanalyzing", "Starting...", 0.0f, true);
   mBrainManager.ReanalyzeAllChunksAsync((int)GetSampleRate(),
-    [this](const std::string& fileName, int currentChunk, int totalChunks)
-    {
-      const float p = (totalChunks > 0) ? ((float)currentChunk / (float)totalChunks * 100.0f) : 50.0f;
-      char buf[256];
-      snprintf(buf, sizeof(buf), "%s (chunk %d/%d)", fileName.c_str(), currentChunk, totalChunks);
-      mProgressOverlayMgr.Update(buf, p);
-    },
-    [this]()
-    {
-      mProgressOverlayMgr.Hide();
-      SetPendingUpdate(PendingUpdate::BrainSummary);
-      SetPendingUpdate(PendingUpdate::MarkDirty);
-    });
+    MakeProgressCallback(),
+    MakeStandardCompletionCallback());
+  // Note: This is called from window sync operations which don't need parameter rollback
 #endif
 }
 
