@@ -13,10 +13,6 @@
 #include <mutex>
 
 namespace synaptic {
-
-// Forward declaration
-class UIBridge;
-
 namespace ui {
 
 // Forward declaration
@@ -34,13 +30,12 @@ class ProgressOverlayManager
 public:
   /**
    * @brief Construct manager
-   * @param uiBridge Pointer to UIBridge for WebUI mode (can be nullptr for C++ UI)
    */
-  explicit ProgressOverlayManager(UIBridge* uiBridge = nullptr);
+  explicit ProgressOverlayManager() = default;
 
   /**
    * @brief Set the SynapticUI pointer for immediate updates
-   * @param ui Pointer to SynapticUI (for C++ UI mode)
+   * @param ui Pointer to SynapticUI
    *
    * Call this once after UI is created to enable immediate overlay updates
    * for synchronous operations like project save.
@@ -70,7 +65,7 @@ public:
 
   /**
    * @brief Process pending updates on main thread
-   * @param ui Pointer to SynapticUI (nullptr in WebUI mode)
+   * @param ui Pointer to SynapticUI
    *
    * Call this from OnIdle() to apply queued updates on the UI thread.
    */
@@ -83,7 +78,7 @@ public:
    *
    * Use this for synchronous blocking operations where the normal queued
    * updates won't be processed until after the operation completes.
-   * Requires SetSynapticUI() to have been called for C++ UI mode.
+   * Requires SetSynapticUI() to have been called.
    *
    * This function marks the UI dirty and yields briefly to allow the overlay
    * to actually render before returning.
@@ -93,13 +88,12 @@ public:
   /**
    * @brief Force immediate hiding of overlay (for synchronous operations)
    *
-   * Requires SetSynapticUI() to have been called for C++ UI mode.
+   * Requires SetSynapticUI() to have been called.
    */
   void HideImmediate();
 
 private:
-  UIBridge* mUIBridge;
-  SynapticUI* mSynapticUI = nullptr;  // For immediate updates in C++ UI mode
+  SynapticUI* mSynapticUI = nullptr;  // For immediate updates
 
   enum class UpdateType { None, Show, Update, Hide };
 

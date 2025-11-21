@@ -378,16 +378,6 @@
     <ClCompile Include="..\..\..\IPlug\AAX\IPlugAAX_Parameters.cpp" />
     <ClCompile Include="..\..\..\IPlug\AAX\IPlugAAX_Describe.cpp" />
     <ClCompile Include="..\..\..\IPlug\AAX\IPlugAAX.cpp" />
-    <ClCompile Include="..\..\..\IPlug\Extras\WebView\IPlugWebView.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Tracer|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Tracer|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
-    </ClCompile>
-    <ClCompile Include="..\..\..\IPlug\Extras\WebView\IPlugWebViewEditorDelegate.cpp" />
-    <ClCompile Include="..\..\..\IPlug\Extras\WebView\IPlugWebView_win.cpp" />
     <ClCompile Include="..\..\..\IPlug\IPlugAPIBase.cpp" />
     <ClCompile Include="..\..\..\IPlug\IPlugParameter.cpp" />
     <ClCompile Include="..\..\..\IPlug\IPlugPaths.cpp" />
@@ -396,10 +386,8 @@
     <ClCompile Include="..\..\..\IPlug\IPlugTimer.cpp" />
     <ClCompile Include="..\plugin_src\brain\BrainManager.cpp" />
     <ClCompile Include="..\plugin_src\modules\WindowCoordinator.cpp" />
-    <ClCompile Include="..\plugin_src\ui_bridge\MessageHandlers.cpp" />
     <ClCompile Include="..\plugin_src\params\ParameterManager.cpp" />
     <ClCompile Include="..\plugin_src\serialization\StateSerializer.cpp" />
-    <ClCompile Include="..\plugin_src\ui_bridge\UIBridge.cpp" />
     <ClCompile Include="..\plugin_src\brain\Brain.cpp" />
     <ClCompile Include="..\SynapticResynthesis.cpp" />
     <ClCompile Include="..\exdeps\pffft\pffft.c" />
@@ -437,8 +425,6 @@
     <ClInclude Include="..\..\..\IPlug\AAX\IPlugAAX_Parameters.h" />
     <ClInclude Include="..\..\..\IPlug\AAX\IPlugAAX_TaperDelegate.h" />
     <ClInclude Include="..\..\..\IPlug\AAX\IPlugAAX.h" />
-    <ClInclude Include="..\..\..\IPlug\Extras\WebView\IPlugWebView.h" />
-    <ClInclude Include="..\..\..\IPlug\Extras\WebView\IPlugWebViewEditorDelegate.h" />
     <ClInclude Include="..\..\..\IPlug\IPlugAPIBase.h" />
     <ClInclude Include="..\..\..\IPlug\IPlugConstants.h" />
     <ClInclude Include="..\..\..\IPlug\IPlugDelegate_select.h" />
@@ -468,8 +454,6 @@
     <ClInclude Include="..\plugin_src\modules\DSPConfig.h" />
     <ClInclude Include="..\plugin_src\params\ParameterManager.h" />
     <ClInclude Include="..\plugin_src\serialization\StateSerializer.h" />
-    <ClInclude Include="..\plugin_src\ui_bridge\UIBridge.h" />
-    <ClInclude Include="..\plugin_src\ui_bridge\UIMessageHandler.h" />
     <ClInclude Include="..\plugin_src\brain\Brain.h" />
     <ClInclude Include="..\plugin_src\audio\Window.h" />
     <ClInclude Include="..\SynapticResynthesis.h" />
@@ -488,7 +472,6 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionSettings">
     <Import Project="..\packages\Microsoft.Windows.ImplementationLibrary.1.0.240803.1\build\native\Microsoft.Windows.ImplementationLibrary.targets" Condition="Exists('..\packages\Microsoft.Windows.ImplementationLibrary.1.0.240803.1\build\native\Microsoft.Windows.ImplementationLibrary.targets')" />
-    <Import Project="..\packages\Microsoft.Web.WebView2.1.0.2903.40\build\native\Microsoft.Web.WebView2.targets" Condition="Exists('..\packages\Microsoft.Web.WebView2.1.0.2903.40\build\native\Microsoft.Web.WebView2.targets')" />
   </ImportGroup>
   <Target Name="AfterBuild">
     <PaceFixLogs Condition="Exists('$(PACE_FUSION_HOME)PaceFusionUi2013.dll')" LogDirectory="$(IntDir)" />
@@ -498,9 +481,5 @@
       <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
     </PropertyGroup>
     <Error Condition="!Exists('..\packages\Microsoft.Windows.ImplementationLibrary.1.0.240803.1\build\native\Microsoft.Windows.ImplementationLibrary.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Windows.ImplementationLibrary.1.0.240803.1\build\native\Microsoft.Windows.ImplementationLibrary.targets'))" />
-    <Error Condition="!Exists('..\packages\Microsoft.Web.WebView2.1.0.2903.40\build\native\Microsoft.Web.WebView2.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Web.WebView2.1.0.2903.40\build\native\Microsoft.Web.WebView2.targets'))" />
   </Target>
-  <PropertyGroup>
-    <WebView2LoaderPreference>Static</WebView2LoaderPreference>
-  </PropertyGroup>
 </Project>

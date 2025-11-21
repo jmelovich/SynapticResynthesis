@@ -2,7 +2,6 @@
 
 #include "plugin_src/brain/Brain.h"
 #include "plugin_src/audio/Window.h"
-#include "plugin_src/ui_bridge/UIBridge.h"
 #include <atomic>
 #include <string>
 #include <functional>
@@ -23,36 +22,10 @@ namespace synaptic
      * @brief Construct BrainManager
      * @param brain Reference to brain instance (owned by plugin)
      * @param analysisWindow Reference to analysis window (owned by plugin)
-     * @param uiBridge Reference to UI bridge for messages/overlays
      */
-    explicit BrainManager(Brain* brain, Window* analysisWindow, UIBridge* uiBridge);
-
-    // === Message Handling ===
-
-    /**
-     * @brief Handle brain-related messages from UI
-     * @param msgTag Message tag (kMsgTagBrainXxx)
-     * @param ctrlTag Control tag (fileId for remove, etc.)
-     * @param dataSize Data size for binary messages
-     * @param pData Data pointer for binary messages
-     * @return true if message was handled
-     */
-    bool HandleMessage(int msgTag, int ctrlTag, int dataSize, const void* pData);
+    explicit BrainManager(Brain* brain, Window* analysisWindow);
 
     // === Direct Operations (Synchronous) ===
-
-    /**
-     * @brief Add audio file from memory buffer
-     * @param data Audio file data (any format supported by miniaudio)
-     * @param size Data size in bytes
-     * @param name Display name for the file
-     * @param sampleRate Target sample rate
-     * @param channels Target channel count
-     * @param chunkSize Chunk size in samples
-     * @return New file ID on success, -1 on failure
-     */
-    int AddFileFromMemory(const void* data, size_t size, const std::string& name,
-                         int sampleRate, int channels, int chunkSize);
 
     /**
      * @brief Remove a file and all its chunks from brain
@@ -202,7 +175,6 @@ namespace synaptic
     // Core references (not owned)
     Brain* mBrain;
     Window* mAnalysisWindow;
-    UIBridge* mUIBridge;
 
     // External brain state
     bool mUseExternalBrain = false;

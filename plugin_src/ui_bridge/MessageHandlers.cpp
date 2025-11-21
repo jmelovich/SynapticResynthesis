@@ -9,210 +9,6 @@
 // NOTE: Do NOT include "IPlug_include_in_plug_src.h" here - it defines global symbols
 // that should only be included in the main SynapticResynthesis.cpp file
 
-// === UI Control Message Handlers ===
-
-bool SynapticResynthesis::HandleUiReadyMsg()
-{
-  // UI is ready to receive state; resend current values to repopulate panels
-  mUIBridge.SendTransformerParams(mTransformer);
-  mUIBridge.SendMorphParams(mMorph);
-
-  SyncAndSendDSPConfig();
-
-  mUIBridge.SendBrainSummary(mBrain);
-  mUIBridge.SendExternalRefInfo(mBrainManager.UseExternal(), mBrainManager.ExternalPath());
-  return true;
-}
-
-// === DSP Configuration Message Handlers ===
-
-bool SynapticResynthesis::HandleSetChunkSizeMsg(int newSize)
-{
-  // WebUI path (deprecated) - forward to parameter which triggers OnParamChange with full rollback support
-  newSize = std::max(1, newSize);
-  const int paramIdx = mParamManager.GetChunkSizeParamIdx();
-  if (paramIdx >= 0)
-  {
-    synaptic::ParameterManager::SetParameterFromUI(this, paramIdx, (double)newSize);
-  }
-  return true;
-}
-
-bool SynapticResynthesis::HandleSetOutputWindowMsg(int mode)
-{
-  // mode carries an integer enum: 1=Hann,2=Hamming,3=Blackman,4=Rectangular
-  mDSPConfig.outputWindowMode = std::clamp(mode, 1, 4);
-  const int paramIdx = mParamManager.GetOutputWindowParamIdx();
-  if (paramIdx >= 0)
-  {
-    const int idx = mDSPConfig.outputWindowMode - 1;
-    synaptic::ParameterManager::SetParameterFromUI(this, paramIdx, (double)idx);
-  }
-
-  mWindowCoordinator.UpdateChunkerWindowing(mDSPConfig, mTransformer.get());
-
-  // Update and send DSP config to UI
-  SyncAndSendDSPConfig();
-  return true;
-}
-
-bool SynapticResynthesis::HandleSetAnalysisWindowMsg(int mode)
-{
-  // WebUI path (deprecated) - forward to parameter which triggers OnParamChange with full rollback support
-  // mode carries an integer enum: 1=Hann,2=Hamming,3=Blackman,4=Rectangular
-  mDSPConfig.analysisWindowMode = std::clamp(mode, 1, 4);
-  const int paramIdx = mParamManager.GetAnalysisWindowParamIdx();
-  if (paramIdx >= 0)
-  {
-    const int idx = mDSPConfig.analysisWindowMode - 1;
-    synaptic::ParameterManager::SetParameterFromUI(this, paramIdx, (double)idx);
-  }
-  return true;
-}
-
-bool SynapticResynthesis::HandleSetAlgorithmMsg(int algorithmId)
-{
-  // algorithmId selects algorithm by UI index
-  mDSPConfig.algorithmId = algorithmId;
-  const int paramIdx = mParamManager.GetAlgorithmParamIdx();
-  if (paramIdx >= 0)
-  {
-    synaptic::ParameterManager::SetParameterFromUI(this, paramIdx, (double)mDSPConfig.algorithmId);
-  }
-
-  // Create new transformer in pending slot for thread-safe swap
-  auto newTransformer = synaptic::TransformerFactory::CreateByUiIndex(mDSPConfig.algorithmId);
-  if (!newTransformer)
-  {
-    // Fallback to first available
-    mDSPConfig.algorithmId = 0;
-    newTransformer = synaptic::TransformerFactory::CreateByUiIndex(mDSPConfig.algorithmId);
-  }
-  if (auto sb = dynamic_cast<synaptic::BaseSampleBrainTransformer*>(newTransformer.get()))
-    sb->SetBrain(&mBrain);
-
-  if (newTransformer)
-    newTransformer->OnReset(GetSampleRate(), mDSPConfig.chunkSize, mDSPConfig.bufferWindowSize, NInChansConnected());
-
-  // Reapply persisted IParam values to the new transformer instance using ParameterManager
-  mParamManager.ApplyBindingsToTransformer(this, newTransformer.get());
-
-  // Store for thread-safe swap in ProcessBlock
-  mPendingTransformer = std::move(newTransformer);
-
-  mWindowCoordinator.UpdateChunkerWindowing(mDSPConfig, mPendingTransformer.get());
-
-  // Send transformer params and DSP config to UI (use pending transformer since swap hasn't happened yet)
-#if SR_USE_WEB_UI
-  mUIBridge.SendTransformerParams(mPendingTransformer);
-#else
-  // For C++ UI, trigger rebuild on UI thread
-  SetPendingUpdate(PendingUpdate::RebuildTransformer);
-#endif
-  SyncAndSendDSPConfig();
-  // Note: SetLatency will be called in ProcessBlock after swap
-  return true;
-}
-
-// === Transformer Parameter Message Handler ===
-
-bool SynapticResynthesis::HandleTransformerSetParamMsg(const void* jsonData, int dataSize)
-{
-  // jsonData is expected to be raw JSON bytes: {"id":"...","type":"number|boolean|string","value":...}
-  if (!jsonData || dataSize <= 0)
-    return false;
-
-  const char* bytes = reinterpret_cast<const char*>(jsonData);
-  std::string s(bytes, bytes + dataSize);
-  try
-  {
-    auto j = nlohmann::json::parse(s);
-    std::string id = j.value("id", std::string());
-    std::string type = j.value("type", std::string());
-    bool ok = false;
-
-    if (type == "number" && j.contains("value"))
-    {
-      double v = j["value"].get<double>();
-      if (mTransformer) ok |= mTransformer->SetParamFromNumber(id, v);
-      if (mMorph) ok |= mMorph->SetParamFromNumber(id, v);
-    }
-    else if (type == "boolean" && j.contains("value"))
-    {
-      bool v = j["value"].get<bool>();
-      if (mTransformer) ok |= mTransformer->SetParamFromBool(id, v);
-      if (mMorph) ok |= mMorph->SetParamFromBool(id, v);
-    }
-    else if (type == "text" || type == "string")
-    {
-      std::string v = j.value("value", std::string());
-      if (mTransformer) ok |= mTransformer->SetParamFromString(id, v);
-      if (mMorph) ok |= mMorph->SetParamFromString(id, v);
-    }
-    else if (type == "enum")
-    {
-      std::string v = j.value("value", std::string());
-      if (mTransformer) ok |= mTransformer->SetParamFromString(id, v);
-      if (mMorph) ok |= mMorph->SetParamFromString(id, v);
-    }
-
-    if (ok)
-    {
-      // Mirror to corresponding IParam and inform host as a UI gesture
-      const auto& bindings = mParamManager.GetBindings();
-      auto it = std::find_if(bindings.begin(), bindings.end(), [&](const auto& b){ return b.id == id; });
-      if (it != bindings.end() && it->paramIdx >= 0)
-      {
-        double normalized = 0.0;
-        if (type == "number")
-        {
-          const double v = j["value"].get<double>();
-          normalized = GetParam(it->paramIdx)->ToNormalized(v);
-        }
-        else if (type == "boolean")
-        {
-          normalized = j["value"].get<bool>() ? 1.0 : 0.0;
-        }
-        else if (type == "enum")
-        {
-          const std::string v = j.value("value", std::string());
-          int idx = 0;
-          for (int k = 0; k < (int)it->enumValues.size(); ++k)
-          {
-            if (it->enumValues[k] == v) { idx = k; break; }
-          }
-          normalized = GetParam(it->paramIdx)->ToNormalized((double)idx);
-        }
-        synaptic::ParameterManager::SetParameterFromUI(this, it->paramIdx, GetParam(it->paramIdx)->FromNormalized(normalized));
-      }
-      mUIBridge.SendTransformerParams(mTransformer);
-      mUIBridge.SendMorphParams(mMorph);
-
-      // Check if this parameter change requires UI rebuild (e.g., when it controls visibility of other params)
-      bool needsRebuild = false;
-      if (mTransformer && mTransformer->ParamChangeRequiresUIRebuild(id))
-        needsRebuild = true;
-      if (mMorph && mMorph->ParamChangeRequiresUIRebuild(id))
-        needsRebuild = true;
-
-      if (needsRebuild)
-      {
-        #if IPLUG_EDITOR
-        if (mTransformer && mTransformer->ParamChangeRequiresUIRebuild(id))
-          SetPendingUpdate(PendingUpdate::RebuildTransformer);
-        if (mMorph && mMorph->ParamChangeRequiresUIRebuild(id))
-          SetPendingUpdate(PendingUpdate::RebuildMorph);
-        #endif
-      }
-    }
-    return ok;
-  }
-  catch (...)
-  {
-    return false;
-  }
-}
-
 // === Brain Message Handlers ===
 
 bool SynapticResynthesis::HandleBrainAddFileMsg(int dataSize, const void* pData)
@@ -256,12 +52,7 @@ bool SynapticResynthesis::HandleBrainRemoveFileMsg(int fileId)
 {
   DBGMSG("BrainRemoveFile: id=%d\n", fileId);
   mBrainManager.RemoveFile(fileId);
-#if SR_USE_WEB_UI
-  mUIBridge.SendBrainSummary(mBrain);
-#else
-  // For C++ UI, set flag to update in OnIdle
   SetPendingUpdate(PendingUpdate::BrainSummary);
-#endif
   MarkHostStateDirty();
   return true;
 }
@@ -315,12 +106,7 @@ bool SynapticResynthesis::HandleBrainImportMsg()
 bool SynapticResynthesis::HandleBrainEjectMsg()
 {
   mBrainManager.Reset();
-#if SR_USE_WEB_UI
-  mUIBridge.SendBrainSummary(mBrain);
-#else
-  // For C++ UI, set flag to update in OnIdle
   SetPendingUpdate(PendingUpdate::BrainSummary);
-#endif
   MarkHostStateDirty();
   return true;
 }
@@ -328,12 +114,7 @@ bool SynapticResynthesis::HandleBrainEjectMsg()
 bool SynapticResynthesis::HandleBrainDetachMsg()
 {
   mBrainManager.Detach();
-#if SR_USE_WEB_UI
-  mUIBridge.SendBrainSummary(mBrain);
-#else
-  // For C++ UI, set flag to update in OnIdle (updates storage label back to inline)
   SetPendingUpdate(PendingUpdate::BrainSummary);
-#endif
   MarkHostStateDirty();
   return true;
 }
@@ -375,36 +156,3 @@ bool SynapticResynthesis::HandleBrainSetCompactModeMsg(int enabled)
 
   return true;
 }
-
-bool SynapticResynthesis::HandleResizeToFitMsg(int dataSize, const void* pData)
-{
-#if SR_USE_WEB_UI
-  if (!pData || dataSize <= 0)
-    return false;
-
-  const char* bytes = reinterpret_cast<const char*>(pData);
-  std::string s(bytes, bytes + dataSize);
-  try
-  {
-    auto j = nlohmann::json::parse(s);
-    int width = j.value("width", 1024);
-    int height = j.value("height", 600);
-
-    // Clamp to reasonable bounds
-    width = std::clamp(width, 400, 2560);
-    height = std::clamp(height, 300, 1440);
-
-    Resize(width, height);
-    return true;
-  }
-  catch (...)
-  {
-    return false;
-  }
-#else
-  (void)dataSize;
-  (void)pData;
-  return false;
-#endif
-}
-

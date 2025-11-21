@@ -9,7 +9,7 @@
 #include "plugin_src/ui/core/ProgressOverlayManager.h"
 #include "SynapticResynthesis.h"  // For EParams enum
 
-#if !SR_USE_WEB_UI && IPLUG_EDITOR
+#if IPLUG_EDITOR
   #include "plugin_src/ui/controls/UIControls.h"
 #endif
 
@@ -414,7 +414,7 @@ namespace synaptic
 
   void ParameterManager::SyncControlToParameter(iplug::Plugin* plugin, int paramIdx)
   {
-#if !SR_USE_WEB_UI && IPLUG_EDITOR
+#if IPLUG_EDITOR
     if (!plugin->GetUI()) return;
 
     // Find and sync any control bound to this parameter
@@ -471,7 +471,6 @@ namespace synaptic
       if (ctx.setLatency && ctx.computeLatency)
         ctx.setLatency(ctx.computeLatency());
 
-#if !SR_USE_WEB_UI
       // Only trigger background rechunk if chunk size actually changed (not just parameter editing)
       if (chunkSizeChanged && ctx.brainManager && ctx.progressOverlayMgr)
       {
@@ -528,7 +527,6 @@ namespace synaptic
           }
         );
       }
-#endif
     }
     // Handle buffer window parameter
     else if (paramIdx == mParamIdxBufferWindow)
@@ -552,7 +550,7 @@ namespace synaptic
       // Note: SetLatency will be called in ProcessBlock after swap
 
       // Schedule transformer parameter UI rebuild (must happen on UI thread)
-#if !SR_USE_WEB_UI && IPLUG_EDITOR
+#if IPLUG_EDITOR
       if (ctx.setPendingUpdate)
         ctx.setPendingUpdate((uint32_t)PendingUpdate::RebuildTransformer);
 #endif
@@ -780,14 +778,10 @@ namespace synaptic
                                                    ctx.plugin->NInChansConnected());
       }
       // Note: mChunker.SetMorph will be called in ProcessBlock after swap
-#if SR_USE_WEB_UI
-      // Web UI path handled by plugin
-#else
       // Schedule morph parameter UI rebuild (must happen on UI thread)
-      #if IPLUG_EDITOR
+#if IPLUG_EDITOR
       if (ctx.setPendingUpdate)
         ctx.setPendingUpdate((uint32_t)PendingUpdate::RebuildMorph);
-      #endif
 #endif
     }
     // Handle window lock toggle
@@ -823,7 +817,7 @@ namespace synaptic
       {
         // Parameter was handled by ParameterManager
         // Check if UI rebuild is needed
-        #if !SR_USE_WEB_UI && IPLUG_EDITOR
+#if IPLUG_EDITOR
         if (ctx.setPendingUpdate)
         {
           if (needsTransformerRebuild)
@@ -831,7 +825,7 @@ namespace synaptic
           if (needsMorphRebuild)
             ctx.setPendingUpdate((uint32_t)PendingUpdate::RebuildMorph);
         }
-        #endif
+#endif
       }
     }
 

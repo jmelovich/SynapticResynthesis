@@ -14,7 +14,7 @@
 
 #include "IPlug_include_in_plug_hdr.h"
 
-#if !SR_USE_WEB_UI && IPLUG_EDITOR
+#if IPLUG_EDITOR
 #include "IControls.h"
 #include <memory>
 
@@ -56,15 +56,6 @@ inline void ResetSynapticUI()
 
 } // namespace synaptic
 
-#else // SR_USE_WEB_UI or !IPLUG_EDITOR
-
-namespace synaptic {
-// Stub implementations for WebView mode
-inline void BuildIGraphicsLayout(void*) {}
-inline void* GetSynapticUI() { return nullptr; }
-inline void ResetSynapticUI() {}
-} // namespace synaptic
-
-#endif // !SR_USE_WEB_UI && IPLUG_EDITOR
+#endif // IPLUG_EDITOR
 
 

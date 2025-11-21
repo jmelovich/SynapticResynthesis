@@ -9,7 +9,7 @@
 #include "plugin_src/modules/DSPConfig.h"
 #include "plugin_src/ui/core/ProgressOverlayManager.h"
 
-#if !SR_USE_WEB_UI && IPLUG_EDITOR
+#if IPLUG_EDITOR
   #include "plugin_src/ui/controls/UIControls.h"
 #endif
 
@@ -111,7 +111,7 @@ void WindowCoordinator::SyncOutputToAnalysisWindow(
 
 void WindowCoordinator::SyncWindowControls(void* graphicsPtr)
 {
-#if !SR_USE_WEB_UI && IPLUG_EDITOR
+#if IPLUG_EDITOR
   auto* graphics = static_cast<iplug::igraphics::IGraphics*>(graphicsPtr);
   if (!graphics) return;
 
@@ -147,7 +147,6 @@ void WindowCoordinator::TriggerBrainReanalysisAsync(
   int sampleRate,
   std::function<void(bool wasCancelled)> completion)
 {
-#if !SR_USE_WEB_UI
   if (mProgressOverlayMgr)
   {
     mProgressOverlayMgr->Show("Reanalyzing", "Starting...", 0.0f, true);
@@ -168,14 +167,6 @@ void WindowCoordinator::TriggerBrainReanalysisAsync(
       }
     }
   );
-#else
-  // Web UI: silent background reanalysis
-  mBrainManager->ReanalyzeAllChunksAsync(
-    sampleRate,
-    [](const std::string&, int, int){},  // Empty progress callback
-    completion
-  );
-#endif
 }
 
 void WindowCoordinator::HandleWindowLockToggle(

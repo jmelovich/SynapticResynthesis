@@ -5,7 +5,6 @@
 
 #include "ProgressOverlayManager.h"
 #include "SynapticUI.h"
-#include "plugin_src/ui_bridge/UIBridge.h"
 #include <thread>
 #include <chrono>
 
@@ -58,65 +57,36 @@ namespace {
   }
 } // anonymous namespace
 
-ProgressOverlayManager::ProgressOverlayManager(UIBridge* uiBridge)
-  : mUIBridge(uiBridge)
-{
-}
-
 void ProgressOverlayManager::Show(const std::string& title, const std::string& message, float progress, bool showCancelButton)
 {
-  if (mUIBridge)
-  {
-    // WebUI: use bridge directly (already thread-safe via queue)
-    mUIBridge->ShowProgressOverlay(title, message, progress, showCancelButton);
-  }
-  else
-  {
-    // C++ UI: queue for main thread processing
-    std::lock_guard<std::mutex> lock(mMutex);
-    mPendingUpdate.type = UpdateType::Show;
-    mPendingUpdate.title = title;
-    mPendingUpdate.message = message;
-    mPendingUpdate.progress = progress;
-    mPendingUpdate.showCancelButton = showCancelButton;
-    mHasUpdate = true;
-  }
+  // Queue for main thread processing
+  std::lock_guard<std::mutex> lock(mMutex);
+  mPendingUpdate.type = UpdateType::Show;
+  mPendingUpdate.title = title;
+  mPendingUpdate.message = message;
+  mPendingUpdate.progress = progress;
+  mPendingUpdate.showCancelButton = showCancelButton;
+  mHasUpdate = true;
 }
 
 void ProgressOverlayManager::Update(const std::string& message, float progress)
 {
-  if (mUIBridge)
-  {
-    // WebUI: use bridge directly
-    mUIBridge->UpdateProgressOverlay(message, progress);
-  }
-  else
-  {
-    // C++ UI: queue for main thread processing
-    std::lock_guard<std::mutex> lock(mMutex);
-    // Preserve Show type if pending, otherwise mark as Update
-    if (mPendingUpdate.type != UpdateType::Show)
-      mPendingUpdate.type = UpdateType::Update;
-    mPendingUpdate.message = message;
-    mPendingUpdate.progress = progress;
-    mHasUpdate = true;
-  }
+  // Queue for main thread processing
+  std::lock_guard<std::mutex> lock(mMutex);
+  // Preserve Show type if pending, otherwise mark as Update
+  if (mPendingUpdate.type != UpdateType::Show)
+    mPendingUpdate.type = UpdateType::Update;
+  mPendingUpdate.message = message;
+  mPendingUpdate.progress = progress;
+  mHasUpdate = true;
 }
 
 void ProgressOverlayManager::Hide()
 {
-  if (mUIBridge)
-  {
-    // WebUI: use bridge directly
-    mUIBridge->HideOverlay();
-  }
-  else
-  {
-    // C++ UI: queue for main thread processing
-    std::lock_guard<std::mutex> lock(mMutex);
-    mPendingUpdate.type = UpdateType::Hide;
-    mHasUpdate = true;
-  }
+  // Queue for main thread processing
+  std::lock_guard<std::mutex> lock(mMutex);
+  mPendingUpdate.type = UpdateType::Hide;
+  mHasUpdate = true;
 }
 
 void ProgressOverlayManager::ProcessPendingUpdates(SynapticUI* ui)
@@ -160,14 +130,9 @@ void ProgressOverlayManager::ProcessPendingUpdates(SynapticUI* ui)
 
 void ProgressOverlayManager::ShowImmediate(const std::string& title, const std::string& message)
 {
-  if (mUIBridge)
+  if (mSynapticUI)
   {
-    // WebUI: use bridge directly
-    mUIBridge->ShowProgressOverlay(title, message, 0.0f, false);
-  }
-  else if (mSynapticUI)
-  {
-    // C++ UI: show immediately on current thread (must be main thread)
+    // Show immediately on current thread (must be main thread)
     mSynapticUI->ShowProgressOverlay(title, message, 0.0f, false);
 
     // Force the UI to update by marking all controls dirty
@@ -183,14 +148,9 @@ void ProgressOverlayManager::ShowImmediate(const std::string& title, const std::
 
 void ProgressOverlayManager::HideImmediate()
 {
-  if (mUIBridge)
+  if (mSynapticUI)
   {
-    // WebUI: use bridge directly
-    mUIBridge->HideOverlay();
-  }
-  else if (mSynapticUI)
-  {
-    // C++ UI: hide immediately on current thread (must be main thread)
+    // Hide immediately on current thread (must be main thread)
     mSynapticUI->HideProgressOverlay();
   }
 }

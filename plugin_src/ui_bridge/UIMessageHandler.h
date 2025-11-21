@@ -28,27 +28,6 @@ namespace synaptic
     {
       switch (msgTag)
       {
-        // UI Control Messages
-        case ::kMsgTagUiReady:
-          return plugin->HandleUiReadyMsg();
-
-        // DSP Configuration Messages
-        case ::kMsgTagSetChunkSize:
-          return plugin->HandleSetChunkSizeMsg(ctrlTag);
-
-        case ::kMsgTagSetOutputWindowMode:
-          return plugin->HandleSetOutputWindowMsg(ctrlTag);
-
-        case ::kMsgTagSetAnalysisWindowMode:
-          return plugin->HandleSetAnalysisWindowMsg(ctrlTag);
-
-        case ::kMsgTagSetAlgorithm:
-          return plugin->HandleSetAlgorithmMsg(ctrlTag);
-
-        // Transformer Parameter Messages
-        case ::kMsgTagTransformerSetParam:
-          return plugin->HandleTransformerSetParamMsg(pData, dataSize);
-
         // Brain Messages
         case ::kMsgTagBrainAddFile:
           return plugin->HandleBrainAddFileMsg(dataSize, pData);
@@ -76,9 +55,6 @@ namespace synaptic
 
         case ::kMsgTagCancelOperation:
           return plugin->HandleCancelOperationMsg();
-
-        case ::kMsgTagResizeToFit:
-          return plugin->HandleResizeToFitMsg(dataSize, pData);
 
         default:
           return false;

@@ -2,11 +2,9 @@
 #include "IPlug_include_in_plug_src.h"
 #include "IPlugPaths.h"
 #include "json.hpp"
-#if SR_USE_WEB_UI
-#include "Extras/WebView/IPlugWebViewEditorDelegate.h"
-#else
-#include "plugin_src/ui/IGraphicsUI.h"
-#include "plugin_src/ui/controls/UIControls.h"
+#if IPLUG_EDITOR
+  #include "plugin_src/ui/IGraphicsUI.h"
+  #include "plugin_src/ui/controls/UIControls.h"
 #endif
 #include "plugin_src/transformers/TransformerFactory.h"
 #include "plugin_src/PlatformFileDialogs.h"
@@ -54,14 +52,8 @@ namespace {
 
 SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
 : Plugin(info, MakeConfig(ComputeTotalParams(), kNumPresets))
-, mUIBridge(this)
-, mBrainManager(&mBrain, &mAnalysisWindow, &mUIBridge)
+, mBrainManager(&mBrain, &mAnalysisWindow)
 , mWindowCoordinator(&mAnalysisWindow, &mOutputWindow, &mBrain, &mChunker, &mParamManager, &mBrainManager, &mProgressOverlayMgr)
-#if SR_USE_WEB_UI
-, mProgressOverlayMgr(&mUIBridge)
-#else
-, mProgressOverlayMgr(nullptr) // C++ UI mode - no UIBridge needed
-#endif
 {
   GetParam(kInGain)->InitGain("Input Gain", 0.0, -70, 12.);
   GetParam(kOutGain)->InitGain("Output Gain", 0.0, -70, 12.);
@@ -76,22 +68,7 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
   mDSPConfig.algorithmId = 0;
   mDSPConfig.enableOverlapAdd = true;
 
-#if SR_USE_WEB_UI
-#ifdef DEBUG
-  SetEnableDevTools(true);
-  #endif
-#endif
-
-#if SR_USE_WEB_UI
-static std::atomic<bool> inited { false };
-mEditorInitFunc = [this]() {
-  bool expected = false;
-  if (!inited.compare_exchange_strong(expected, true)) return;
-  LoadIndexHtml(__FILE__, GetBundleID());
-  EnableScroll(false);
-};
-#else
-  #if IPLUG_EDITOR
+#if IPLUG_EDITOR
   // IGraphics UI setup
   mMakeGraphicsFunc = [&]() {
     return igraphics::MakeGraphics(*this, PLUG_WIDTH, PLUG_HEIGHT, PLUG_FPS, GetScaleForScreen(PLUG_WIDTH, PLUG_HEIGHT));
@@ -105,7 +82,6 @@ mEditorInitFunc = [this]() {
       mUI->build();
     }
   };
-  #endif
 #endif
 
   MakePreset("One", -70.);
@@ -136,24 +112,9 @@ mEditorInitFunc = [this]() {
 
 void SynapticResynthesis::DrainUiQueueOnMainThread()
 {
-  // Coalesce structured resend flags first
-#if SR_USE_WEB_UI
-  // For WebUI, handle BrainSummary here
-  if (CheckAndClearPendingUpdate(PendingUpdate::BrainSummary))
-  {
-    mUIBridge.SendBrainSummary(mBrain);
-  }
-  if (CheckAndClearPendingUpdate(PendingUpdate::DSPConfig))
-  {
-    SyncAndSendDSPConfig();
-  }
-#endif
   // MarkDirty is shared by both UI modes
   if (CheckAndClearPendingUpdate(PendingUpdate::MarkDirty))
     MarkHostStateDirty();
-
-  // Drain UIBridge queue
-  mUIBridge.DrainQueue();
 
   // Apply any pending imported settings (chunk size + analysis window) on main thread
   {
@@ -205,19 +166,10 @@ void SynapticResynthesis::DrainUiQueueOnMainThread()
       mWindowCoordinator.UpdateChunkerWindowing(mDSPConfig, mTransformer.get());
       SetLatency(ComputeLatencySamples());
 
-#if SR_USE_WEB_UI
-      // Also update web UI's brain chunk size label explicitly
-      {
-        nlohmann::json j; j["id"] = "brainChunkSize"; j["size"] = mDSPConfig.chunkSize;
-        const std::string payload = j.dump();
-        SendArbitraryMsgFromDelegate(-1, (int)payload.size(), payload.c_str());
-      }
-#endif
-
       // Send DSP config to UI
       SyncAndSendDSPConfig();
 
-#if !SR_USE_WEB_UI && IPLUG_EDITOR
+#if IPLUG_EDITOR
       // Trigger full UI rebuild to sync all controls with imported parameters
       SetPendingUpdate(PendingUpdate::RebuildTransformer);
 #endif
@@ -364,9 +316,9 @@ void SynapticResynthesis::OnReset()
   mParamManager.ApplyBindingsToOwners(this, mTransformer.get(), mMorph.get());
 
   // When audio engine resets, leave brain state intact; just resend summary to UI
-  mUIBridge.SendBrainSummary(mBrain);
-  mUIBridge.SendTransformerParams(mTransformer);
-  mUIBridge.SendMorphParams(mMorph);
+  SetPendingUpdate(PendingUpdate::BrainSummary);
+  SetPendingUpdate(PendingUpdate::RebuildTransformer);
+  SetPendingUpdate(PendingUpdate::RebuildMorph);
 
   // Update and send DSP config to UI
   SyncAndSendDSPConfig();
@@ -384,18 +336,12 @@ void SynapticResynthesis::OnUIOpen()
   // Ensure UI gets current values when window opens
   Plugin::OnUIOpen();
 
-#if !SR_USE_WEB_UI && IPLUG_EDITOR
+#if IPLUG_EDITOR
   // Bind this instance's progress overlay manager to our instance-owned UI
   if (mUI)
   {
     mProgressOverlayMgr.SetSynapticUI(mUI.get());
   }
-#endif
-#if SR_USE_WEB_UI
-  mUIBridge.SendTransformerParams(mTransformer);
-  mUIBridge.SendMorphParams(mMorph);
-  SyncAndSendDSPConfig();
-  mUIBridge.SendBrainSummary(mBrain);
 #endif
 }
 
@@ -403,11 +349,11 @@ void SynapticResynthesis::OnUIClose()
 {
   Plugin::OnUIClose();
 
-#if !SR_USE_WEB_UI && IPLUG_EDITOR
+#if IPLUG_EDITOR
   // Clean up instance-owned UI and detach from progress overlay manager
   mProgressOverlayMgr.SetSynapticUI(nullptr);
   mUI.reset();
-  
+
   // Reset flag so UI will be rebuilt if reopened
   mNeedsInitialUIRebuild = true;
 #endif
@@ -419,7 +365,7 @@ void SynapticResynthesis::OnIdle()
   DrainUiQueueOnMainThread();
 
   // Update C++ UI on first idle call after UI open, and process any queued UI work
-#if !SR_USE_WEB_UI && IPLUG_EDITOR
+#if IPLUG_EDITOR
   if (mUI)
   {
     if (mNeedsInitialUIRebuild)
@@ -513,15 +459,8 @@ void SynapticResynthesis::OnIdle()
 void SynapticResynthesis::OnRestoreState()
 {
   Plugin::OnRestoreState();
-#if SR_USE_WEB_UI
-  mUIBridge.SendTransformerParams(mTransformer);
-  mUIBridge.SendMorphParams(mMorph);
-  SyncAndSendDSPConfig();
-  mUIBridge.SendBrainSummary(mBrain);
-#else
   // For C++ UI, rebuild dynamic parameter controls and brain file list
   SyncAllUIState();
-#endif
 }
 
 void SynapticResynthesis::OnParamChange(int paramIdx)
@@ -598,7 +537,7 @@ void SynapticResynthesis::SyncAndSendDSPConfig()
     const int morphModeParamIdx = mParamManager.GetMorphModeParamIdx();
     if (morphModeParamIdx >= 0) morphIdx = GetParam(morphModeParamIdx)->Int();
   }
-  mUIBridge.SendDSPConfigWithAlgorithms(mDSPConfig, morphIdx);
+  // DSP config is now managed directly by the C++ UI
 }
 
 
@@ -629,7 +568,7 @@ synaptic::BrainManager::CompletionFn SynapticResynthesis::MakeStandardCompletion
 
 void SynapticResynthesis::SyncBrainUIState()
 {
-#if !SR_USE_WEB_UI && IPLUG_EDITOR
+#if IPLUG_EDITOR
   if (!mUI) return;
 
   // Convert Brain summary to UI format
@@ -658,7 +597,7 @@ void SynapticResynthesis::SyncBrainUIState()
 
 void SynapticResynthesis::SyncAllUIState()
 {
-#if !SR_USE_WEB_UI && IPLUG_EDITOR
+#if IPLUG_EDITOR
   if (!mUI) return;
 
   // Update context with shared_ptr copies to prevent race conditions
@@ -682,12 +621,12 @@ bool SynapticResynthesis::SerializeState(IByteChunk& chunk) const
 
   // Use StateSerializer to append brain state.
   // For C++ UI mode, only pass the overlay manager if this instance currently has a UI open.
-#if !SR_USE_WEB_UI && IPLUG_EDITOR
+#if IPLUG_EDITOR
   auto* self = const_cast<SynapticResynthesis*>(this);
   synaptic::ui::ProgressOverlayManager* overlayMgr = self->mUI ? &self->mProgressOverlayMgr : nullptr;
   return mStateSerializer.SerializeBrainState(chunk, mBrain, mBrainManager, overlayMgr);
 #else
-  return mStateSerializer.SerializeBrainState(chunk, mBrain, mBrainManager, &mProgressOverlayMgr);
+  return mStateSerializer.SerializeBrainState(chunk, mBrain, mBrainManager, nullptr);
 #endif
 }
 
@@ -705,13 +644,12 @@ int SynapticResynthesis::UnserializeState(const IByteChunk& chunk, int startPos)
 
   // Re-link window pointer and notify UI
   mBrain.SetWindow(&mAnalysisWindow);
-  mUIBridge.SendBrainSummary(mBrain);
+  SetPendingUpdate(PendingUpdate::BrainSummary);
 
   SyncAndSendDSPConfig();
 
-  mUIBridge.SendTransformerParams(mTransformer);
-  mUIBridge.SendMorphParams(mMorph);
-  mUIBridge.SendExternalRefInfo(mBrainManager.UseExternal(), mBrainManager.ExternalPath());
+  SetPendingUpdate(PendingUpdate::RebuildTransformer);
+  SetPendingUpdate(PendingUpdate::RebuildMorph);
 
   return pos;
 }

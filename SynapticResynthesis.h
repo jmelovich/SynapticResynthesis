@@ -2,7 +2,7 @@
 
 #include "IPlug_include_in_plug_hdr.h"
 
-#if !SR_USE_WEB_UI && IPLUG_EDITOR
+#if IPLUG_EDITOR
   #include "IGraphics_include_in_plug_hdr.h"
   #include "IControls.h"
 #endif
@@ -16,7 +16,6 @@
 #include "plugin_src/morph/IMorph.h"
 #include "plugin_src/modules/DSPConfig.h"
 #include "plugin_src/modules/WindowCoordinator.h"
-#include "plugin_src/ui_bridge/UIBridge.h"
 #include "plugin_src/params/ParameterManager.h"
 #include "plugin_src/brain/BrainManager.h"
 #include "plugin_src/serialization/StateSerializer.h"
@@ -105,12 +104,10 @@ public:
 
 private:
   // === Message Handlers (called by UIMessageRouter) ===
-  bool HandleUiReadyMsg();
   bool HandleSetChunkSizeMsg(int newSize);
   bool HandleSetOutputWindowMsg(int mode);
   bool HandleSetAnalysisWindowMsg(int mode);
   bool HandleSetAlgorithmMsg(int algorithmId);
-  bool HandleTransformerSetParamMsg(const void* jsonData, int dataSize);
   bool HandleBrainAddFileMsg(int dataSize, const void* pData);
   bool HandleBrainRemoveFileMsg(int fileId);
   bool HandleBrainExportMsg();
@@ -120,7 +117,6 @@ private:
   bool HandleBrainCreateNewMsg();
   bool HandleBrainSetCompactModeMsg(int enabled);
   bool HandleCancelOperationMsg();
-  bool HandleResizeToFitMsg(int dataSize, const void* pData);
 
   // === Helper Methods ===
   void MarkHostStateDirty();
@@ -141,7 +137,6 @@ private:
 
   // === Modules ===
   synaptic::DSPConfig mDSPConfig;
-  synaptic::UIBridge mUIBridge;
   synaptic::ParameterManager mParamManager;
   synaptic::BrainManager mBrainManager;
   synaptic::WindowCoordinator mWindowCoordinator;
@@ -176,7 +171,7 @@ private:
   // C++ UI initialization flag
   bool mNeedsInitialUIRebuild { true };
 
-#if !SR_USE_WEB_UI && IPLUG_EDITOR
+#if IPLUG_EDITOR
   // Instance-owned UI (each plugin instance has its own UI)
   std::unique_ptr<synaptic::ui::SynapticUI> mUI;
 #endif
