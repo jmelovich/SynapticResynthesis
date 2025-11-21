@@ -272,6 +272,7 @@ namespace synaptic
       ExposedParamDesc pFft;
       pFft.id = "weightFftFrequency";
       pFft.label = "FFT Frequency Weight";
+      pFft.tooltip = "Weight for matching FFT dominant frequency. Higher values prioritize frequency matching when selecting brain chunks.";
       pFft.type = ParamType::Number;
       pFft.control = ControlType::Slider;
       pFft.minValue = 0.0;
@@ -283,6 +284,7 @@ namespace synaptic
       ExposedParamDesc pFund;
       pFund.id = "weightFundFrequency";
       pFund.label = "Fund Frequency Weight";
+      pFund.tooltip = "Weight for matching fundamental frequency (f0 from Harmonic Product Spectrum). Useful for pitch-based matching.";
       pFund.type = ParamType::Number;
       pFund.control = ControlType::Slider;
       pFund.minValue = 0.0;
@@ -294,6 +296,7 @@ namespace synaptic
       ExposedParamDesc pAmp;
       pAmp.id = "weightAmplitude";
       pAmp.label = "Amplitude Weight";
+      pAmp.tooltip = "Weight for matching RMS amplitude. Higher values prioritize volume matching when selecting brain chunks.";
       pAmp.type = ParamType::Number;
       pAmp.control = ControlType::Slider;
       pAmp.minValue = 0.0;
@@ -310,12 +313,21 @@ namespace synaptic
         "weightAffinity", "weightSharpness", "weightHarmonicity",
         "weightMonotony", "weightMeanAffinity", "weightMeanContrast"
       };
+      const char* featureTooltips[] = {
+        "Weight for spectral affinity matching. Measures similarity of spectral shape.",
+        "Weight for sharpness matching. Sharpness indicates brightness and high-frequency content.",
+        "Weight for harmonicity matching. Measures how harmonic (vs noisy) the sound is.",
+        "Weight for monotony matching. Monotony indicates how uniform the spectrum is over time.",
+        "Weight for mean affinity matching. Average spectral similarity across frequency bands.",
+        "Weight for mean contrast matching. Measures spectral contrast and dynamic range."
+      };
 
       for (int i = 0; i < 6; ++i)
       {
         ExposedParamDesc p;
         p.id = featureIds[i];
         p.label = std::string(featureNames[i]) + " Weight";
+        p.tooltip = featureTooltips[i];
         p.type = ParamType::Number;
         p.control = ControlType::Slider;
         p.minValue = 0.0;

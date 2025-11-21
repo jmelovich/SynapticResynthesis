@@ -20,9 +20,11 @@ enum EMsgTags
   // Brain snapshot external IO
   kMsgTagBrainExport = 104,
   kMsgTagBrainImport = 105,
-  kMsgTagBrainReset = 106,
+  kMsgTagBrainEject = 106,
   kMsgTagBrainDetach = 107,
   kMsgTagBrainCreateNew = 109,
+  kMsgTagBrainSetCompactMode = 110,
+  kMsgTagCancelOperation = 111,
   // Window resize
   kMsgTagResizeToFit = 108,
   // C++ -> UI JSON updates use msgTag = -1, with id fields "brainSummary"

@@ -15,8 +15,13 @@
 
 namespace synaptic
 {
+  // Initialize compact brain format flag (disabled by default for backwards compatibility)
+  bool Brain::sUseCompactBrainFormat = true;
+
   static constexpr uint32_t kSnapshotMagic = 0x53424252; // 'SBBR' Synaptic Brain BRain
   static constexpr uint16_t kSnapshotVersion = 3; // v3: added extended features
+  static constexpr uint16_t kSnapshotVersionCompact = 100; // v100: compact format (metadata + reconstructed audio only, stored as iplug::sample)
+  static constexpr uint16_t kSnapshotVersionCompactF32 = 101; // v101: compact format (metadata + reconstructed audio only, stored as float32)
 
   static void PutString(iplug::IByteChunk& chunk, const std::string& s)
   {
@@ -227,7 +232,8 @@ namespace synaptic
                                     int targetSampleRate,
                                     int targetChannels,
                                     int chunkSizeSamples,
-                                    ProgressFn onProgress)
+                                    ProgressFn onProgress,
+                                    std::atomic<bool>* cancelFlag)
   {
     if (!data || dataSize == 0 || targetSampleRate <= 0 || targetChannels <= 0 || chunkSizeSamples <= 0)
       return -1;
@@ -262,17 +268,16 @@ namespace synaptic
     const int totalFrames = (int) framesRead;
     const int expectedChunks = EstimateChunkCount(totalFrames, chunkSizeSamples);
 
-    // Prepare file record
-    std::lock_guard<std::mutex> lock(mutex_);
+    // Prepare file record (ID will be assigned on commit)
     mChunkSize = chunkSizeSamples;
-    const int fileId = nextFileId_++;
     BrainFile fileRec;
-    fileRec.id = fileId;
     fileRec.displayName = displayName;
 
-    // Chunking with progress reporting
+    // Chunking with progress reporting - build chunks first, commit at end
     int numChunks = expectedChunks;
     fileRec.chunkIndices.reserve(numChunks);
+    std::vector<BrainChunk> newChunks;
+    newChunks.reserve(numChunks);
 
     for (int c = 0; c < numChunks; ++c)
     {
@@ -282,7 +287,7 @@ namespace synaptic
         break;
 
       BrainChunk chunk;
-      chunk.fileId = fileId;
+      chunk.fileId = 0;  // Will be set on commit
       chunk.chunkIndexInFile = c;
       chunk.audio.numFrames = chunkSizeSamples;
       chunk.audio.channelSamples.assign(targetChannels, std::vector<sample>(chunkSizeSamples, 0.0));
@@ -296,18 +301,36 @@ namespace synaptic
           chunk.audio.channelSamples[ch][i] = 0.0f;
       }
 
-      // Analyze metrics for this chunk over valid frames
+      // Analyze metrics for this chunk over valid frames (no lock needed, working on local data)
       if (mWindow) {
         AnalyzeChunk(chunk, framesInChunk, (double) targetSampleRate);
       }
 
-      const int chunkGlobalIndex = (int) chunks_.size();
-      chunks_.push_back(std::move(chunk));
-      fileRec.chunkIndices.push_back(chunkGlobalIndex);
+      newChunks.push_back(std::move(chunk));
 
       // Report progress per chunk (if callback provided)
       if (onProgress)
         onProgress(displayName, c + 1, expectedChunks);
+
+      // Check for cancellation after each chunk
+      if (cancelFlag && cancelFlag->load())
+      {
+        // Cancelled: discard all chunks for this file, return failure
+        return -1;
+      }
+    }
+
+    // Only commit chunks and file record if not cancelled
+    std::lock_guard<std::mutex> lock(mutex_);
+    const int fileId = nextFileId_++;
+    fileRec.id = fileId;
+
+    const int startGlobalIndex = (int) chunks_.size();
+    for (int i = 0; i < (int)newChunks.size(); ++i)
+    {
+      newChunks[i].fileId = fileId;  // Set file ID now
+      chunks_.push_back(std::move(newChunks[i]));
+      fileRec.chunkIndices.push_back(startGlobalIndex + i);
     }
 
     fileRec.chunkCount = (int) fileRec.chunkIndices.size();
@@ -389,7 +412,7 @@ namespace synaptic
     return v;
   }
 
-  Brain::RechunkStats Brain::RechunkAllFiles(int newChunkSizeSamples, int targetSampleRate, ProgressFn onProgress)
+  Brain::RechunkStats Brain::RechunkAllFiles(int newChunkSizeSamples, int targetSampleRate, ProgressFn onProgress, std::atomic<bool>* cancelFlag)
   {
     RechunkStats stats;
     if (newChunkSizeSamples <= 0 || targetSampleRate <= 0) return stats;
@@ -398,7 +421,6 @@ namespace synaptic
     std::vector<BrainFile> filesSnapshot;
     std::vector<BrainChunk> chunksSnapshot;
     int oldChunkSize = 0;
-    const Window& window = *mWindow;
     {
       std::unique_lock<std::mutex> lock(mutex_);
       filesSnapshot = files_;
@@ -526,6 +548,13 @@ namespace synaptic
         ++currentChunk;
         if (onProgress)
           onProgress(f.displayName, currentChunk, estimatedNewChunks);
+
+        // Check for cancellation after each chunk
+        if (cancelFlag && cancelFlag->load())
+        {
+          stats.wasCancelled = true;
+          return stats;  // Early exit without committing changes
+        }
       }
 
       f.chunkCount = (int) f.chunkIndices.size();
@@ -558,22 +587,25 @@ namespace synaptic
     return stats;
   }
 
-  Brain::ReanalyzeStats Brain::ReanalyzeAllChunks(int targetSampleRate, ProgressFn onProgress)
+  Brain::ReanalyzeStats Brain::ReanalyzeAllChunks(int targetSampleRate, ProgressFn onProgress, std::atomic<bool>* cancelFlag)
   {
     ReanalyzeStats stats;
     if (targetSampleRate <= 0) return stats;
-    // Snapshot file list and calculate total chunks under lock
+
+    // Snapshot all chunks under lock to avoid committing partial changes on cancellation
     std::vector<BrainFile> filesSnapshot;
+    std::vector<BrainChunk> chunksSnapshot;
     int totalChunks = 0;
     {
       std::unique_lock<std::mutex> lock(mutex_);
       filesSnapshot = files_;
+      chunksSnapshot = chunks_;  // Deep copy all chunks
       totalChunks = (int)chunks_.size();
     }
 
     int currentChunk = 0;
 
-    // Iterate files and re-run analysis on their chunks
+    // Iterate files and re-run analysis on their chunks (working on snapshot)
     for (const auto& f : filesSnapshot)
     {
       ++stats.filesProcessed;
@@ -581,31 +613,35 @@ namespace synaptic
       std::vector<int> idxs = f.chunkIndices;
       for (int gi : idxs)
       {
-        BrainChunk* cptr = nullptr;
-        {
-          std::unique_lock<std::mutex> lock(mutex_);
-          if (gi >= 0 && gi < (int) chunks_.size()) cptr = &chunks_[gi];
-        }
-        if (!cptr) continue;
-        BrainChunk local;
-        {
-          std::unique_lock<std::mutex> lock(mutex_);
-          local = *cptr; // copy to avoid holding lock during analysis
-        }
-        const int validFrames = std::min(local.audio.numFrames, (int) (local.audio.channelSamples.empty() ? 0 : local.audio.channelSamples[0].size()));
-        AnalyzeChunk(local, validFrames, (double) targetSampleRate);
-        {
-          std::unique_lock<std::mutex> lock(mutex_);
-          if (gi >= 0 && gi < (int) chunks_.size()) chunks_[gi] = std::move(local);
-        }
+        if (gi < 0 || gi >= (int)chunksSnapshot.size()) continue;
+
+        BrainChunk& chunk = chunksSnapshot[gi];
+        const int validFrames = std::min(chunk.audio.numFrames, (int) (chunk.audio.channelSamples.empty() ? 0 : chunk.audio.channelSamples[0].size()));
+
+        // Reanalyze directly on the snapshot (no lock needed as we're working on local copy)
+        AnalyzeChunk(chunk, validFrames, (double) targetSampleRate);
         ++stats.chunksProcessed;
 
         // Report progress per chunk
         ++currentChunk;
         if (onProgress)
           onProgress(f.displayName, currentChunk, totalChunks);
+
+        // Check for cancellation after each chunk
+        if (cancelFlag && cancelFlag->load())
+        {
+          stats.wasCancelled = true;
+          return stats;  // Early exit - snapshot is discarded, original chunks unchanged
+        }
       }
     }
+
+    // Only commit all changes if operation completed successfully (not cancelled)
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      chunks_ = std::move(chunksSnapshot);
+    }
+
     return stats;
   }
 
@@ -626,6 +662,110 @@ namespace synaptic
   {
     std::lock_guard<std::mutex> lock(mutex_);
     out.Put(&kSnapshotMagic);
+
+    // Check if we should use compact format
+    if (sUseCompactBrainFormat)
+    {
+      // Compact format: save only metadata + reconstructed original audio
+      // New writes use float32 for audio payload to reduce size; we keep v100 reader for backwards compatibility.
+      out.Put(&kSnapshotVersionCompactF32);
+      int32_t chunkSize = mChunkSize;
+      out.Put(&chunkSize);
+      int32_t winMode = mWindow ? Window::TypeToInt(mWindow->GetType()) : 1;
+      out.Put(&winMode);
+
+      // Save file count
+      int32_t nFiles = (int32_t)files_.size();
+      out.Put(&nFiles);
+
+      // For each file, reconstruct original audio and save it
+      for (const auto& f : files_)
+      {
+        // File metadata
+        int32_t fid = f.id;
+        out.Put(&fid);
+        PutString(out, f.displayName);
+
+        // Determine channel count from first valid chunk
+        int numChannels = 0;
+        for (int gi : f.chunkIndices)
+        {
+          if (gi >= 0 && gi < (int)chunks_.size())
+          {
+            const BrainChunk& bc = chunks_[gi];
+            if (!bc.audio.channelSamples.empty())
+            {
+              numChannels = (int)bc.audio.channelSamples.size();
+              break;
+            }
+          }
+        }
+
+        if (numChannels <= 0)
+        {
+          // Empty file - save zero channels and frames
+          int32_t zero = 0;
+          out.Put(&zero); // channels
+          out.Put(&zero); // frames
+          continue;
+        }
+
+        // Reconstruct original audio from overlapping chunks
+        const int hop = std::max(1, mChunkSize / 2);
+        const int lastValidFrames = std::max(0, mChunkSize - f.tailPaddingFrames);
+        const int totalLen = f.chunkIndices.empty() ? 0 :
+                             (int)((int)f.chunkIndices.size() - 1) * hop + lastValidFrames;
+
+        std::vector<std::vector<sample>> planar(numChannels, std::vector<sample>(std::max(0, totalLen), 0.0));
+
+        // Reconstruct via overlap-add (same logic as rechunking)
+        for (int ord = 0; ord < (int)f.chunkIndices.size(); ++ord)
+        {
+          const int gi = f.chunkIndices[ord];
+          if (gi < 0 || gi >= (int)chunks_.size()) continue;
+          const BrainChunk& bc = chunks_[gi];
+          const bool isLast = (bc.chunkIndexInFile == (f.chunkCount - 1));
+          const int valid = isLast ? lastValidFrames : mChunkSize;
+          const int start = ord * hop;
+          const int srcChans = (int)bc.audio.channelSamples.size();
+
+          for (int ch = 0; ch < numChannels; ++ch)
+          {
+            const auto& src = (ch < srcChans) ? bc.audio.channelSamples[ch] : std::vector<sample>();
+            auto& dst = planar[ch];
+            const int copyN = std::min(valid, (int)src.size());
+            const int maxWrite = std::min(copyN, (int)dst.size() - start);
+            if (maxWrite > 0)
+            {
+              std::memcpy(dst.data() + start, src.data(), sizeof(sample) * maxWrite);
+            }
+          }
+        }
+
+        // Save reconstructed audio
+        int32_t chans = numChannels;
+        out.Put(&chans);
+        int32_t frames = totalLen;
+        out.Put(&frames);
+
+        // Store audio as float32 to avoid 64-bit sample inflation in compact mode.
+        std::vector<float> tmp;
+        tmp.resize((size_t) frames);
+        for (int ch = 0; ch < numChannels; ++ch)
+        {
+          if (frames > 0)
+          {
+            for (int f = 0; f < frames; ++f)
+              tmp[f] = (float) planar[ch][f];
+            out.PutBytes(tmp.data(), (int)(sizeof(float) * frames));
+          }
+        }
+      }
+
+      return true;
+    }
+
+    // Standard format: save full chunked data with analysis
     out.Put(&kSnapshotVersion);
     int32_t chunkSize = mChunkSize;
     out.Put(&chunkSize);
@@ -704,12 +844,194 @@ namespace synaptic
     return true;
   }
 
-  int Brain::DeserializeSnapshotFromChunk(const iplug::IByteChunk& in, int startPos)
+  int Brain::DeserializeSnapshotFromChunk(const iplug::IByteChunk& in, int startPos, ProgressFn onProgress)
   {
     std::lock_guard<std::mutex> lock(mutex_);
     int pos = startPos;
     uint32_t magic = 0; pos = in.Get(&magic, pos); if (pos < 0 || magic != kSnapshotMagic) return -1;
-    uint16_t ver = 0; pos = in.Get(&ver, pos); if (pos < 0 || ver > kSnapshotVersion) return -1;
+    uint16_t ver = 0; pos = in.Get(&ver, pos); if (pos < 0) return -1;
+
+    // Check for compact formats (v100 = native sample type, v101 = float32)
+    if (ver == kSnapshotVersionCompact || ver == kSnapshotVersionCompactF32)
+    {
+      // Mark that we loaded a compact format brain
+      mLastLoadedWasCompact = true;
+
+      // Compact format: load metadata + reconstructed audio, then re-chunk
+      int32_t chunkSize = 0; pos = in.Get(&chunkSize, pos); if (pos < 0) return -1;
+      int32_t winMode = 1; pos = in.Get(&winMode, pos); if (pos < 0) return -1;
+      mSavedAnalysisWindowType = Window::IntToType(winMode);
+
+      // Load file count
+      int32_t nFiles = 0; pos = in.Get(&nFiles, pos); if (pos < 0 || nFiles < 0) return -1;
+
+      // Clear existing data
+      files_.clear();
+      idToFileIndex_.clear();
+      chunks_.clear();
+      mChunkSize = chunkSize;
+      nextFileId_ = 1;
+
+      // Pre-scan to calculate total chunks for progress reporting
+      int totalEstimatedChunks = 0;
+      int scanPos = pos;
+      for (int i = 0; i < nFiles; ++i)
+      {
+        int32_t fid = 0;
+        scanPos = in.Get(&fid, scanPos); if (scanPos < 0) break;
+
+        std::string name;
+        int32_t len = 0;
+        scanPos = in.Get(&len, scanPos); if (scanPos < 0 || len < 0) break;
+        if (len > 0) scanPos += len; // skip name bytes
+
+        int32_t chans = 0;
+        scanPos = in.Get(&chans, scanPos); if (scanPos < 0 || chans < 0) break;
+
+        int32_t frames = 0;
+        scanPos = in.Get(&frames, scanPos); if (scanPos < 0 || frames < 0) break;
+
+        if (chans > 0 && frames > 0)
+        {
+          totalEstimatedChunks += EstimateChunkCount(frames, chunkSize);
+          // Skip audio data
+          size_t bytesToSkip = (size_t)chans * (size_t)frames * (ver == kSnapshotVersionCompact ? sizeof(iplug::sample) : sizeof(float));
+          scanPos += (int)bytesToSkip;
+        }
+      }
+
+      int currentChunk = 0;
+
+      // Load each file and re-chunk it
+      for (int i = 0; i < nFiles; ++i)
+      {
+        int32_t fid = 0;
+        pos = in.Get(&fid, pos); if (pos < 0) return -1;
+
+        std::string name;
+        if (!GetString(in, pos, name)) return -1;
+
+        int32_t chans = 0;
+        pos = in.Get(&chans, pos); if (pos < 0 || chans < 0) return -1;
+
+        int32_t frames = 0;
+        pos = in.Get(&frames, pos); if (pos < 0 || frames < 0) return -1;
+
+        if (chans == 0 || frames == 0)
+        {
+          // Empty file - skip
+          continue;
+        }
+
+        // Load reconstructed audio
+        std::vector<std::vector<iplug::sample>> planar(chans, std::vector<iplug::sample>(frames, 0.0));
+        if (ver == kSnapshotVersionCompact)
+        {
+          // v100: audio stored in native sample type (iplug::sample)
+          for (int ch = 0; ch < chans; ++ch)
+          {
+            if (frames > 0)
+            {
+              pos = in.GetBytes(planar[ch].data(), (int)(sizeof(iplug::sample) * frames), pos);
+              if (pos < 0) return -1;
+            }
+          }
+        }
+        else // v101: audio stored as float32
+        {
+          std::vector<float> tmp;
+          tmp.resize((size_t) frames);
+          for (int ch = 0; ch < chans; ++ch)
+          {
+            if (frames > 0)
+            {
+              pos = in.GetBytes(tmp.data(), (int)(sizeof(float) * frames), pos);
+              if (pos < 0) return -1;
+              for (int f = 0; f < frames; ++f)
+                planar[ch][f] = (iplug::sample) tmp[f];
+            }
+          }
+        }
+
+        // Re-chunk the audio (similar to AddAudioFileFromMemory but from PCM data)
+        const int totalFrames = frames;
+        const int expectedChunks = EstimateChunkCount(totalFrames, chunkSize);
+
+        BrainFile fileRec;
+        fileRec.id = fid;
+        fileRec.displayName = name;
+        fileRec.chunkIndices.reserve(expectedChunks);
+
+        int numChunks = expectedChunks;
+        for (int c = 0; c < numChunks; ++c)
+        {
+          const int start = c * chunkSize / 2;
+          const int framesInChunk = std::min(chunkSize, totalFrames - start);
+          if (framesInChunk <= 0) break;
+
+          BrainChunk chunk;
+          chunk.fileId = fid;
+          chunk.chunkIndexInFile = c;
+          chunk.audio.numFrames = chunkSize;
+          chunk.audio.channelSamples.assign(chans, std::vector<sample>(chunkSize, 0.0));
+
+          // Copy audio frames (zero-pad tail)
+          for (int ch = 0; ch < chans; ++ch)
+          {
+            for (int f = 0; f < framesInChunk; ++f)
+              chunk.audio.channelSamples[ch][f] = planar[ch][start + f];
+            for (int f = framesInChunk; f < chunkSize; ++f)
+              chunk.audio.channelSamples[ch][f] = 0.0f;
+          }
+
+          // Analyze metrics for this chunk over valid frames
+          // Note: mWindow should be set by caller before deserialization
+          if (mWindow)
+          {
+            // Use a sample rate of 44100 as default (will be re-analyzed if needed)
+            AnalyzeChunk(chunk, framesInChunk, 44100.0);
+          }
+
+          const int chunkGlobalIndex = (int)chunks_.size();
+          chunks_.push_back(std::move(chunk));
+          fileRec.chunkIndices.push_back(chunkGlobalIndex);
+
+          // Report progress per chunk
+          ++currentChunk;
+          if (onProgress && totalEstimatedChunks > 0)
+            onProgress(name, currentChunk, totalEstimatedChunks);
+        }
+
+        fileRec.chunkCount = (int)fileRec.chunkIndices.size();
+
+        // Compute tail padding for last chunk
+        const int totalFramesMod = totalFrames % chunkSize;
+        if (fileRec.chunkCount > 0)
+        {
+          fileRec.tailPaddingFrames = (totalFramesMod == 0) ? 0 : (chunkSize - totalFramesMod);
+        }
+        else
+        {
+          fileRec.tailPaddingFrames = 0;
+        }
+
+        idToFileIndex_[fid] = (int)files_.size();
+        files_.push_back(std::move(fileRec));
+
+        // Update nextFileId_ to prevent ID conflicts
+        if (fid >= nextFileId_)
+          nextFileId_ = fid + 1;
+      }
+
+      return pos;
+    }
+
+    // Standard format deserialization
+    if (ver > kSnapshotVersion) return -1;
+
+    // Mark that we loaded a standard format brain
+    mLastLoadedWasCompact = false;
+
     int32_t chunkSize = 0; pos = in.Get(&chunkSize, pos); if (pos < 0) return -1; mChunkSize = chunkSize;
 
     // Handle window type: v1 used string, v2 uses int

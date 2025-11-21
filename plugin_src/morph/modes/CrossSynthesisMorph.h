@@ -42,6 +42,7 @@ namespace synaptic
       ExposedParamDesc p1;
       p1.id = "morphAmount";
       p1.label = "Morph Amount";
+      p1.tooltip = "Blends magnitude spectrum between source and transformed chunks. 0 = source only, 1 = transformed only.";
       p1.type = ParamType::Number;
       p1.control = ControlType::Slider;
       p1.minValue = 0.0; p1.maxValue = 1.0; p1.step = 0.01; p1.defaultNumber = 1.0;
@@ -50,6 +51,7 @@ namespace synaptic
       ExposedParamDesc p2;
       p2.id = "phaseMorphAmount";
       p2.label = "Phase Morph Amount";
+      p2.tooltip = "Blends phase spectrum between source and transformed chunks. Affects timing and transient preservation.";
       p2.type = ParamType::Number;
       p2.control = ControlType::Slider;
       p2.minValue = 0.0; p2.maxValue = 1.0; p2.step = 0.01; p2.defaultNumber = 1.0;
@@ -58,6 +60,7 @@ namespace synaptic
       ExposedParamDesc p3;
       p3.id = "morphDomain";
       p3.label = "Morph Domain";
+      p3.tooltip = "Choose morphing domain: Log (logarithmic magnitude) or Cepstral (cepstral coefficients). Cepstral allows finer control with Emphasis parameter.";
       p3.type = ParamType::Enum;
       p3.control = ControlType::Select;
       p3.options.push_back({"log", "Log"});
@@ -73,6 +76,7 @@ namespace synaptic
         ExposedParamDesc p4;
         p4.id = "emphasis";
         p4.label = "Emphasis";
+        p4.tooltip = "Emphasis factor for cepstral morphing. Higher values emphasize formant structure and timbral characteristics.";
         p4.type = ParamType::Number;
         p4.control = ControlType::Slider;
         p4.minValue = 0.0; p4.maxValue = 1.0; p4.step = 0.01; p4.defaultNumber = 0.0;

@@ -99,7 +99,12 @@ std::vector<IControl*> DynamicParamManager::BuildParamControls(
     // Create control with label (no separate label control needed)
     IControl* control = CreateControlForParam(cellRect, desc, paramIdx, layout);
     if (control)
+    {
+      // Set tooltip if provided
+      if (!desc.tooltip.empty())
+        control->SetTooltip(desc.tooltip.c_str());
       controls.push_back(control);
+    }
 
     // Advance to next row/column
     col++;

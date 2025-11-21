@@ -65,3 +65,5 @@
 
 #define ROBOTO_FN "fonts/Roboto-Regular.ttf"
 #define FORK_AWESOME_FN "fonts/forkawesome-webfont.ttf"
+#define LOCK_LOCKED_FN "imgs/lock/lock_locked.png"
+#define LOCK_UNLOCKED_FN "imgs/lock/lock_unlocked.png"

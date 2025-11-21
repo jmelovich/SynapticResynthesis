@@ -30,8 +30,9 @@ public:
    * @param title Operation title (e.g., "Importing Files")
    * @param message Current step message (e.g., "Processing file.wav")
    * @param progress Progress value (0-100 for determinate, or use indeterminate mode)
+   * @param showCancelButton Whether to show a cancel button
    */
-  void Show(const std::string& title, const std::string& message, float progress = 0.0f);
+  void Show(const std::string& title, const std::string& message, float progress = 0.0f, bool showCancelButton = true);
   
   /**
    * @brief Update progress message and value
@@ -81,8 +82,14 @@ public:
   }
   
 private:
+  /**
+   * @brief Helper to get cancel button rectangle
+   */
+  ig::IRECT GetCancelButtonRect(const ig::IRECT& cardRect) const;
+
   bool mIsVisible;
   bool mIndeterminate;
+  bool mShowCancelButton;
   std::string mTitle;
   std::string mMessage;
   float mProgress; // 0-100

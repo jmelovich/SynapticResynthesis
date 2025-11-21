@@ -295,6 +295,7 @@ namespace synaptic
       ExposedParamDesc p1;
       p1.id = "channelIndependent";
       p1.label = "Channel Independent";
+      p1.tooltip = "When enabled, each output channel independently matches against brain chunks. When disabled, uses average features across all channels for matching.";
       p1.type = ParamType::Boolean;
       p1.control = ControlType::Checkbox;
       p1.defaultBool = false;

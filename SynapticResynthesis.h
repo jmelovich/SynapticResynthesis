@@ -15,6 +15,7 @@
 #include "plugin_src/audio/Window.h"
 #include "plugin_src/morph/IMorph.h"
 #include "plugin_src/modules/DSPConfig.h"
+#include "plugin_src/modules/WindowCoordinator.h"
 #include "plugin_src/ui_bridge/UIBridge.h"
 #include "plugin_src/params/ParameterManager.h"
 #include "plugin_src/brain/BrainManager.h"
@@ -72,6 +73,7 @@ enum EParams
   kAutotuneMode,
   kAutotuneToleranceOctaves,
   kMorphMode,
+  kWindowLock,
   // Dynamic transformer parameters are indexed after this sentinel
   kNumParams
 };
@@ -92,6 +94,7 @@ public:
   void ProcessMidiMsg(const IMidiMsg& msg) override;
   void OnReset() override;
   void OnUIOpen() override;
+  void OnUIClose() override;
   void OnIdle() override;
   void OnRestoreState() override;
   bool OnMessage(int msgTag, int ctrlTag, int dataSize, const void* pData) override;
@@ -112,18 +115,21 @@ private:
   bool HandleBrainRemoveFileMsg(int fileId);
   bool HandleBrainExportMsg();
   bool HandleBrainImportMsg();
-  bool HandleBrainResetMsg();
+  bool HandleBrainEjectMsg();
   bool HandleBrainDetachMsg();
   bool HandleBrainCreateNewMsg();
+  bool HandleBrainSetCompactModeMsg(int enabled);
+  bool HandleCancelOperationMsg();
   bool HandleResizeToFitMsg(int dataSize, const void* pData);
 
   // === Helper Methods ===
-  void UpdateChunkerWindowing();
   void MarkHostStateDirty();
   void DrainUiQueueOnMainThread();
   void SyncAndSendDSPConfig();
-  void SetParameterFromUI(int paramIdx, double value);
-  void UpdateBrainAnalysisWindow();
+
+  // Progress callback helper (for direct BrainManager calls)
+  synaptic::BrainManager::ProgressFn MakeProgressCallback();
+  synaptic::BrainManager::CompletionFn MakeStandardCompletionCallback();
 
   // UI state synchronization helpers (C++ UI only)
   void SyncBrainUIState();
@@ -138,6 +144,7 @@ private:
   synaptic::UIBridge mUIBridge;
   synaptic::ParameterManager mParamManager;
   synaptic::BrainManager mBrainManager;
+  synaptic::WindowCoordinator mWindowCoordinator;
   synaptic::StateSerializer mStateSerializer;
 
   // === DSP Components ===
@@ -169,11 +176,16 @@ private:
   // C++ UI initialization flag
   bool mNeedsInitialUIRebuild { true };
 
+#if !SR_USE_WEB_UI && IPLUG_EDITOR
+  // Instance-owned UI (each plugin instance has its own UI)
+  std::unique_ptr<synaptic::ui::SynapticUI> mUI;
+#endif
+
   // === Pending file-drop batching for async import ===
   std::vector<synaptic::BrainManager::FileData> mPendingImportFiles;
   std::atomic<bool> mPendingImportScheduled { false };
   int mPendingImportIdleTicks { 0 }; // countdown in idle ticks before starting batch
 
   // === Progress overlay management ===
-  synaptic::ui::ProgressOverlayManager mProgressOverlayMgr;
+  mutable synaptic::ui::ProgressOverlayManager mProgressOverlayMgr;
 };

@@ -6,11 +6,13 @@
 #include "Extras/WebView/IPlugWebViewEditorDelegate.h"
 #else
 #include "plugin_src/ui/IGraphicsUI.h"
+#include "plugin_src/ui/controls/UIControls.h"
 #endif
 #include "plugin_src/transformers/TransformerFactory.h"
 #include "plugin_src/PlatformFileDialogs.h"
 #include "plugin_src/params/DynamicParamSchema.h"
 #include "plugin_src/morph/MorphFactory.h"
+#include "plugin_src/modules/WindowCoordinator.h"
 #include <thread>
 #include <mutex>
 #ifdef AAX_API
@@ -54,15 +56,17 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
 : Plugin(info, MakeConfig(ComputeTotalParams(), kNumPresets))
 , mUIBridge(this)
 , mBrainManager(&mBrain, &mAnalysisWindow, &mUIBridge)
+, mWindowCoordinator(&mAnalysisWindow, &mOutputWindow, &mBrain, &mChunker, &mParamManager, &mBrainManager, &mProgressOverlayMgr)
 #if SR_USE_WEB_UI
 , mProgressOverlayMgr(&mUIBridge)
 #else
 , mProgressOverlayMgr(nullptr) // C++ UI mode - no UIBridge needed
 #endif
 {
-  GetParam(kInGain)->InitGain("Input Gain", 0.0, -70, 0.);
-  GetParam(kOutGain)->InitGain("Output Gain", 0.0, -70, 0.);
+  GetParam(kInGain)->InitGain("Input Gain", 0.0, -70, 12.);
+  GetParam(kOutGain)->InitGain("Output Gain", 0.0, -70, 12.);
   GetParam(kAGC)->InitBool("AGC", false);
+  GetParam(kWindowLock)->InitBool("Window Lock", true); // Default to locked (synchronized)
 
   // Initialize DSP config with defaults
   mDSPConfig.chunkSize = 3000;
@@ -93,8 +97,13 @@ mEditorInitFunc = [this]() {
     return igraphics::MakeGraphics(*this, PLUG_WIDTH, PLUG_HEIGHT, PLUG_FPS, GetScaleForScreen(PLUG_WIDTH, PLUG_HEIGHT));
   };
 
-  mLayoutFunc = [&](igraphics::IGraphics* pGraphics) {
-    synaptic::BuildIGraphicsLayout(pGraphics);
+  mLayoutFunc = [this](igraphics::IGraphics* pGraphics) {
+    // Create instance-owned UI instead of using global singleton
+    if (pGraphics)
+    {
+      mUI = std::make_unique<synaptic::ui::SynapticUI>(pGraphics);
+      mUI->build();
+    }
   };
   #endif
 #endif
@@ -155,24 +164,45 @@ void SynapticResynthesis::DrainUiQueueOnMainThread()
       const int chunkSizeIdx = mParamManager.GetChunkSizeParamIdx();
       const int analysisWindowIdx = mParamManager.GetAnalysisWindowParamIdx();
 
-      if (impCS > 0 && chunkSizeIdx >= 0)
-      {
-        SetParameterFromUI(chunkSizeIdx, (double) impCS);
-        mDSPConfig.chunkSize = impCS;
-        mChunker.SetChunkSize(mDSPConfig.chunkSize);
-      }
-      if (impAW > 0 && analysisWindowIdx >= 0)
-      {
-        const int idx = std::clamp(impAW - 1, 0, 3);
-        SetPendingUpdate(PendingUpdate::SuppressAnalysisReanalyze);
-        SetParameterFromUI(analysisWindowIdx, (double) idx);
-        mDSPConfig.analysisWindowMode = impAW;
-      }
+        if (impCS > 0 && chunkSizeIdx >= 0)
+        {
+          synaptic::ParameterManager::SetParameterFromUI(this, chunkSizeIdx, (double) impCS);
+          mDSPConfig.chunkSize = impCS;
+          mChunker.SetChunkSize(mDSPConfig.chunkSize);
+        }
+        if (impAW > 0 && analysisWindowIdx >= 0)
+        {
+          const int idx = std::clamp(impAW - 1, 0, 3);
+
+          // Check if we need to unlock BEFORE setting the analysis window parameter
+          // (to prevent OnParamChange from syncing output window)
+          if (GetParam(kWindowLock)->Bool())
+          {
+            const int currentOutputWindowIdx = GetParam(kOutputWindow)->Int();
+
+            // If imported analysis window differs from current output window, unlock FIRST
+            if (idx != currentOutputWindowIdx)
+            {
+              // Unlock the windows since they're now different
+              GetParam(kWindowLock)->Set(0.0); // Set to unlocked directly
+              synaptic::ParameterManager::SetParameterFromUI(this, kWindowLock, 0.0); // Also notify UI
+              MarkHostStateDirty(); // Mark state as dirty so unlock gets saved
+            }
+          }
+
+          // Now set the analysis window parameter (won't trigger sync if we just unlocked)
+          SetPendingUpdate(PendingUpdate::SuppressAnalysisReanalyze);
+          synaptic::ParameterManager::SetParameterFromUI(this, analysisWindowIdx, (double) idx);
+          mDSPConfig.analysisWindowMode = impAW;
+        }
       // Update analysis window instance and Brain pointer, but suppress auto-reanalysis because data already analyzed in file
-      UpdateBrainAnalysisWindow();
+      mWindowCoordinator.UpdateBrainAnalysisWindow(mDSPConfig);
+
+      // Force UI controls to update immediately after import
+      mWindowCoordinator.SyncWindowControls(GetUI());
 
       // Refresh windowing and latency to reflect new settings
-      UpdateChunkerWindowing();
+      mWindowCoordinator.UpdateChunkerWindowing(mDSPConfig, mTransformer.get());
       SetLatency(ComputeLatencySamples());
 
 #if SR_USE_WEB_UI
@@ -291,7 +321,7 @@ void SynapticResynthesis::OnReset()
   if (analysisWindowIdx >= 0) mDSPConfig.analysisWindowMode = 1 + std::clamp(GetParam(analysisWindowIdx)->Int(), 0, 3);
   if (enableOverlapIdx >= 0) mDSPConfig.enableOverlapAdd = GetParam(enableOverlapIdx)->Bool();
 
-  UpdateBrainAnalysisWindow();
+  mWindowCoordinator.UpdateBrainAnalysisWindow(mDSPConfig);
 
   mChunker.SetChunkSize(mDSPConfig.chunkSize);
   mChunker.SetBufferWindowSize(mDSPConfig.bufferWindowSize);
@@ -318,7 +348,7 @@ void SynapticResynthesis::OnReset()
   }
   mChunker.Reset();
 
-  UpdateChunkerWindowing();
+  mWindowCoordinator.UpdateChunkerWindowing(mDSPConfig, mTransformer.get());
 
   // Report algorithmic latency to the host (in samples)
   SetLatency(ComputeLatencySamples());
@@ -353,18 +383,33 @@ void SynapticResynthesis::OnUIOpen()
 {
   // Ensure UI gets current values when window opens
   Plugin::OnUIOpen();
+
+#if !SR_USE_WEB_UI && IPLUG_EDITOR
+  // Bind this instance's progress overlay manager to our instance-owned UI
+  if (mUI)
+  {
+    mProgressOverlayMgr.SetSynapticUI(mUI.get());
+  }
+#endif
 #if SR_USE_WEB_UI
   mUIBridge.SendTransformerParams(mTransformer);
   mUIBridge.SendMorphParams(mMorph);
   SyncAndSendDSPConfig();
   mUIBridge.SendBrainSummary(mBrain);
-#else
-  // For C++ UI, rebuild dynamic parameter controls and brain file list
-  #if IPLUG_EDITOR
-  // Small delay to ensure UI is fully initialized
-  static int initCounter = 0;
-  initCounter = 0; // Reset on UI open
-  #endif
+#endif
+}
+
+void SynapticResynthesis::OnUIClose()
+{
+  Plugin::OnUIClose();
+
+#if !SR_USE_WEB_UI && IPLUG_EDITOR
+  // Clean up instance-owned UI and detach from progress overlay manager
+  mProgressOverlayMgr.SetSynapticUI(nullptr);
+  mUI.reset();
+  
+  // Reset flag so UI will be rebuilt if reopened
+  mNeedsInitialUIRebuild = true;
 #endif
 }
 
@@ -373,28 +418,28 @@ void SynapticResynthesis::OnIdle()
   // Drain any UI messages queued by background threads
   DrainUiQueueOnMainThread();
 
-  // Update C++ UI on first idle call after UI open
+  // Update C++ UI on first idle call after UI open, and process any queued UI work
 #if !SR_USE_WEB_UI && IPLUG_EDITOR
-  if (mNeedsInitialUIRebuild && GetUI())
+  if (mUI)
   {
-    SyncAllUIState();
-    mNeedsInitialUIRebuild = false;
-  }
+    if (mNeedsInitialUIRebuild)
+    {
+      SyncAllUIState();
+      mNeedsInitialUIRebuild = false;
+    }
 
-  // Update C++ UI brain file list if needed
-  if (CheckAndClearPendingUpdate(PendingUpdate::BrainSummary))
-  {
-    SyncBrainUIState();
-  }
+    // Update C++ UI brain file list if needed
+    if (CheckAndClearPendingUpdate(PendingUpdate::BrainSummary))
+    {
+      SyncBrainUIState();
+    }
 
-  // Process progress overlay updates from background threads
-  mProgressOverlayMgr.ProcessPendingUpdates(synaptic::GetSynapticUI());
+    // Process progress overlay updates from background threads
+    mProgressOverlayMgr.ProcessPendingUpdates(mUI.get());
 
-  // Handle transformer/morph parameter UI rebuild on UI thread
-  // Simply rebuild the entire UI - this is reliable and always works correctly
-  if (HasPendingUpdate(PendingUpdate::RebuildTransformer) || HasPendingUpdate(PendingUpdate::RebuildMorph))
-  {
-    if (auto* ui = synaptic::GetSynapticUI())
+    // Handle transformer/morph parameter UI rebuild on UI thread
+    // Simply rebuild the entire UI - this is reliable and always works correctly
+    if (HasPendingUpdate(PendingUpdate::RebuildTransformer) || HasPendingUpdate(PendingUpdate::RebuildMorph))
     {
       // Use pending transformer/morph if available (swap hasn't happened yet), otherwise use current
       // Pass shared_ptr copies to keep objects alive during UI rebuild (prevents race with audio thread)
@@ -404,16 +449,20 @@ void SynapticResynthesis::OnIdle()
         mPendingMorph ? mPendingMorph : mMorph;
 
       // Update cached context with shared_ptr copies before rebuilding
-      ui->setDynamicParamContext(currentTransformer, currentMorph, &mParamManager, this);
-      ui->rebuild();
+      mUI->setDynamicParamContext(currentTransformer, currentMorph, &mParamManager, this);
+      mUI->rebuild();
 
       // Re-sync brain UI state after rebuild (brain controls were wiped and need to be repopulated)
       SyncBrainUIState();
-    }
 
-    CheckAndClearPendingUpdate(PendingUpdate::RebuildTransformer);
-    CheckAndClearPendingUpdate(PendingUpdate::RebuildMorph);
+      // Sync window controls after rebuild (they get recreated during rebuild and need current values)
+      mWindowCoordinator.SyncWindowControls(GetUI());
+
+      CheckAndClearPendingUpdate(PendingUpdate::RebuildTransformer);
+      CheckAndClearPendingUpdate(PendingUpdate::RebuildMorph);
+    }
   }
+#endif
 
   // Coalesce pending dropped files and start async batch import
   if (mPendingImportScheduled.load())
@@ -432,21 +481,22 @@ void SynapticResynthesis::OnIdle()
 
         if (!files.empty())
         {
-          mProgressOverlayMgr.Show("Importing Files", "Starting...", 0.0f);
+          mProgressOverlayMgr.Show("Importing Files", "Starting...", 0.0f, true);
           mBrainManager.AddMultipleFilesAsync(std::move(files), (int)GetSampleRate(), NInChansConnected(), mDSPConfig.chunkSize,
-            [this](const std::string& fileName, int cumulativeChunk, int totalChunksAllFiles)
-            {
-              // Reports cumulative chunk progress across all files
-              const float p = (totalChunksAllFiles > 0) ? ((float)cumulativeChunk / (float)totalChunksAllFiles * 100.0f) : 50.0f;
-              char buf[256];
-              snprintf(buf, sizeof(buf), "%s (chunk %d/%d)", fileName.c_str(), cumulativeChunk, totalChunksAllFiles);
-              mProgressOverlayMgr.Update(buf, p);
-            },
-            [this]()
+            MakeProgressCallback(),
+            [this](bool wasCancelled)
             {
               mProgressOverlayMgr.Hide();
-              SetPendingUpdate(PendingUpdate::BrainSummary);
-              MarkHostStateDirty();
+              if (!wasCancelled)
+              {
+                SetPendingUpdate(PendingUpdate::BrainSummary);
+                MarkHostStateDirty();
+              }
+              else
+              {
+                DBGMSG("Multi-file import CANCELLED - partial files may have been imported\n");
+                // Note: Partial imports are intentional - successfully imported files are kept
+              }
             }
           );
         }
@@ -458,12 +508,6 @@ void SynapticResynthesis::OnIdle()
       }
     }
   }
-
-  if (!GetUI())
-  {
-    mNeedsInitialUIRebuild = true;
-  }
-#endif
 }
 
 void SynapticResynthesis::OnRestoreState()
@@ -482,159 +526,29 @@ void SynapticResynthesis::OnRestoreState()
 
 void SynapticResynthesis::OnParamChange(int paramIdx)
 {
-  // Handle chunk size parameter (coordinated by ParameterManager)
-  if (paramIdx == mParamManager.GetChunkSizeParamIdx())
-  {
-    bool chunkSizeChanged = mParamManager.HandleChunkSizeChange(paramIdx, GetParam(paramIdx), mDSPConfig, this, mChunker, mAnalysisWindow);
-    UpdateChunkerWindowing();
-    SetLatency(ComputeLatencySamples());
+  // Create context for centralized parameter coordination
+  synaptic::ParameterChangeContext ctx;
+  ctx.plugin = this;
+  ctx.config = &mDSPConfig;
+  ctx.chunker = &mChunker;
+  ctx.brain = &mBrain;
+  ctx.analysisWindow = &mAnalysisWindow;
+  ctx.currentTransformer = &mTransformer;
+  ctx.pendingTransformer = &mPendingTransformer;
+  ctx.currentMorph = &mMorph;
+  ctx.pendingMorph = &mPendingMorph;
+  ctx.windowCoordinator = &mWindowCoordinator;
+  ctx.brainManager = &mBrainManager;
+  ctx.progressOverlayMgr = &mProgressOverlayMgr;
 
-#if !SR_USE_WEB_UI
-    // Only trigger background rechunk if chunk size actually changed (not just parameter editing)
-    if (chunkSizeChanged)
-    {
-      mProgressOverlayMgr.Show("Rechunking", "Starting...", 0.0f);
-      mBrainManager.RechunkAllFilesAsync(mDSPConfig.chunkSize, (int)GetSampleRate(),
-        [this](const std::string& fileName, int currentChunk, int totalChunks)
-        {
-          // Now reports per-chunk progress across all files
-          const float p = (totalChunks > 0) ? ((float)currentChunk / (float)totalChunks * 100.0f) : 50.0f;
-          char buf[256];
-          snprintf(buf, sizeof(buf), "%s (chunk %d/%d)", fileName.c_str(), currentChunk, totalChunks);
-          mProgressOverlayMgr.Update(buf, p);
-        },
-        [this]()
-        {
-          mProgressOverlayMgr.Hide();
-          SetPendingUpdate(PendingUpdate::BrainSummary);
-          SetPendingUpdate(PendingUpdate::MarkDirty);
-        }
-      );
-    }
-#endif
-  }
-  // Handle buffer window parameter
-  else if (paramIdx == mParamManager.GetBufferWindowParamIdx())
-  {
-    mParamManager.HandleCoreParameterChange(paramIdx, GetParam(paramIdx), mDSPConfig);
-    mChunker.SetBufferWindowSize(mDSPConfig.bufferWindowSize);
-  }
-  // Handle algorithm change (coordinated by ParameterManager)
-  else if (paramIdx == mParamManager.GetAlgorithmParamIdx())
-  {
-    // Store new transformer in pending slot for thread-safe swap in ProcessBlock
-    mPendingTransformer = mParamManager.HandleAlgorithmChange(paramIdx, GetParam(paramIdx), mDSPConfig,
-                                                               this, mBrain, GetSampleRate(), NInChansConnected());
-    UpdateChunkerWindowing();
-    // Note: SetLatency will be called in ProcessBlock after swap
+  // Bind callbacks
+  ctx.setPendingUpdate = [this](uint32_t flag) { SetPendingUpdate((PendingUpdate)flag); };
+  ctx.checkAndClearPendingUpdate = [this](uint32_t flag) { return CheckAndClearPendingUpdate((PendingUpdate)flag); };
+  ctx.computeLatency = [this]() { return ComputeLatencySamples(); };
+  ctx.setLatency = [this](int latency) { SetLatency(latency); };
 
-    // Schedule transformer parameter UI rebuild (must happen on UI thread)
-#if !SR_USE_WEB_UI && IPLUG_EDITOR
-    SetPendingUpdate(PendingUpdate::RebuildTransformer);
-#endif
-  }
-  // Handle output window
-  else if (paramIdx == mParamManager.GetOutputWindowParamIdx())
-  {
-    mParamManager.HandleCoreParameterChange(paramIdx, GetParam(paramIdx), mDSPConfig);
-    UpdateChunkerWindowing();
-  }
-  // Handle analysis window (coordinated by ParameterManager, with background reanalysis)
-  else if (paramIdx == mParamManager.GetAnalysisWindowParamIdx())
-  {
-    bool analysisWindowChanged = mParamManager.HandleAnalysisWindowChange(paramIdx, GetParam(paramIdx), mDSPConfig, mAnalysisWindow, mBrain);
-
-    // Only trigger reanalysis if window mode actually changed AND not suppressed
-    if (analysisWindowChanged && !CheckAndClearPendingUpdate(PendingUpdate::SuppressAnalysisReanalyze))
-    {
-#if SR_USE_WEB_UI
-      mBrainManager.ReanalyzeAllChunksAsync((int)GetSampleRate(),
-        [](const std::string&, int, int){},  // Empty progress callback (silent background operation)
-        [this]()
-        {
-          SetPendingUpdate(PendingUpdate::BrainSummary);
-          SetPendingUpdate(PendingUpdate::MarkDirty);
-        });
-#else
-      mProgressOverlayMgr.Show("Reanalyzing", "Starting...", 0.0f);
-      mBrainManager.ReanalyzeAllChunksAsync((int)GetSampleRate(),
-        [this](const std::string& fileName, int currentChunk, int totalChunks)
-        {
-          // Now reports per-chunk progress across all files
-          const float p = (totalChunks > 0) ? ((float)currentChunk / (float)totalChunks * 100.0f) : 50.0f;
-          char buf[256];
-          snprintf(buf, sizeof(buf), "%s (chunk %d/%d)", fileName.c_str(), currentChunk, totalChunks);
-          mProgressOverlayMgr.Update(buf, p);
-        },
-        [this]()
-        {
-          mProgressOverlayMgr.Hide();
-          SetPendingUpdate(PendingUpdate::BrainSummary);
-          SetPendingUpdate(PendingUpdate::MarkDirty);
-        });
-#endif
-    }
-    SetPendingUpdate(PendingUpdate::DSPConfig);
-  }
-  // Handle overlap enable
-  else if (paramIdx == mParamManager.GetEnableOverlapParamIdx())
-  {
-    mParamManager.HandleCoreParameterChange(paramIdx, GetParam(paramIdx), mDSPConfig);
-    UpdateChunkerWindowing();
-  }
-  // Handle autotune blend
-  else if (paramIdx == mParamManager.GetAutotuneBlendParamIdx())
-  {
-    const double blendPercent = GetParam(paramIdx)->Value();
-    mChunker.GetAutotuneProcessor().SetBlend((float)(blendPercent / 100.0));
-  }
-  // Handle autotune mode
-  else if (paramIdx == mParamManager.GetAutotuneModeParamIdx())
-  {
-    const int mode = GetParam(paramIdx)->Int(); // 0 = FFT Peak, 1 = HPS
-    mChunker.GetAutotuneProcessor().SetMode(mode == 1);
-  }
-  // Handle autotune tolerance (octaves)
-  else if (paramIdx == mParamManager.GetAutotuneToleranceOctavesParamIdx())
-  {
-    // Convert enum index (0-4) to octave value (1-5)
-    const int enumIdx = std::clamp(GetParam(paramIdx)->Int(), 0, 4);
-    mChunker.GetAutotuneProcessor().SetToleranceOctaves(enumIdx + 1);
-  }
-  // Handle morph mode change
-  else if (paramIdx == mParamManager.GetMorphModeParamIdx())
-  {
-    // Create/reset new IMorph instance and apply bindings
-    mPendingMorph = mParamManager.HandleMorphModeChange(paramIdx, GetParam(paramIdx), this,
-                                                 GetSampleRate(), mDSPConfig.chunkSize, NInChansConnected());
-    // Note: mChunker.SetMorph will be called in ProcessBlock after swap
-#if SR_USE_WEB_UI
-    mUIBridge.SendMorphParams(mPendingMorph);
-#else
-    // Schedule morph parameter UI rebuild (must happen on UI thread)
-    #if IPLUG_EDITOR
-    SetPendingUpdate(PendingUpdate::RebuildMorph);
-    #endif
-#endif
-  }
-  // Handle dynamic parameters using ParameterManager
-  else
-  {
-    bool needsTransformerRebuild = false;
-    bool needsMorphRebuild = false;
-    if (mParamManager.HandleDynamicParameterChange(paramIdx, GetParam(paramIdx), mTransformer.get(), mMorph.get(),
-                                                     &needsTransformerRebuild, &needsMorphRebuild))
-    {
-      // Parameter was handled by ParameterManager
-      // Check if UI rebuild is needed
-      #if !SR_USE_WEB_UI && IPLUG_EDITOR
-      if (needsTransformerRebuild)
-        SetPendingUpdate(PendingUpdate::RebuildTransformer);
-      if (needsMorphRebuild)
-        SetPendingUpdate(PendingUpdate::RebuildMorph);
-      #endif
-    }
-  }
+  // Delegate to ParameterManager for all coordination
+  mParamManager.OnParamChange(paramIdx, ctx);
 
   // For all parameters (including kAGC, kInGain, kOutGain, and any others),
   // the base Plugin class will notify parameter-bound controls automatically.
@@ -647,33 +561,6 @@ void SynapticResynthesis::ProcessMidiMsg(const IMidiMsg& msg)
 
   msg.PrintMsg();
   SendMidiMsg(msg);
-}
-
-void SynapticResynthesis::UpdateChunkerWindowing()
-{
-  // Validate chunk size
-  if (mDSPConfig.chunkSize <= 0)
-  {
-    DBGMSG("Warning: Invalid chunk size %d, using default\n", mDSPConfig.chunkSize);
-    mDSPConfig.chunkSize = 3000;
-  }
-
-  // Set up output window first
-  mOutputWindow.Set(synaptic::Window::IntToType(mDSPConfig.outputWindowMode), mDSPConfig.chunkSize);
-
-  // Configure overlap behavior based on user setting, window type, and transformer capabilities
-  const bool isRectangular = (mDSPConfig.outputWindowMode == 4); // Rectangular
-  const bool transformerWantsOverlap = mTransformer ? mTransformer->WantsOverlapAdd() : true;
-  const bool shouldUseOverlap = mDSPConfig.enableOverlapAdd && !isRectangular && transformerWantsOverlap;
-
-  mChunker.EnableOverlap(shouldUseOverlap);
-  mChunker.SetOutputWindow(mOutputWindow);
-
-  // Keep the chunker's input analysis window aligned with Brain analysis window
-  mChunker.SetInputAnalysisWindow(mAnalysisWindow);
-
-  DBGMSG("Window config: type=%d, userEnabled=%s, shouldUseOverlap=%s, chunkSize=%d\n",
-         mDSPConfig.outputWindowMode, mDSPConfig.enableOverlapAdd ? "true" : "false", shouldUseOverlap ? "true" : "false", mDSPConfig.chunkSize);
 }
 
 void SynapticResynthesis::MarkHostStateDirty()
@@ -714,25 +601,36 @@ void SynapticResynthesis::SyncAndSendDSPConfig()
   mUIBridge.SendDSPConfigWithAlgorithms(mDSPConfig, morphIdx);
 }
 
-void SynapticResynthesis::SetParameterFromUI(int paramIdx, double value)
+
+synaptic::BrainManager::ProgressFn SynapticResynthesis::MakeProgressCallback()
 {
-  const double norm = GetParam(paramIdx)->ToNormalized(value);
-  BeginInformHostOfParamChangeFromUI(paramIdx);
-  SendParameterValueFromUI(paramIdx, norm);
-  EndInformHostOfParamChangeFromUI(paramIdx);
+  return [this](const std::string& fileName, int current, int total)
+  {
+    const float p = (total > 0) ? ((float)current / (float)total * 100.0f) : 50.0f;
+    char buf[256];
+    snprintf(buf, sizeof(buf), "%s (chunk %d/%d)", fileName.c_str(), current, total);
+    mProgressOverlayMgr.Update(buf, p);
+  };
 }
 
-void SynapticResynthesis::UpdateBrainAnalysisWindow()
+synaptic::BrainManager::CompletionFn SynapticResynthesis::MakeStandardCompletionCallback()
 {
-  mAnalysisWindow.Set(synaptic::Window::IntToType(mDSPConfig.analysisWindowMode), mDSPConfig.chunkSize);
-  mBrain.SetWindow(&mAnalysisWindow);
+  return [this](bool wasCancelled)
+  {
+    mProgressOverlayMgr.Hide();
+    if (!wasCancelled)
+    {
+      SetPendingUpdate(PendingUpdate::BrainSummary);
+      SetPendingUpdate(PendingUpdate::MarkDirty);
+    }
+  };
 }
+
 
 void SynapticResynthesis::SyncBrainUIState()
 {
 #if !SR_USE_WEB_UI && IPLUG_EDITOR
-  auto* ui = synaptic::GetSynapticUI();
-  if (!ui) return;
+  if (!mUI) return;
 
   // Convert Brain summary to UI format
   auto brainSummary = mBrain.GetSummary();
@@ -741,32 +639,40 @@ void SynapticResynthesis::SyncBrainUIState()
   {
     uiEntries.push_back({s.id, s.name, s.chunkCount});
   }
-  ui->updateBrainFileList(uiEntries);
+  mUI->updateBrainFileList(uiEntries);
 
   // Update brain state (storage info, button visibility, control states)
   // Single source of truth: all UI state is derived from UseExternal()
-  ui->updateBrainState(mBrainManager.UseExternal(), mBrainManager.ExternalPath());
+  mUI->updateBrainState(mBrainManager.UseExternal(), mBrainManager.ExternalPath());
+
+  // Update the UI toggle control to reflect the current setting
+  // Note: We don't change the flag here - we just sync the UI to match it
+  auto* compactToggle = mUI->getCompactModeToggle();
+  if (compactToggle)
+  {
+    compactToggle->SetValue(synaptic::Brain::sUseCompactBrainFormat ? 1.0 : 0.0);
+    compactToggle->SetDirty(false); // Don't trigger change notification
+  }
 #endif
 }
 
 void SynapticResynthesis::SyncAllUIState()
 {
 #if !SR_USE_WEB_UI && IPLUG_EDITOR
-  auto* ui = synaptic::GetSynapticUI();
-  if (!ui) return;
+  if (!mUI) return;
 
   // Update context with shared_ptr copies to prevent race conditions
-  ui->setDynamicParamContext(mTransformer, mMorph, &mParamManager, this);
+  mUI->setDynamicParamContext(mTransformer, mMorph, &mParamManager, this);
 
   // Rebuild dynamic params
-  ui->rebuildDynamicParams(synaptic::ui::DynamicParamType::Transformer, mTransformer.get(), mParamManager, this);
-  ui->rebuildDynamicParams(synaptic::ui::DynamicParamType::Morph, mMorph.get(), mParamManager, this);
+  mUI->rebuildDynamicParams(synaptic::ui::DynamicParamType::Transformer, mTransformer.get(), mParamManager, this);
+  mUI->rebuildDynamicParams(synaptic::ui::DynamicParamType::Morph, mMorph.get(), mParamManager, this);
 
   // Sync brain state
   SyncBrainUIState();
 
   // Resize to fit
-  ui->resizeWindowToFitContent();
+  mUI->resizeWindowToFitContent();
 #endif
 }
 
@@ -774,8 +680,15 @@ bool SynapticResynthesis::SerializeState(IByteChunk& chunk) const
 {
   if (!Plugin::SerializeState(chunk)) return false;
 
-  // Use StateSerializer to append brain state
-  return mStateSerializer.SerializeBrainState(chunk, mBrain, mBrainManager);
+  // Use StateSerializer to append brain state.
+  // For C++ UI mode, only pass the overlay manager if this instance currently has a UI open.
+#if !SR_USE_WEB_UI && IPLUG_EDITOR
+  auto* self = const_cast<SynapticResynthesis*>(this);
+  synaptic::ui::ProgressOverlayManager* overlayMgr = self->mUI ? &self->mProgressOverlayMgr : nullptr;
+  return mStateSerializer.SerializeBrainState(chunk, mBrain, mBrainManager, overlayMgr);
+#else
+  return mStateSerializer.SerializeBrainState(chunk, mBrain, mBrainManager, &mProgressOverlayMgr);
+#endif
 }
 
 int SynapticResynthesis::UnserializeState(const IByteChunk& chunk, int startPos)
@@ -785,6 +698,10 @@ int SynapticResynthesis::UnserializeState(const IByteChunk& chunk, int startPos)
 
   // Use StateSerializer to deserialize brain state
   pos = mStateSerializer.DeserializeBrainState(chunk, pos, mBrain, mBrainManager);
+
+  // When loading project state, sync the compact mode setting from the loaded brain
+  // This ensures the toggle matches what format was loaded
+  synaptic::Brain::sUseCompactBrainFormat = mBrain.WasLastLoadedInCompactFormat();
 
   // Re-link window pointer and notify UI
   mBrain.SetWindow(&mAnalysisWindow);

@@ -99,11 +99,13 @@ public:
   void setBrainStatusControl(class BrainStatusControl* ctrl);
   void setBrainDropControl(class BrainFileDropControl* ctrl);
   void setCreateNewBrainButton(ig::IControl* ctrl);
+  void setCompactModeToggle(ig::IVToggleControl* ctrl);
+  ig::IVToggleControl* getCompactModeToggle() const { return mCompactModeToggle; }
   void updateBrainFileList(const std::vector<struct BrainFileEntry>& files);
   void updateBrainState(bool useExternal, const std::string& externalPath);
 
   // Progress overlay management
-  void ShowProgressOverlay(const std::string& title, const std::string& message, float progress = 0.0f);
+  void ShowProgressOverlay(const std::string& title, const std::string& message, float progress = 0.0f, bool showCancelButton = true);
   void UpdateProgressOverlay(const std::string& message, float progress);
   void HideProgressOverlay();
 
@@ -162,10 +164,14 @@ private:
   class BrainStatusControl* mBrainStatusControl { nullptr };
   class BrainFileDropControl* mBrainDropControl { nullptr };
   ig::IControl* mCreateNewBrainButton { nullptr };
+  ig::IVToggleControl* mCompactModeToggle { nullptr };
   bool mHasBrainLoaded { false }; // Tracks if brain is loaded (for Create New Brain button visibility)
 
   // Progress overlay
   class ProgressOverlay* mProgressOverlay { nullptr };
+
+  // Background panel (need reference to resize with window)
+  ig::IControl* mBackgroundPanel { nullptr };
 
   // Cached context for rebuilding dynamic params on resize
   RebuildContext mRebuildContext;

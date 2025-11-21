@@ -311,9 +311,10 @@ namespace synaptic
     SendJSON(j);
   }
 
-  void UIBridge::ShowProgressOverlay(const std::string& title, const std::string& message, float progress)
+  void UIBridge::ShowProgressOverlay(const std::string& title, const std::string& message, float progress, bool showCancelButton)
   {
     // For WebUI, use the simple overlay message system
+    // Note: WebUI is deprecated, showCancelButton parameter ignored for WebUI
     nlohmann::json j;
     j["id"] = "overlay";
     j["visible"] = true;

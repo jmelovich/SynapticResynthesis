@@ -5,6 +5,7 @@
 
 #include "ProgressOverlay.h"
 #include "../styles/UIStyles.h"
+#include "plugin_src/ui_bridge/MessageTags.h"
 
 using namespace iplug;
 using namespace igraphics;
@@ -16,6 +17,7 @@ ProgressOverlay::ProgressOverlay(const IRECT& bounds)
 : IControl(bounds)
 , mIsVisible(false)
 , mIndeterminate(false)
+, mShowCancelButton(false)
 , mProgress(0.0f)
 {
   SetIgnoreMouse(true); // Ignore mouse events when hidden
@@ -37,7 +39,7 @@ void ProgressOverlay::Draw(IGraphics& g)
 
   // Calculate centered modal card bounds using current window size
   const float cardWidth = 400.f;
-  const float cardHeight = 160.f;
+  const float cardHeight = mShowCancelButton ? 200.f : 160.f;  // Taller if showing cancel button
   const float centerX = currentBounds.MW();
   const float centerY = currentBounds.MH();
   IRECT cardRect(centerX - cardWidth/2.f, centerY - cardHeight/2.f,
@@ -83,6 +85,20 @@ void ProgressOverlay::Draw(IGraphics& g)
       g.FillRoundRect(kAccentBlue, filledRect, 8.f);
     }
   }
+
+  // Draw cancel button if requested
+  if (mShowCancelButton)
+  {
+    IRECT cancelButtonRect = GetCancelButtonRect(cardRect);
+    
+    // Button background
+    g.FillRoundRect(IColor(255, 220, 38, 38), cancelButtonRect, 6.f);  // Red button
+    g.DrawRoundRect(IColor(255, 185, 28, 28), cancelButtonRect, 6.f, nullptr, 1.f);
+    
+    // Button text
+    IText buttonStyle = IText(14.f, IColor(255, 255, 255, 255), "Roboto-Regular", EAlign::Center, EVAlign::Middle, 0);
+    g.DrawText(buttonStyle, "Cancel", cancelButtonRect);
+  }
 }
 
 void ProgressOverlay::OnMouseDown(float x, float y, const IMouseMod& mod)
@@ -90,17 +106,42 @@ void ProgressOverlay::OnMouseDown(float x, float y, const IMouseMod& mod)
   // Block all mouse events when visible
   if (mIsVisible)
   {
+    // Check if cancel button was clicked
+    if (mShowCancelButton)
+    {
+      const IRECT currentBounds = GetUI()->GetBounds();
+      const float cardWidth = 400.f;
+      const float cardHeight = 200.f;
+      const float centerX = currentBounds.MW();
+      const float centerY = currentBounds.MH();
+      IRECT cardRect(centerX - cardWidth/2.f, centerY - cardHeight/2.f,
+                     centerX + cardWidth/2.f, centerY + cardHeight/2.f);
+      
+      IRECT cancelButtonRect = GetCancelButtonRect(cardRect);
+      
+      if (cancelButtonRect.Contains(x, y))
+      {
+        // Send cancellation message to plugin
+        auto* pDelegate = dynamic_cast<iplug::IEditorDelegate*>(GetUI()->GetDelegate());
+        if (pDelegate)
+        {
+          pDelegate->SendArbitraryMsgFromUI(kMsgTagCancelOperation, kNoTag, 0, nullptr);
+        }
+      }
+    }
+    
     // Don't propagate the event
     return;
   }
 }
 
-void ProgressOverlay::Show(const std::string& title, const std::string& message, float progress)
+void ProgressOverlay::Show(const std::string& title, const std::string& message, float progress, bool showCancelButton)
 {
   mIsVisible = true;
   mTitle = title;
   mMessage = message;
   mProgress = progress;
+  mShowCancelButton = showCancelButton;
   SetDisabled(false); // Enable the control
   SetIgnoreMouse(false); // Capture mouse events to block interaction
   IControl::Hide(false); // Make control visible
@@ -136,6 +177,14 @@ void ProgressOverlay::SetIndeterminate(bool indeterminate)
   {
     SetDirty(true);
   }
+}
+
+IRECT ProgressOverlay::GetCancelButtonRect(const IRECT& cardRect) const
+{
+  IRECT cancelButtonRect = cardRect.GetPadded(-20.f);
+  cancelButtonRect.T = cardRect.B - 50.f;  // 50 pixels from bottom
+  cancelButtonRect.B = cardRect.B - 20.f;  // 20 pixels from bottom
+  return cancelButtonRect;
 }
 
 } // namespace ui

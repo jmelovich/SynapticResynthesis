@@ -46,50 +46,6 @@ void BuildDSPTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, fl
     return best;
   };
 
-  // BRAIN ANALYSIS CARD
-  {
-    const float cardH = 165.f;
-    const int col = nextCol();
-    IRECT analysisCard = columnRect(col, colY[col], cardH);
-    ui.attach(new CardPanel(analysisCard, "BRAIN ANALYSIS"), ControlGroup::DSP);
-
-    IRECT warnRect = analysisCard.GetPadded(-layout.cardPadding).GetFromTop(34.f).GetTranslated(0.f, 28.f);
-    ui.attach(new WarningBox(warnRect, "Changing these settings triggers Brain reanalysis"), ControlGroup::DSP);
-
-    float rowY = warnRect.B + 14.f;
-    float labelWidth = 180.f;
-    float controlWidth = 200.f;
-
-    // Chunk Size - Using deferred control to prevent triggering rechunking during drag
-    IRECT chunkSizeRow = IRECT(analysisCard.L + layout.cardPadding, rowY, analysisCard.R - layout.cardPadding, rowY + layout.controlHeight);
-    ui.attach(new ITextControl(chunkSizeRow.GetFromLeft(labelWidth), "Chunk Size", kLabelText), ControlGroup::DSP);
-    ui.attach(new DeferredNumberBoxControl(
-      chunkSizeRow.GetFromLeft(controlWidth).GetTranslated(labelWidth + 8.f, 0.f),
-      kChunkSize,
-      nullptr,
-      "",
-      kSynapticStyle
-    ), ControlGroup::DSP);
-
-    rowY += layout.controlHeight + 10.f;
-
-    // Analysis Window
-    IRECT analysisWindowRow = IRECT(analysisCard.L + layout.cardPadding, rowY, analysisCard.R - layout.cardPadding, rowY + layout.controlHeight);
-    ui.attach(new ITextControl(analysisWindowRow.GetFromLeft(labelWidth), "Analysis Window", kLabelText), ControlGroup::DSP);
-    float tabSwitchWidth = controlWidth + 80.f;
-    ui.attach(new IVTabSwitchControl(
-      analysisWindowRow.GetFromLeft(tabSwitchWidth).GetTranslated(labelWidth + 12.f, 0.f),
-      kAnalysisWindow,
-      {"Hann", "Hamming", "Blackman", "Rect"},
-      "",
-      kSynapticStyle,
-      EVShape::Rectangle,
-      EDirection::Horizontal
-    ), ControlGroup::DSP);
-
-    colY[col] = analysisCard.B + layout.sectionGap;
-  }
-
   // TRANSFORMER CARD (with space for dynamic params)
   IRECT transformerCard;
   {
@@ -105,12 +61,14 @@ void BuildDSPTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, fl
     const float dropdownWidth = transformerCard.W() * 0.5f;
     const float dropdownStartX = transformerCard.L + (transformerCard.W() - dropdownWidth) / 2.f;
     IRECT transformerRow = IRECT(dropdownStartX, rowY, dropdownStartX + dropdownWidth, rowY + dropdownHeight);
-    ui.attach(new IVMenuButtonControl(
+    auto* algoControl = new IVMenuButtonControl(
       transformerRow,
       kAlgorithm,
       "Algorithm",
       kSynapticStyle
-    ), ControlGroup::DSP);
+    );
+    algoControl->SetTooltip("Select the algorithm used to transform audio chunks (typically by replacing chunks from Brain, like Samplebrain transformers.)");
+    ui.attach(algoControl, ControlGroup::DSP);
 
     // Reserve space for dynamic transformer parameters below dropdown
     IRECT transformerParamBounds = IRECT(
@@ -126,7 +84,7 @@ void BuildDSPTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, fl
 
   // AUTOTUNE CARD
   {
-    const float cardH = 210.f;
+    const float cardH = 190.f;
     const int col = nextCol();
     IRECT autotuneCard = columnRect(col, colY[col], cardH);
     auto* autotuneCardPanel = new CardPanel(autotuneCard, "AUTOTUNE");
@@ -139,7 +97,9 @@ void BuildDSPTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, fl
     const float sliderHeight = 40.f;
     const float sliderStartX = autotuneCard.L + (autotuneCard.W() - sliderWidth) / 2.f;
     IRECT autotuneRect = IRECT(sliderStartX, rowY, sliderStartX + sliderWidth, rowY + sliderHeight);
-    ui.attach(new IVSliderControl(autotuneRect, kAutotuneBlend, "Autotune Blend", kSynapticStyle, true, EDirection::Horizontal), ControlGroup::DSP);
+    auto* autotuneSlider = new IVSliderControl(autotuneRect, kAutotuneBlend, "Autotune Blend", kSynapticStyle, true, EDirection::Horizontal);
+    autotuneSlider->SetTooltip("Blends between unpitched & pitched transformer-output chunks. The source chunks are analyzed for pitch, and the transformed chunks are repitched to match.");
+    ui.attach(autotuneSlider, ControlGroup::DSP);
 
     rowY += sliderHeight + 18.f;
 
@@ -147,7 +107,7 @@ void BuildDSPTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, fl
     IRECT modeRow = IRECT(autotuneCard.L + layout.cardPadding, rowY, autotuneCard.R - layout.cardPadding, rowY + layout.controlHeight);
     ui.attach(new ITextControl(modeRow.GetFromLeft(180.f), "Autotune Mode", kLabelText), ControlGroup::DSP);
     const float modeSwitchWidth = 220.f;
-    ui.attach(new IVTabSwitchControl(
+    auto* autotuneModeSwitch = new IVTabSwitchControl(
       modeRow.GetFromLeft(modeSwitchWidth).GetTranslated(180.f + 12.f, 0.f),
       kAutotuneMode,
       {"FFT Peak", "HPS"},
@@ -155,7 +115,9 @@ void BuildDSPTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, fl
       kSynapticStyle,
       EVShape::Rectangle,
       EDirection::Horizontal
-    ), ControlGroup::DSP);
+    );
+    autotuneModeSwitch->SetTooltip("Choose pitch detection algorithm: FFT Peak (faster) or HPS (fundamental frequency detection, can be more accurate for complex tones)");
+    ui.attach(autotuneModeSwitch, ControlGroup::DSP);
 
     rowY += layout.controlHeight + 12.f;
 
@@ -163,7 +125,7 @@ void BuildDSPTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, fl
     IRECT tolRow = IRECT(autotuneCard.L + layout.cardPadding, rowY, autotuneCard.R - layout.cardPadding, rowY + layout.controlHeight);
     ui.attach(new ITextControl(tolRow.GetFromLeft(180.f), "Autotune Range (Octaves)", kLabelText), ControlGroup::DSP);
     const float tolSwitchWidth = 220.f;
-    ui.attach(new IVTabSwitchControl(
+    auto* autotuneRangeSwitch = new IVTabSwitchControl(
       tolRow.GetFromLeft(tolSwitchWidth).GetTranslated(180.f + 12.f, 0.f),
       kAutotuneToleranceOctaves,
       {"1", "2", "3", "4", "5"},
@@ -171,7 +133,9 @@ void BuildDSPTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, fl
       kSynapticStyle,
       EVShape::Rectangle,
       EDirection::Horizontal
-    ), ControlGroup::DSP);
+    );
+    autotuneRangeSwitch->SetTooltip("Maximum pitch shift range in octaves. Higher values allow larger pitch corrections but may be less stable");
+    ui.attach(autotuneRangeSwitch, ControlGroup::DSP);
 
     colY[col] = autotuneCard.B + layout.sectionGap;
   }
@@ -190,12 +154,14 @@ void BuildDSPTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, fl
     const float morphDropdownWidth = morphCard.W() * 0.5f;
     const float morphDropdownStartX = morphCard.L + (morphCard.W() - morphDropdownWidth) / 2.f;
     IRECT morphRow = IRECT(morphDropdownStartX, rowY, morphDropdownStartX + morphDropdownWidth, rowY + morphDropdownHeight);
-    ui.attach(new IVMenuButtonControl(
+    auto* morphControl = new IVMenuButtonControl(
       morphRow,
       kMorphMode,
       "Morph Mode",
       kSynapticStyle
-    ), ControlGroup::DSP);
+    );
+    morphControl->SetTooltip("Select a spectral blend method, for blending between transformed chunks and source chunks.");
+    ui.attach(morphControl, ControlGroup::DSP);
 
     // Reserve space for dynamic morph parameters below dropdown
     IRECT morphParamBounds = IRECT(
@@ -220,19 +186,47 @@ void BuildDSPTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, fl
 
     float rowY = audioCard.T + layout.cardPadding + 28.f;
 
-    // Output Window
+    // Output Window with lock
     IRECT outputWindowRow = IRECT(audioCard.L + layout.cardPadding, rowY, audioCard.R - layout.cardPadding, rowY + layout.controlHeight);
-    ui.attach(new ITextControl(outputWindowRow.GetFromLeft(180.f), "Output Window", kLabelText), ControlGroup::DSP);
+    const float labelWidth = 180.f;
+    const float lockSize = 24.f;
+    const float lockGap = 8.f;
+
+    ui.attach(new ITextControl(outputWindowRow.GetFromLeft(labelWidth), "Output Window", kLabelText), ControlGroup::DSP);
+
+    // Tab switch centered in remaining space (ignore label for centering calculation)
     const float outputTabSwitchWidth = 200.f + 80.f;
-    ui.attach(new IVTabSwitchControl(
-      outputWindowRow.GetFromLeft(outputTabSwitchWidth).GetTranslated(180.f + 12.f, 0.f),
+    const float availableWidth = outputWindowRow.W();
+    const float tabSwitchStartX = audioCard.L + layout.cardPadding + (availableWidth - outputTabSwitchWidth) * 0.5f;
+
+    IRECT tabSwitchRect = IRECT(
+      tabSwitchStartX,
+      rowY,
+      tabSwitchStartX + outputTabSwitchWidth,
+      rowY + layout.controlHeight
+    );
+    auto* outputWindowSwitch = new IVTabSwitchControl(
+      tabSwitchRect,
       kOutputWindow,
       {"Hann", "Hamming", "Blackman", "Rect"},
       "",
       kSynapticStyle,
       EVShape::Rectangle,
       EDirection::Horizontal
-    ), ControlGroup::DSP);
+    );
+    outputWindowSwitch->SetTooltip("Window function applied to output audio chunks. Affects smoothness and frequency response. Typically you'd want this to match the analysis window (when spectral processing active, this control is overriden to match analysis window)");
+    ui.attach(outputWindowSwitch, ControlGroup::DSP);
+
+    // Lock button positioned to the left of tab switch
+    IRECT lockButtonRect = IRECT(
+      tabSwitchStartX - lockSize - lockGap,
+      rowY + (layout.controlHeight - lockSize) * 0.5f,
+      tabSwitchStartX - lockGap,
+      rowY + (layout.controlHeight - lockSize) * 0.5f + lockSize
+    );
+    auto* outputLockButton = new LockButtonControl(lockButtonRect, kWindowLock, kOutputWindow);
+    outputLockButton->SetTooltip("Lock/unlock synchronization between Output Window and Analysis Window");
+    ui.attach(outputLockButton, ControlGroup::DSP);
 
     rowY += layout.controlHeight + 12.f;
 
@@ -244,24 +238,28 @@ void BuildDSPTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, fl
     const float toggleStartX = audioCard.L + (audioCard.W() - toggleGroupWidth) / 2.f;
 
     IRECT overlapRect = IRECT(toggleStartX, rowY, toggleStartX + toggleWidth, rowY + toggleHeight);
-    ui.attach(new IVToggleControl(
+    auto* overlapToggle = new IVToggleControl(
       overlapRect,
       kEnableOverlap,
       "Overlap-Add",
       kSynapticStyle,
       "OFF",
       "ON"
-    ), ControlGroup::DSP);
+    );
+    overlapToggle->SetTooltip("Enable overlap-add processing for smoother transitions between chunks. Reduces clicks and pops, typically you want this enabled. Does increase performance cost.");
+    ui.attach(overlapToggle, ControlGroup::DSP);
 
     IRECT agcRect = IRECT(toggleStartX + toggleWidth + toggleGap, rowY, toggleStartX + toggleWidth + toggleGap + toggleWidth, rowY + toggleHeight);
-    ui.attach(new IVToggleControl(
+    auto* agcToggle = new IVToggleControl(
       agcRect,
       kAGC,
       "AGC",
       kSynapticStyle,
       "OFF",
       "ON"
-    ), ControlGroup::DSP);
+    );
+    agcToggle->SetTooltip("Match RMS amplitude of output chunks with input chunks.");
+    ui.attach(agcToggle, ControlGroup::DSP);
 
     rowY += layout.controlHeight + 22.f;
 
@@ -273,10 +271,14 @@ void BuildDSPTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, fl
     const float knobY = rowY;
 
     IRECT inGainRect = IRECT(knobStartX, knobY, knobStartX + knobSize, knobY + knobSize);
-    ui.attach(new IVKnobControl(inGainRect, kInGain, "Input Gain", kSynapticStyle), ControlGroup::DSP);
+    auto* inGainKnob = new IVKnobControl(inGainRect, kInGain, "Input Gain", kSynapticStyle);
+    inGainKnob->SetTooltip("Adjust input signal level before processing. Range: -70dB to +12dB");
+    ui.attach(inGainKnob, ControlGroup::DSP);
 
     IRECT outGainRect = IRECT(knobStartX + knobSize + knobSpacing, knobY, knobStartX + knobSize + knobSpacing + knobSize, knobY + knobSize);
-    ui.attach(new IVKnobControl(outGainRect, kOutGain, "Output Gain", kSynapticStyle), ControlGroup::DSP);
+    auto* outGainKnob = new IVKnobControl(outGainRect, kOutGain, "Output Gain", kSynapticStyle);
+    outGainKnob->SetTooltip("Adjust output signal level after processing. Range: -70dB to +12dB");
+    ui.attach(outGainKnob, ControlGroup::DSP);
 
     colY[col] = audioCard.B + layout.sectionGap;
   }
@@ -316,12 +318,14 @@ void BuildBrainTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, 
     auto* dropControl = new BrainFileDropControl(dropArea);
     dropControl->SetDisabled(true); // Start disabled until brain is loaded
     dropControl->SetBlend(IBlend(EBlend::Default, 0.3f)); // Start grayed out
+    dropControl->SetTooltip("Drag and drop audio files here to add them to the brain. Supported formats: WAV, AIFF, FLAC");
     ui.attach(dropControl, ControlGroup::Brain);
     ui.setBrainDropControl(dropControl); // Store reference for state updates
 
     // Status line
     IRECT statusRect = IRECT(libraryCard.L + layout.cardPadding, dropArea.B + 8.f, libraryCard.R - layout.cardPadding, dropArea.B + 24.f);
     auto* statusControl = new BrainStatusControl(statusRect);
+    statusControl->SetTooltip("Shows number of files in brain and storage mode (inline or external file)");
     ui.attach(statusControl, ControlGroup::Brain);
     ui.setBrainStatusControl(statusControl); // Store reference for updates
 
@@ -335,6 +339,7 @@ void BuildBrainTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, 
     auto* fileList = new BrainFileListControl(fileListRect);
     fileList->SetDisabled(true); // Start disabled until brain is loaded
     fileList->SetBlend(IBlend(EBlend::Default, 0.3f)); // Start grayed out
+    fileList->SetTooltip("List of audio files in the brain. Click the X button to remove a file");
     ui.attach(fileList, ControlGroup::Brain);
     ui.setBrainFileListControl(fileList); // Store reference for updates
 
@@ -354,15 +359,89 @@ void BuildBrainTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, 
         pDelegate->SendArbitraryMsgFromUI(kMsgTagBrainCreateNew, kNoTag, 0, nullptr);
       }
     }, "Create New Brain", kButtonStyle);
+    createButton->SetTooltip("Initialize a new brain for storing audio samples. Drag and drop audio files to populate it");
     ui.attach(createButton, ControlGroup::Brain);
     ui.setCreateNewBrainButton(createButton); // Store reference for state updates
 
     colY[col] = libraryCard.B + layout.sectionGap;
   }
 
+  // BRAIN ANALYSIS CARD
+  {
+    const float cardH = 175.f; // Increased by 10px for bottom padding
+    const int col = nextCol();
+    IRECT analysisCard = columnRect(col, colY[col], cardH);
+    ui.attach(new CardPanel(analysisCard, "BRAIN ANALYSIS"), ControlGroup::Brain);
+
+    IRECT warnRect = analysisCard.GetPadded(-layout.cardPadding).GetFromTop(34.f).GetTranslated(0.f, 28.f);
+    ui.attach(new WarningBox(warnRect, "Changing these settings triggers Brain reanalysis"), ControlGroup::Brain);
+
+    float rowY = warnRect.B + 14.f;
+    float labelWidth = 180.f;
+    float controlWidth = 200.f;
+
+    // Chunk Size - Using deferred control to prevent triggering rechunking during drag
+    IRECT chunkSizeRow = IRECT(analysisCard.L + layout.cardPadding, rowY, analysisCard.R - layout.cardPadding, rowY + layout.controlHeight);
+    ui.attach(new ITextControl(chunkSizeRow.GetFromLeft(labelWidth), "Chunk Size", kLabelText), ControlGroup::Brain);
+    auto* chunkSizeControl = new DeferredNumberBoxControl(
+      chunkSizeRow.GetFromLeft(controlWidth).GetTranslated(labelWidth + 8.f, 0.f),
+      kChunkSize,
+      nullptr,
+      "",
+      kSynapticStyle
+    );
+    chunkSizeControl->SetTooltip("Number of audio samples in each chunk, in Brain AND processing. Larger chunks are quicker, but the resynthesized sound is less granular. Changing this triggers rechunking.");
+    ui.attach(chunkSizeControl, ControlGroup::Brain);
+
+    rowY += layout.controlHeight + 10.f;
+
+    // Analysis Window with lock
+    IRECT analysisWindowRow = IRECT(analysisCard.L + layout.cardPadding, rowY, analysisCard.R - layout.cardPadding, rowY + layout.controlHeight);
+    const float lockSize = 24.f;
+    const float lockGap = 8.f;
+
+    ui.attach(new ITextControl(analysisWindowRow.GetFromLeft(labelWidth), "Analysis Window", kLabelText), ControlGroup::Brain);
+
+    // Tab switch centered in remaining space (ignore label for centering calculation)
+    float tabSwitchWidth = controlWidth + 80.f;
+    const float availableWidth = analysisWindowRow.W();
+    const float tabSwitchStartX = analysisCard.L + layout.cardPadding + (availableWidth - tabSwitchWidth) * 0.5f;
+
+    IRECT tabSwitchRect = IRECT(
+      tabSwitchStartX,
+      rowY,
+      tabSwitchStartX + tabSwitchWidth,
+      rowY + layout.controlHeight
+    );
+    auto* analysisWindowSwitch = new IVTabSwitchControl(
+      tabSwitchRect,
+      kAnalysisWindow,
+      {"Hann", "Hamming", "Blackman", "Rect"},
+      "",
+      kSynapticStyle,
+      EVShape::Rectangle,
+      EDirection::Horizontal
+    );
+    analysisWindowSwitch->SetTooltip("Window function used for brain chunk analysis. Affects frequency content detection. Changing this triggers reanalysis. (When spectral processing is active, this control also doubles as the output windowing function)");
+    ui.attach(analysisWindowSwitch, ControlGroup::Brain);
+
+    // Lock button positioned to the left of tab switch
+    IRECT lockButtonRect = IRECT(
+      tabSwitchStartX - lockSize - lockGap,
+      rowY + (layout.controlHeight - lockSize) * 0.5f,
+      tabSwitchStartX - lockGap,
+      rowY + (layout.controlHeight - lockSize) * 0.5f + lockSize
+    );
+    auto* analysisLockButton = new LockButtonControl(lockButtonRect, kWindowLock, kAnalysisWindow);
+    analysisLockButton->SetTooltip("Lock/unlock synchronization between Output Window and Analysis Window");
+    ui.attach(analysisLockButton, ControlGroup::Brain);
+
+    colY[col] = analysisCard.B + layout.sectionGap;
+  }
+
   // MANAGEMENT CARD
   {
-    const float managementCardHeight = 160.f;
+    const float managementCardHeight = 220.f;
     const int col = nextCol();
     IRECT managementCard = columnRect(col, colY[col], managementCardHeight);
     ui.attach(new CardPanel(managementCard, "BRAIN MANAGEMENT"), ControlGroup::Brain);
@@ -376,33 +455,69 @@ void BuildBrainTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, 
     float btnY = managementCard.T + layout.cardPadding + 32.f;
 
     IRECT importBtnRect = IRECT(btnStartX, btnY, btnStartX + btnWidth, btnY + btnHeight);
-    ui.attach(new IVButtonControl(importBtnRect, [](IControl* pCaller) {
+    auto* importBtn = new IVButtonControl(importBtnRect, [](IControl* pCaller) {
       auto* pGraphics = pCaller->GetUI();
       auto* pDelegate = dynamic_cast<iplug::IEditorDelegate*>(pGraphics->GetDelegate());
       if (pDelegate) {
         pDelegate->SendArbitraryMsgFromUI(kMsgTagBrainImport, kNoTag, 0, nullptr);
       }
-    }, "Import Brain", kButtonStyle), ControlGroup::Brain);
+    }, "Import Brain", kButtonStyle);
+    importBtn->SetTooltip("Load a brain file from disk. Brain stores analyzed audio samples for synthesis");
+    ui.attach(importBtn, ControlGroup::Brain);
 
     IRECT exportBtnRect = IRECT(btnStartX + btnWidth + btnGapH, btnY, btnStartX + btnWidth + btnGapH + btnWidth, btnY + btnHeight);
-    ui.attach(new IVButtonControl(exportBtnRect, [](IControl* pCaller) {
+    auto* exportBtn = new IVButtonControl(exportBtnRect, [](IControl* pCaller) {
       auto* pGraphics = pCaller->GetUI();
       auto* pDelegate = dynamic_cast<iplug::IEditorDelegate*>(pGraphics->GetDelegate());
       if (pDelegate) {
         pDelegate->SendArbitraryMsgFromUI(kMsgTagBrainExport, kNoTag, 0, nullptr);
       }
-    }, "Export Brain", kButtonStyle), ControlGroup::Brain);
+    }, "Export Brain", kButtonStyle);
+    exportBtn->SetTooltip("Save current brain to disk. Allows reusing analyzed samples across projects");
+    ui.attach(exportBtn, ControlGroup::Brain);
 
     btnY += btnHeight + btnGapV;
 
-    IRECT resetBtnRect = IRECT(btnStartX, btnY, btnStartX + btnWidth, btnY + btnHeight);
-    ui.attach(new IVButtonControl(resetBtnRect, [](IControl* pCaller) {
+    IRECT ejectBtnRect = IRECT(btnStartX, btnY, btnStartX + btnWidth, btnY + btnHeight);
+    auto* ejectBtn = new IVButtonControl(ejectBtnRect, [](IControl* pCaller) {
       auto* pGraphics = pCaller->GetUI();
       auto* pDelegate = dynamic_cast<iplug::IEditorDelegate*>(pGraphics->GetDelegate());
       if (pDelegate) {
-        pDelegate->SendArbitraryMsgFromUI(kMsgTagBrainReset, kNoTag, 0, nullptr);
+        pDelegate->SendArbitraryMsgFromUI(kMsgTagBrainEject, kNoTag, 0, nullptr);
       }
-    }, "Reset Brain", kButtonStyle), ControlGroup::Brain);
+    }, "Eject Brain", kButtonStyle);
+    ejectBtn->SetTooltip("Ejects the current Brain file. This unreferences the external brain file, and clears the loaded brain data.");
+    ui.attach(ejectBtn, ControlGroup::Brain);
+
+    btnY += btnHeight + btnGapV + 4.f;
+
+    // Compact Mode toggle
+    const float toggleWidth = 200.f;
+    const float toggleHeight = 40.f;
+    const float toggleStartX = managementCard.L + (managementCard.W() - toggleWidth) / 2.f;
+    IRECT compactToggleRect = IRECT(toggleStartX, btnY, toggleStartX + toggleWidth, btnY + toggleHeight);
+    auto* compactToggle = new IVToggleControl(
+      compactToggleRect,
+      [](IControl* pCaller) {
+        auto* pToggle = dynamic_cast<IVToggleControl*>(pCaller);
+        if (pToggle) {
+          bool isCompact = pToggle->GetValue() > 0.5;
+          int value = isCompact ? 1 : 0;
+          auto* pGraphics = pCaller->GetUI();
+          auto* pDelegate = dynamic_cast<iplug::IEditorDelegate*>(pGraphics->GetDelegate());
+          if (pDelegate) {
+            pDelegate->SendArbitraryMsgFromUI(kMsgTagBrainSetCompactMode, value, 0, nullptr);
+          }
+        }
+      },
+      "Compact Mode",
+      kSynapticStyle,
+      "OFF",
+      "ON"
+    );
+    compactToggle->SetTooltip("Enable compact storage format for brain files. This reduces file size by around 8x, storing only the file audio themselves (32bit) and some metadata; but this is at the cost of load times, as chunking & analysis must be performed every load.");
+    ui.attach(compactToggle, ControlGroup::Brain);
+    ui.setCompactModeToggle(compactToggle);
 
     colY[col] = managementCard.B + layout.sectionGap;
   }

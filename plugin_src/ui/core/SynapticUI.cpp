@@ -61,7 +61,11 @@ void SynapticUI::build()
   mGraphics->EnableMouseOver(true);
   mGraphics->EnableTooltips(true);
   mGraphics->AttachTextEntryControl();
-  mGraphics->AttachPanelBackground(kBGDark);
+  
+  // Attach background panel and keep reference for resizing
+  mBackgroundPanel = new IPanelControl(bounds, kBGDark);
+  mGraphics->AttachControl(mBackgroundPanel);
+  mGraphics->GetControl(0)->SetDelegate(*mGraphics->GetDelegate()); // Ensure it's at the bottom
 
   float yPos = mLayout.padding;
 
@@ -124,10 +128,13 @@ void SynapticUI::rebuild()
   mTransformerCardPanel = nullptr;
   mMorphCardPanel = nullptr;
   mAudioProcessingCardPanel = nullptr;
+  mBackgroundPanel = nullptr;
   mGraphics->RemoveAllControls();
 
-  // Background
-  mGraphics->AttachPanelBackground(kBGDark);
+  // Attach background panel and keep reference for resizing
+  mBackgroundPanel = new IPanelControl(bounds, kBGDark);
+  mGraphics->AttachControl(mBackgroundPanel);
+  mGraphics->GetControl(0)->SetDelegate(*mGraphics->GetDelegate()); // Ensure it's at the bottom
 
   float yPos = mLayout.padding;
 
@@ -228,21 +235,25 @@ void SynapticUI::SyncControlWithParam(IControl* ctrl, Plugin* plugin)
 void SynapticUI::RemoveAndClearControls(std::vector<IControl*>& paramControls, std::vector<IControl*>& dspControls)
 {
 #if IPLUG_EDITOR
-  if (!paramControls.empty())
+  if (!mGraphics || paramControls.empty())
   {
-    for (auto* ctrl : paramControls)
-    {
-      if (ctrl)
-      {
-        mGraphics->RemoveControl(ctrl);
-        // Also remove from dspControls
-        auto it = std::find(dspControls.begin(), dspControls.end(), ctrl);
-        if (it != dspControls.end())
-          dspControls.erase(it);
-      }
-    }
-    paramControls.clear();
+    paramControls.clear(); // Clear even if graphics is null to prevent stale pointers
+    return;
   }
+  
+  for (auto* ctrl : paramControls)
+  {
+    // Check if control exists in graphics before removing (prevents crash from stale pointers)
+    if (ctrl && mGraphics->GetControlIdx(ctrl) >= 0)
+    {
+      mGraphics->RemoveControl(ctrl);
+      // Also remove from dspControls
+      auto it = std::find(dspControls.begin(), dspControls.end(), ctrl);
+      if (it != dspControls.end())
+        dspControls.erase(it);
+    }
+  }
+  paramControls.clear();
 #endif
 }
 
@@ -509,11 +520,17 @@ void SynapticUI::resizeWindowToFitContent()
     mGraphics->Resize(currentWidth, static_cast<int>(requiredHeight), currentScale, true);
   }
 
-  // Always update progress overlay bounds to ensure it covers the entire window
+  // Always update background panel and progress overlay bounds to ensure they cover the entire window
   // (regardless of whether we resized or not, in case previous resizes were missed)
+  const IRECT currentBounds = mGraphics->GetBounds();
+  
+  if (mBackgroundPanel)
+  {
+    mBackgroundPanel->SetTargetAndDrawRECTs(currentBounds);
+  }
+  
   if (mProgressOverlay)
   {
-    const IRECT currentBounds = mGraphics->GetBounds();
     mProgressOverlay->UpdateBounds(currentBounds);
   }
 #endif
@@ -554,6 +571,11 @@ void SynapticUI::setBrainDropControl(BrainFileDropControl* ctrl)
 void SynapticUI::setCreateNewBrainButton(IControl* ctrl)
 {
   mCreateNewBrainButton = ctrl;
+}
+
+void SynapticUI::setCompactModeToggle(IVToggleControl* ctrl)
+{
+  mCompactModeToggle = ctrl;
 }
 
 void SynapticUI::updateBrainFileList(const std::vector<BrainFileEntry>& files)
@@ -625,12 +647,12 @@ void SynapticUI::updateBrainState(bool useExternal, const std::string& externalP
 #endif
 }
 
-void SynapticUI::ShowProgressOverlay(const std::string& title, const std::string& message, float progress)
+void SynapticUI::ShowProgressOverlay(const std::string& title, const std::string& message, float progress, bool showCancelButton)
 {
 #if IPLUG_EDITOR
   if (mProgressOverlay)
   {
-    mProgressOverlay->Show(title, message, progress);
+    mProgressOverlay->Show(title, message, progress, showCancelButton);
   }
 #endif
 }

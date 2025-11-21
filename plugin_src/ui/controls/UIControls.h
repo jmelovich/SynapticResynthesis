@@ -70,6 +70,44 @@ private:
   std::string mStorageMode = "(inline)";
 };
 
+// Lock button control - toggles between locked/unlocked bitmaps
+class LockButtonControl : public ig::IControl
+{
+public:
+  LockButtonControl(const ig::IRECT& bounds, int paramIdx, int associatedWindowParamIdx);
+  void Draw(ig::IGraphics& g) override;
+  void OnMouseDown(float x, float y, const ig::IMouseMod& mod) override;
+  void OnInit() override;
+  static int GetLastClickedWindowParam() { return sLastClickedWindowParam; }
+private:
+  ig::IBitmap mLockedBitmap;
+  ig::IBitmap mUnlockedBitmap;
+  int mAssociatedWindowParamIdx;
+  static int sLastClickedWindowParam;
+};
+
+// Window selector with lock button - combines a tab switch with a lock icon
+class WindowSelectorWithLock : public ig::IContainerBase
+{
+public:
+  WindowSelectorWithLock(const ig::IRECT& bounds,
+                         int windowParamIdx,
+                         int lockParamIdx,
+                         const char* label,
+                         const std::vector<const char*>& options,
+                         const ig::IVStyle& style);
+  void OnAttached() override;
+  void OnResize() override;
+private:
+  ig::IVTabSwitchControl* mTabSwitch;
+  LockButtonControl* mLockButton;
+  int mWindowParamIdx;
+  int mLockParamIdx;
+  const char* mLabel;
+  std::vector<const char*> mOptions;
+  ig::IVStyle mStyle;
+};
+
 } // namespace ui
 } // namespace synaptic
 

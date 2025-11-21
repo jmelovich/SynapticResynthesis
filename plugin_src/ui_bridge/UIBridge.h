@@ -98,7 +98,7 @@ namespace synaptic
      * @brief Show progress overlay with title, message, and progress (WebUI only)
      * For C++ UI, use callback-based approach in message handlers
      */
-    void ShowProgressOverlay(const std::string& title, const std::string& message, float progress);
+    void ShowProgressOverlay(const std::string& title, const std::string& message, float progress, bool showCancelButton = true);
 
     /**
      * @brief Update progress overlay (WebUI only)

@@ -53,6 +53,22 @@ namespace synaptic
   class Brain
   {
   public:
+    /**
+     * @brief Global flag to enable compact brain format
+     *
+     * When true, .sbrain files save only reconstructed original audio + metadata.
+     * This dramatically reduces file size (~100MB input = ~100MB output vs 800MB).
+     * On load, files are automatically re-chunked with saved settings.
+     *
+     * When false (default), saves full chunked data with all analysis (faster load, larger files).
+     *
+     * Usage:
+     *   Brain::sUseCompactBrainFormat = true;   // Enable compact mode
+     *   brain.SerializeSnapshotToChunk(chunk);  // Saves in compact format
+     *   brain.DeserializeSnapshotFromChunk(...);// Auto-detects and re-chunks
+     */
+    static bool sUseCompactBrainFormat;
+
     void Reset()
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -60,6 +76,7 @@ namespace synaptic
       files_.clear();
       idToFileIndex_.clear();
       chunks_.clear();
+      mLastLoadedWasCompact = false; // Reset format tracking
     }
 
     // Set the window to use for FFT analysis
@@ -77,7 +94,8 @@ namespace synaptic
                                int targetSampleRate,
                                int targetChannels,
                                int chunkSizeSamples,
-                               ProgressFn onProgress = nullptr);
+                               ProgressFn onProgress = nullptr,
+                               std::atomic<bool>* cancelFlag = nullptr);
 
     // Remove a previously-added file and all of its chunks.
     void RemoveFile(int fileId);
@@ -91,13 +109,13 @@ namespace synaptic
     const BrainChunk* GetChunkByGlobalIndex(int idx) const;
 
     // Re-chunk all files to a new chunk size
-    struct RechunkStats { int filesProcessed = 0; int filesRechunked = 0; int newTotalChunks = 0; };
-    RechunkStats RechunkAllFiles(int newChunkSizeSamples, int targetSampleRate, ProgressFn onProgress = nullptr);
+    struct RechunkStats { int filesProcessed = 0; int filesRechunked = 0; int newTotalChunks = 0; bool wasCancelled = false; };
+    RechunkStats RechunkAllFiles(int newChunkSizeSamples, int targetSampleRate, ProgressFn onProgress = nullptr, std::atomic<bool>* cancelFlag = nullptr);
     int GetChunkSize() const { return mChunkSize; }
 
     // Re-analyze all existing chunks (no rechunking). Uses current window (SetWindow) and provided sampleRate.
-    struct ReanalyzeStats { int filesProcessed = 0; int chunksProcessed = 0; };
-    ReanalyzeStats ReanalyzeAllChunks(int targetSampleRate, ProgressFn onProgress = nullptr);
+    struct ReanalyzeStats { int filesProcessed = 0; int chunksProcessed = 0; bool wasCancelled = false; };
+    ReanalyzeStats ReanalyzeAllChunks(int targetSampleRate, ProgressFn onProgress = nullptr, std::atomic<bool>* cancelFlag = nullptr);
 
     // Helper: Estimate chunk count from audio length
     // Formula: (totalFrames * 2) / chunkSize - 1 (accounts for 50% overlap)
@@ -109,10 +127,13 @@ namespace synaptic
 
     // Snapshot serialization (unified for project state and .sbrain files)
     bool SerializeSnapshotToChunk(iplug::IByteChunk& out) const;
-    int DeserializeSnapshotFromChunk(const iplug::IByteChunk& in, int startPos);
+    int DeserializeSnapshotFromChunk(const iplug::IByteChunk& in, int startPos, ProgressFn onProgress = nullptr);
 
     // Accessor for saved analysis window type as stored in snapshot
     Window::Type GetSavedAnalysisWindowType() const { return mSavedAnalysisWindowType; }
+
+    // Check if the last loaded brain was in compact format
+    bool WasLastLoadedInCompactFormat() const { return mLastLoadedWasCompact; }
 
   private:
     static float ComputeRMS(const std::vector<iplug::sample>& buffer, int offset, int count);
@@ -130,6 +151,8 @@ namespace synaptic
     const class Window* mWindow = nullptr;
     // Saved in snapshot for import; defaults to Hann if unknown
     Window::Type mSavedAnalysisWindowType = Window::Type::Hann;
+    // Track if the last loaded brain was in compact format (for UI sync)
+    bool mLastLoadedWasCompact = false;
   };
 }
 

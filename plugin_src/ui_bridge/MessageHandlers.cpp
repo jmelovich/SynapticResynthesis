@@ -4,6 +4,7 @@
 #include "SynapticResynthesis.h"
 #include "json.hpp"
 #include "plugin_src/transformers/TransformerFactory.h"
+#include "plugin_src/modules/WindowCoordinator.h"
 
 // NOTE: Do NOT include "IPlug_include_in_plug_src.h" here - it defines global symbols
 // that should only be included in the main SynapticResynthesis.cpp file
@@ -27,52 +28,13 @@ bool SynapticResynthesis::HandleUiReadyMsg()
 
 bool SynapticResynthesis::HandleSetChunkSizeMsg(int newSize)
 {
-  // Clamp to valid range
+  // WebUI path (deprecated) - forward to parameter which triggers OnParamChange with full rollback support
   newSize = std::max(1, newSize);
   const int paramIdx = mParamManager.GetChunkSizeParamIdx();
   if (paramIdx >= 0)
   {
-    SetParameterFromUI(paramIdx, (double)newSize);
+    synaptic::ParameterManager::SetParameterFromUI(this, paramIdx, (double)newSize);
   }
-  mDSPConfig.chunkSize = newSize;
-  DBGMSG("Set Chunk Size: %i\n", mDSPConfig.chunkSize);
-  mChunker.SetChunkSize(mDSPConfig.chunkSize);
-
-  // Update analysis window size to match new chunk size
-  UpdateBrainAnalysisWindow();
-
-  UpdateChunkerWindowing();
-
-  {
-    nlohmann::json j; j["id"] = "brainChunkSize"; j["size"] = mDSPConfig.chunkSize;
-    const std::string payload = j.dump();
-    SendArbitraryMsgFromDelegate(-1, (int)payload.size(), payload.c_str());
-  }
-  // Update latency and DSP config immediately on UI thread
-  SetLatency(ComputeLatencySamples());
-
-  // Update DSPConfig with current external brain state and send to UI
-  SyncAndSendDSPConfig();
-
-  // Trigger background rechunk using BrainManager with progress tracking
-  mProgressOverlayMgr.Show("Rechunking", "Starting...", 0.0f);
-
-  mBrainManager.RechunkAllFilesAsync(mDSPConfig.chunkSize, (int)GetSampleRate(),
-    [this](const std::string& fileName, int currentChunk, int totalChunks)
-    {
-      // Now reports per-chunk progress across all files
-      float progress = (totalChunks > 0) ? ((float)currentChunk / (float)totalChunks * 100.0f) : 50.0f;
-      char buf[256];
-      snprintf(buf, sizeof(buf), "%s (chunk %d/%d)", fileName.c_str(), currentChunk, totalChunks);
-      mProgressOverlayMgr.Update(buf, progress);
-    },
-    [this]()
-    {
-      // Completion callback
-      mProgressOverlayMgr.Hide();
-      SetPendingUpdate(PendingUpdate::BrainSummary);
-      SetPendingUpdate(PendingUpdate::MarkDirty);
-    });
   return true;
 }
 
@@ -84,10 +46,10 @@ bool SynapticResynthesis::HandleSetOutputWindowMsg(int mode)
   if (paramIdx >= 0)
   {
     const int idx = mDSPConfig.outputWindowMode - 1;
-    SetParameterFromUI(paramIdx, (double)idx);
+    synaptic::ParameterManager::SetParameterFromUI(this, paramIdx, (double)idx);
   }
 
-  UpdateChunkerWindowing();
+  mWindowCoordinator.UpdateChunkerWindowing(mDSPConfig, mTransformer.get());
 
   // Update and send DSP config to UI
   SyncAndSendDSPConfig();
@@ -96,39 +58,15 @@ bool SynapticResynthesis::HandleSetOutputWindowMsg(int mode)
 
 bool SynapticResynthesis::HandleSetAnalysisWindowMsg(int mode)
 {
+  // WebUI path (deprecated) - forward to parameter which triggers OnParamChange with full rollback support
   // mode carries an integer enum: 1=Hann,2=Hamming,3=Blackman,4=Rectangular
   mDSPConfig.analysisWindowMode = std::clamp(mode, 1, 4);
   const int paramIdx = mParamManager.GetAnalysisWindowParamIdx();
   if (paramIdx >= 0)
   {
     const int idx = mDSPConfig.analysisWindowMode - 1;
-    SetParameterFromUI(paramIdx, (double)idx);
+    synaptic::ParameterManager::SetParameterFromUI(this, paramIdx, (double)idx);
   }
-  // Update analysis window used by Brain
-  UpdateBrainAnalysisWindow();
-
-  // Trigger background reanalysis using BrainManager with progress tracking
-  mProgressOverlayMgr.Show("Reanalyzing", "Starting...", 0.0f);
-
-  mBrainManager.ReanalyzeAllChunksAsync((int)GetSampleRate(),
-    [this](const std::string& fileName, int currentChunk, int totalChunks)
-    {
-      // Now reports per-chunk progress across all files
-      float progress = (totalChunks > 0) ? ((float)currentChunk / (float)totalChunks * 100.0f) : 50.0f;
-      char buf[256];
-      snprintf(buf, sizeof(buf), "%s (chunk %d/%d)", fileName.c_str(), currentChunk, totalChunks);
-      mProgressOverlayMgr.Update(buf, progress);
-    },
-    [this]()
-    {
-      // Completion callback
-      mProgressOverlayMgr.Hide();
-      SetPendingUpdate(PendingUpdate::BrainSummary);
-      SetPendingUpdate(PendingUpdate::MarkDirty);
-    });
-
-  // Update and send DSP config to UI
-  SyncAndSendDSPConfig();
   return true;
 }
 
@@ -139,7 +77,7 @@ bool SynapticResynthesis::HandleSetAlgorithmMsg(int algorithmId)
   const int paramIdx = mParamManager.GetAlgorithmParamIdx();
   if (paramIdx >= 0)
   {
-    SetParameterFromUI(paramIdx, (double)mDSPConfig.algorithmId);
+    synaptic::ParameterManager::SetParameterFromUI(this, paramIdx, (double)mDSPConfig.algorithmId);
   }
 
   // Create new transformer in pending slot for thread-safe swap
@@ -162,7 +100,7 @@ bool SynapticResynthesis::HandleSetAlgorithmMsg(int algorithmId)
   // Store for thread-safe swap in ProcessBlock
   mPendingTransformer = std::move(newTransformer);
 
-  UpdateChunkerWindowing();
+  mWindowCoordinator.UpdateChunkerWindowing(mDSPConfig, mPendingTransformer.get());
 
   // Send transformer params and DSP config to UI (use pending transformer since swap hasn't happened yet)
 #if SR_USE_WEB_UI
@@ -245,7 +183,7 @@ bool SynapticResynthesis::HandleTransformerSetParamMsg(const void* jsonData, int
           }
           normalized = GetParam(it->paramIdx)->ToNormalized((double)idx);
         }
-        SetParameterFromUI(it->paramIdx, GetParam(it->paramIdx)->FromNormalized(normalized));
+        synaptic::ParameterManager::SetParameterFromUI(this, it->paramIdx, GetParam(it->paramIdx)->FromNormalized(normalized));
       }
       mUIBridge.SendTransformerParams(mTransformer);
       mUIBridge.SendMorphParams(mMorph);
@@ -338,9 +276,9 @@ bool SynapticResynthesis::HandleBrainExportMsg()
       const float progress = (total > 0) ? ((float)current / (float)total * 100.0f) : 0.0f;
       mProgressOverlayMgr.Show("Exporting Brain", message, progress);
     },
-    [this]()
+    [this](bool wasCancelled)
     {
-      // Completion callback
+      // Completion callback (export doesn't support cancellation yet)
       mProgressOverlayMgr.Hide();
       SetPendingUpdate(PendingUpdate::BrainSummary);  // Update brain UI state (includes storage label)
       SetPendingUpdate(PendingUpdate::DSPConfig);
@@ -357,19 +295,24 @@ bool SynapticResynthesis::HandleBrainImportMsg()
       // Progress callback - calculate progress percentage from current/total
       // Starts at 0% (waiting for file selection), then jumps to 50% after selection
       const float progress = (total > 0) ? ((float)current / (float)total * 100.0f) : 0.0f;
-      mProgressOverlayMgr.Show("Importing Brain", message, progress);
+      mProgressOverlayMgr.Show("Importing Brain", message, progress, false);  // Brain import doesn't support cancellation yet
     },
-    [this]()
+    [this](bool wasCancelled)
     {
-      // Completion callback
+      // Completion callback (import doesn't support cancellation yet)
       mProgressOverlayMgr.Hide();
+
+      // When importing a brain, sync the compact mode setting from the imported brain
+      // This ensures the toggle matches what format was loaded
+      synaptic::Brain::sUseCompactBrainFormat = mBrain.WasLastLoadedInCompactFormat();
+
       SetPendingUpdate(PendingUpdate::BrainSummary);
       SetPendingUpdate(PendingUpdate::MarkDirty);
     });
   return true;
 }
 
-bool SynapticResynthesis::HandleBrainResetMsg()
+bool SynapticResynthesis::HandleBrainEjectMsg()
 {
   mBrainManager.Reset();
 #if SR_USE_WEB_UI
@@ -404,14 +347,32 @@ bool SynapticResynthesis::HandleBrainCreateNewMsg()
       const float progress = (total > 0) ? ((float)current / (float)total * 100.0f) : 0.0f;
       mProgressOverlayMgr.Show("Creating New Brain", message, progress);
     },
-    [this]()
+    [this](bool wasCancelled)
     {
-      // Completion callback
+      // Completion callback (create new doesn't support cancellation yet)
       mProgressOverlayMgr.Hide();
       SetPendingUpdate(PendingUpdate::BrainSummary);  // Update brain UI state (includes storage label and loaded state)
       SetPendingUpdate(PendingUpdate::DSPConfig);
       SetPendingUpdate(PendingUpdate::MarkDirty);
     });
+  return true;
+}
+
+bool SynapticResynthesis::HandleCancelOperationMsg()
+{
+  mBrainManager.RequestCancellation();
+  return true;
+}
+
+bool SynapticResynthesis::HandleBrainSetCompactModeMsg(int enabled)
+{
+  // Update the static flag that controls brain serialization format
+  synaptic::Brain::sUseCompactBrainFormat = (enabled != 0);
+
+  // Mark the brain as dirty so it will be resaved with the new format on next serialization
+  mBrainManager.SetDirty(true);
+  MarkHostStateDirty();
+
   return true;
 }
 

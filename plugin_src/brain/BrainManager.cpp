@@ -52,17 +52,17 @@ namespace synaptic
 
       case ::kMsgTagBrainExport:
       {
-        ExportToFileAsync([](const std::string&, int, int){}, [](){});  // Empty progress and completion callbacks
+        ExportToFileAsync([](const std::string&, int, int){}, [](bool){});  // Empty progress and completion callbacks
         return true;
       }
 
       case ::kMsgTagBrainImport:
       {
-        ImportFromFileAsync([](const std::string&, int, int){}, [](){});  // Empty progress and completion callbacks
+        ImportFromFileAsync([](const std::string&, int, int){}, [](bool){});  // Empty progress and completion callbacks
         return true;
       }
 
-      case ::kMsgTagBrainReset:
+      case ::kMsgTagBrainEject:
       {
         Reset();
         return true;
@@ -71,6 +71,12 @@ namespace synaptic
       case ::kMsgTagBrainDetach:
       {
         Detach();
+        return true;
+      }
+
+      case ::kMsgTagCancelOperation:
+      {
+        RequestCancellation();
         return true;
       }
 
@@ -151,7 +157,7 @@ namespace synaptic
     if (mBrain->GetTotalChunks() == 0)
     {
       DBGMSG("Rechunk skipped: brain is empty\n");
-      if (onComplete) onComplete();
+      if (onComplete) onComplete(false);
       return;
     }
 
@@ -162,6 +168,9 @@ namespace synaptic
       return;
     }
 
+    // Reset cancellation flag before starting
+    ResetCancellationFlag();
+
     std::thread([this, newChunkSize, sampleRate, onProgress, onComplete]()
     {
       // Brain's RechunkAllFiles now reports per-chunk progress with (fileName, currentChunk, totalChunks)
@@ -170,21 +179,33 @@ namespace synaptic
         {
           if (onProgress)
             onProgress(displayName, current, total);
-        });
+        },
+        &mCancellationRequested);
 
-      DBGMSG("Brain Rechunk: processed=%d, rechunked=%d, totalChunks=%d\n",
-             stats.filesProcessed, stats.filesRechunked, stats.newTotalChunks);
+      if (stats.wasCancelled)
+      {
+        DBGMSG("Brain Rechunk: CANCELLED by user\n");
+      }
+      else
+      {
+        DBGMSG("Brain Rechunk: processed=%d, rechunked=%d, totalChunks=%d\n",
+               stats.filesProcessed, stats.filesRechunked, stats.newTotalChunks);
+      }
 
-      mBrainDirty = true;
+      if (!stats.wasCancelled)
+      {
+        mBrainDirty = true;
 
-      // Queue UI updates
-      mUIBridge->MarkBrainSummaryPending();
+        // Queue UI updates
+        mUIBridge->MarkBrainSummaryPending();
+      }
 
-      // Call completion callback
+      // Call completion callback with cancellation status
+      // Note: Keep mOperationInProgress true during callback to prevent OnParamChange from retriggering operations during rollback
       if (onComplete)
-        onComplete();
+        onComplete(stats.wasCancelled);
 
-      mOperationInProgress = false;
+      mOperationInProgress = false;  // Clear flag AFTER callback completes
     }).detach();
   }
 
@@ -196,7 +217,7 @@ namespace synaptic
     if (mBrain->GetTotalChunks() == 0)
     {
       DBGMSG("Reanalyze skipped: brain is empty\n");
-      if (onComplete) onComplete();
+      if (onComplete) onComplete(false);
       return;
     }
 
@@ -207,6 +228,9 @@ namespace synaptic
       return;
     }
 
+    // Reset cancellation flag before starting
+    ResetCancellationFlag();
+
     std::thread([this, sampleRate, onProgress, onComplete]()
     {
       // Brain's ReanalyzeAllChunks now reports per-chunk progress with (fileName, currentChunk, totalChunks)
@@ -215,20 +239,32 @@ namespace synaptic
         {
           if (onProgress)
             onProgress(displayName, current, total);
-        });
+        },
+        &mCancellationRequested);
 
-      DBGMSG("Brain Reanalyze: files=%d chunks=%d\n", stats.filesProcessed, stats.chunksProcessed);
+      if (stats.wasCancelled)
+      {
+        DBGMSG("Brain Reanalyze: CANCELLED by user\n");
+      }
+      else
+      {
+        DBGMSG("Brain Reanalyze: files=%d chunks=%d\n", stats.filesProcessed, stats.chunksProcessed);
+      }
 
-      mBrainDirty = true;
+      if (!stats.wasCancelled)
+      {
+        mBrainDirty = true;
 
-      // Queue UI updates
-      mUIBridge->MarkBrainSummaryPending();
+        // Queue UI updates
+        mUIBridge->MarkBrainSummaryPending();
+      }
 
-      // Call completion callback
+      // Call completion callback with cancellation status
+      // Note: Keep mOperationInProgress true during callback to prevent OnParamChange from retriggering operations during rollback
       if (onComplete)
-        onComplete();
+        onComplete(stats.wasCancelled);
 
-      mOperationInProgress = false;
+      mOperationInProgress = false;  // Clear flag AFTER callback completes
     }).detach();
   }
 
@@ -251,7 +287,7 @@ namespace synaptic
       {
         // User cancelled - call completion without progress
         if (onComplete)
-          onComplete();
+          onComplete(false);
         return;
       }
 
@@ -285,7 +321,7 @@ namespace synaptic
       }
 
       if (onComplete)
-        onComplete();
+        onComplete(false);  // Export doesn't support cancellation yet
 
     }).detach();
   }
@@ -306,20 +342,20 @@ namespace synaptic
       {
         // User cancelled
         if (onComplete)
-          onComplete();
+          onComplete(false);
         return;
       }
 
-      // File selected - update progress (1 of 2 = 50%)
+      // File selected - update progress (1 of 3 = ~33%)
       if (onProgress)
-        onProgress("Importing brain...", 1, 2);
+        onProgress("Reading brain file...", 1, 3);
 
       // Read file
       FILE* fp = fopen(openPath.c_str(), "rb");
       if (!fp)
       {
         if (onComplete)
-          onComplete();
+          onComplete(false);
         return;
       }
 
@@ -331,10 +367,20 @@ namespace synaptic
       fread(data.data(), 1, (size_t)sz, fp);
       fclose(fp);
 
-      // Deserialize
+      // Show initial loading progress
+      if (onProgress)
+        onProgress("Loading brain data...", 2, 3);
+
+      // Deserialize with progress callback for compact brain rechunking/analysis
       iplug::IByteChunk in;
       in.PutBytes(data.data(), (int)data.size());
-      mBrain->DeserializeSnapshotFromChunk(in, 0);
+      mBrain->DeserializeSnapshotFromChunk(in, 0,
+        [onProgress](const std::string& fileName, int current, int total)
+        {
+          // For compact brains, this shows rechunking and analysis progress
+          if (onProgress)
+            onProgress("Rechunking & Analyzing: " + fileName, current, total);
+        });
       mBrain->SetWindow(mAnalysisWindow);
 
       mExternalBrainPath = openPath;
@@ -356,7 +402,7 @@ namespace synaptic
       mUIBridge->EnqueueJSON(j);
 
       if (onComplete)
-        onComplete();
+        onComplete(false);  // Import doesn't support cancellation yet
 
     }).detach();
   }
@@ -380,7 +426,7 @@ namespace synaptic
       {
         // User cancelled - call completion without progress
         if (onComplete)
-          onComplete();
+          onComplete(false);
         return;
       }
 
@@ -418,7 +464,7 @@ namespace synaptic
       }
 
       if (onComplete)
-        onComplete();
+        onComplete(false);  // Create new doesn't support cancellation yet
 
     }).detach();
   }
@@ -431,7 +477,7 @@ namespace synaptic
     const int totalFiles = (int)files.size();
     if (totalFiles == 0)
     {
-      if (onComplete) onComplete();
+      if (onComplete) onComplete(false);
       return;
     }
 
@@ -441,6 +487,9 @@ namespace synaptic
       DBGMSG("AddMultipleFiles request ignored: already running.\n");
       return;
     }
+
+    // Reset cancellation flag before starting
+    ResetCancellationFlag();
 
     std::thread([this, files = std::move(files), sampleRate, channels, chunkSize, totalFiles, onProgress, onComplete]() mutable
     {
@@ -477,6 +526,13 @@ namespace synaptic
       // Import files with cumulative progress tracking
       for (auto& fileData : files)
       {
+        // Check for cancellation before processing each file
+        if (mCancellationRequested.load())
+        {
+          DBGMSG("Multi-file import CANCELLED by user after %d files\n", (int)(&fileData - &files[0]));
+          break;
+        }
+
         // Import file with per-chunk progress callback that reports cumulative progress
         int newId = mBrain->AddAudioFileFromMemory(
           fileData.data.data(),
@@ -493,7 +549,8 @@ namespace synaptic
               ++cumulativeChunks;
               onProgress(fileData.name, cumulativeChunks, estimatedTotalChunks);
             }
-          }
+          },
+          &mCancellationRequested
         );
 
         if (newId >= 0)
@@ -507,9 +564,12 @@ namespace synaptic
       // Queue UI updates
       mUIBridge->MarkBrainSummaryPending();
 
-      // Call completion callback
+      // Check if any file was cancelled (if we broke out of loop early due to cancellation)
+      bool wasCancelled = mCancellationRequested.load();
+
+      // Call completion callback with cancellation status
       if (onComplete)
-        onComplete();
+        onComplete(wasCancelled);
 
       mOperationInProgress = false;
     }).detach();
