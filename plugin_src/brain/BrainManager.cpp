@@ -15,6 +15,27 @@ namespace synaptic
   {
   }
 
+  BrainManager::~BrainManager()
+  {
+    // Ensure all background threads are joined before destruction
+    RequestCancellation();
+
+    std::lock_guard<std::mutex> lock(mThreadMutex);
+    for (auto& t : mActiveThreads)
+    {
+      if (t.joinable())
+        t.join();
+    }
+  }
+
+  void BrainManager::LaunchThread(std::function<void()> task)
+  {
+    std::lock_guard<std::mutex> lock(mThreadMutex);
+
+    // Store the task in the active threads vector to avoid unbounded growth
+    mActiveThreads.emplace_back(std::move(task));
+  }
+
   void BrainManager::RemoveFile(int fileId)
   {
     if (!mBrain) return;
@@ -78,7 +99,7 @@ namespace synaptic
     // Reset cancellation flag before starting
     ResetCancellationFlag();
 
-    std::thread([this, newChunkSize, sampleRate, onProgress, onComplete]()
+    LaunchThread([this, newChunkSize, sampleRate, onProgress, onComplete]()
     {
       // Brain's RechunkAllFiles now reports per-chunk progress with (fileName, currentChunk, totalChunks)
       auto stats = mBrain->RechunkAllFiles(newChunkSize, sampleRate,
@@ -110,7 +131,7 @@ namespace synaptic
         onComplete(stats.wasCancelled);
 
       mOperationInProgress = false;  // Clear flag AFTER callback completes
-    }).detach();
+    });
   }
 
   void BrainManager::ReanalyzeAllChunksAsync(int sampleRate, ProgressFn onProgress, CompletionFn onComplete)
@@ -135,7 +156,7 @@ namespace synaptic
     // Reset cancellation flag before starting
     ResetCancellationFlag();
 
-    std::thread([this, sampleRate, onProgress, onComplete]()
+    LaunchThread([this, sampleRate, onProgress, onComplete]()
     {
       // Brain's ReanalyzeAllChunks now reports per-chunk progress with (fileName, currentChunk, totalChunks)
       auto stats = mBrain->ReanalyzeAllChunks(sampleRate,
@@ -166,7 +187,7 @@ namespace synaptic
         onComplete(stats.wasCancelled);
 
       mOperationInProgress = false;  // Clear flag AFTER callback completes
-    }).detach();
+    });
   }
 
   void BrainManager::ExportToFileAsync(ProgressFn onProgress, CompletionFn onComplete)
@@ -174,7 +195,7 @@ namespace synaptic
     if (!mBrain) return;
 
     // Move to background thread to avoid blocking the UI thread with native dialogs
-    std::thread([this, onProgress, onComplete]()
+    LaunchThread([this, onProgress, onComplete]()
     {
       // Show initial progress (0 of 2) - waiting for file selection
       if (onProgress)
@@ -215,7 +236,7 @@ namespace synaptic
       if (onComplete)
         onComplete(false);  // Export doesn't support cancellation yet
 
-    }).detach();
+    });
   }
 
   void BrainManager::ImportFromFileAsync(ProgressFn onProgress, CompletionFn onComplete)
@@ -223,7 +244,7 @@ namespace synaptic
     if (!mBrain) return;
 
     // Native Open dialog; C++ reads file directly
-    std::thread([this, onProgress, onComplete]()
+    LaunchThread([this, onProgress, onComplete]()
     {
       // Show initial progress (0 of 2) - waiting for file selection
       if (onProgress)
@@ -289,7 +310,7 @@ namespace synaptic
       if (onComplete)
         onComplete(false);  // Import doesn't support cancellation yet
 
-    }).detach();
+    });
   }
 
   void BrainManager::CreateNewBrainAsync(ProgressFn onProgress, CompletionFn onComplete)
@@ -297,7 +318,7 @@ namespace synaptic
     if (!mBrain) return;
 
     // Move to background thread to avoid blocking the UI thread with native dialogs
-    std::thread([this, onProgress, onComplete]()
+    LaunchThread([this, onProgress, onComplete]()
     {
       // Show initial progress (0 of 2) - waiting for file selection
       if (onProgress)
@@ -342,7 +363,7 @@ namespace synaptic
       if (onComplete)
         onComplete(false);  // Create new doesn't support cancellation yet
 
-    }).detach();
+    });
   }
 
   void BrainManager::AddMultipleFilesAsync(std::vector<FileData> files, int sampleRate, int channels,
@@ -367,7 +388,7 @@ namespace synaptic
     // Reset cancellation flag before starting
     ResetCancellationFlag();
 
-    std::thread([this, files = std::move(files), sampleRate, channels, chunkSize, totalFiles, onProgress, onComplete]() mutable
+    LaunchThread([this, files = std::move(files), sampleRate, channels, chunkSize, totalFiles, onProgress, onComplete]() mutable
     {
       // Pre-scan files to estimate total chunks for cumulative progress tracking
       int estimatedTotalChunks = 0;
@@ -445,6 +466,6 @@ namespace synaptic
         onComplete(wasCancelled);
 
       mOperationInProgress = false;
-    }).detach();
+    });
   }
 }

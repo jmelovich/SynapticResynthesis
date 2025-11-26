@@ -417,6 +417,10 @@
     </ClCompile>
     <ClCompile Include="..\plugin_src\ui\dynamic\DynamicParamManager.cpp">
     </ClCompile>
+    <ClCompile Include="..\plugin_src\modules\UISyncManager.cpp">
+    </ClCompile>
+    <ClCompile Include="..\plugin_src\audio\DSPContext.cpp">
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\resources\main.rc" />

@@ -19,3 +19,26 @@ namespace synaptic
   };
 
 }
+
+// Global parameter enum
+enum EParams
+{
+  // Fixed, non-dynamic parameters
+  kInGain = 0,
+  kChunkSize,
+  kBufferWindow,
+  kAlgorithm,
+  kOutputWindow,
+  kDirtyFlag,
+  kAnalysisWindow,
+  kEnableOverlap,
+  kOutGain,
+  kAGC,
+  kAutotuneBlend,
+  kAutotuneMode,
+  kAutotuneToleranceOctaves,
+  kMorphMode,
+  kWindowLock,
+  // Dynamic transformer parameters are indexed after this sentinel
+  kNumParams
+};

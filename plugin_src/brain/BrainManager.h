@@ -5,6 +5,9 @@
 #include <atomic>
 #include <string>
 #include <functional>
+#include <vector>
+#include <thread>
+#include <mutex>
 
 namespace synaptic
 {
@@ -24,6 +27,11 @@ namespace synaptic
      * @param analysisWindow Reference to analysis window (owned by plugin)
      */
     explicit BrainManager(Brain* brain, Window* analysisWindow);
+
+    /**
+     * @brief Destructor - ensures all background threads are joined
+     */
+    ~BrainManager();
 
     // === Direct Operations (Synchronous) ===
 
@@ -188,6 +196,13 @@ namespace synaptic
     // Import coordination (for param sync)
     std::atomic<int> mPendingImportedChunkSize{-1};
     std::atomic<int> mPendingImportedAnalysisWindow{-1};
+
+    // Thread management
+    std::vector<std::thread> mActiveThreads;
+    std::mutex mThreadMutex;
+
+    // Helper to queue a thread safely
+    void LaunchThread(std::function<void()> task);
   };
 }
 

@@ -84,6 +84,11 @@ namespace synaptic
   public:
     ParameterManager();
 
+    /**
+     * @brief Calculate total number of parameters including dynamic ones
+     */
+    static int GetTotalParams();
+
     // === Initialization (called from plugin constructor) ===
 
     /**

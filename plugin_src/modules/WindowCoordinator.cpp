@@ -8,6 +8,7 @@
 #include "plugin_src/transformers/BaseTransformer.h"
 #include "plugin_src/modules/DSPConfig.h"
 #include "plugin_src/ui/core/ProgressOverlayManager.h"
+#include "plugin_src/Structs.h" // For EParams
 
 #if IPLUG_EDITOR
   #include "plugin_src/ui/controls/UIControls.h"

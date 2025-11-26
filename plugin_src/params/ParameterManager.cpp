@@ -7,7 +7,10 @@
 #include "plugin_src/brain/Brain.h"
 #include "plugin_src/brain/BrainManager.h"
 #include "plugin_src/ui/core/ProgressOverlayManager.h"
-#include "SynapticResynthesis.h"  // For EParams enum
+#include "plugin_src/Structs.h" // For EParams enum
+#include "plugin_src/modules/UISyncManager.h" // For PendingUpdate enum
+
+using namespace synaptic; // Ensure namespace visibility if needed, or fully qualify
 
 #if IPLUG_EDITOR
   #include "plugin_src/ui/controls/UIControls.h"
@@ -52,6 +55,13 @@ namespace synaptic
 
   ParameterManager::ParameterManager()
   {
+  }
+
+  int ParameterManager::GetTotalParams()
+  {
+    std::vector<ExposedParamDesc> unionDescs;
+    BuildTransformerUnion(unionDescs);
+    return kNumParams + (int)unionDescs.size();
   }
 
   void ParameterManager::InitializeCoreParameters(iplug::Plugin* plugin, const DSPConfig& config)
