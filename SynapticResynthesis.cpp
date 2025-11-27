@@ -1,7 +1,12 @@
+/**
+ * @file SynapticResynthesis.cpp
+ * @brief Implementation of the main plugin class
+ */
+
 #include "SynapticResynthesis.h"
 #include "IPlugPaths.h"
 #include "json.hpp"
-#include "IPlug_include_in_plug_src.h" // Base class definitions
+#include "IPlug_include_in_plug_src.h"
 
 #if IPLUG_EDITOR
   #include "plugin_src/ui/IGraphicsUI.h"
@@ -12,25 +17,24 @@
 #include "plugin_src/params/DynamicParamSchema.h"
 #include "plugin_src/morph/MorphFactory.h"
 #include "plugin_src/modules/WindowCoordinator.h"
+#include "plugin_src/modules/WindowModeHelpers.h"
 #include <thread>
 #include <mutex>
 #ifdef AAX_API
 #include "IPlugAAX.h"
 #endif
 
-// This will be filled later once we fix the include order issues in the header
 SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
 : Plugin(info, MakeConfig(synaptic::ParameterManager::GetTotalParams(), kNumPresets))
 , mBrainManager(&mBrain, &mAnalysisWindow)
-, mDSPContext(2) // Initialize with stereo (matches PLUG_CHANNEL_IO "2-2")
+, mDSPContext(2)
 , mWindowCoordinator(&mAnalysisWindow, &mDSPContext.GetOutputWindow(), &mBrain, &mDSPContext.GetChunker(), &mParamManager, &mBrainManager, &mProgressOverlayMgr)
 , mUISyncManager(this, &mBrain, &mBrainManager, &mParamManager, &mWindowCoordinator, &mDSPConfig, &mProgressOverlayMgr)
 {
-
   GetParam(kInGain)->InitGain("Input Gain", 0.0, -70, 12.);
   GetParam(kOutGain)->InitGain("Output Gain", 0.0, -70, 12.);
   GetParam(kAGC)->InitBool("AGC", false);
-  GetParam(kWindowLock)->InitBool("Window Lock", true); // Default to locked (synchronized)
+  GetParam(kWindowLock)->InitBool("Window Lock", true);
 
   // Initialize DSP config with defaults
   mDSPConfig.chunkSize = 3000;
@@ -47,7 +51,6 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
   };
 
   mLayoutFunc = [this](igraphics::IGraphics* pGraphics) {
-    // Create instance-owned UI instead of using global singleton
     if (pGraphics)
     {
       mUI = std::make_unique<synaptic::ui::SynapticUI>(pGraphics);
@@ -63,22 +66,14 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
   // Initialize DSP Context
   mDSPContext.Init(this, &mParamManager, &mBrain, mDSPConfig);
 
-  // Initialize analysis window with default Hann window
+  // Initialize analysis window
   mAnalysisWindow.Set(synaptic::Window::Type::Hann, mDSPConfig.chunkSize);
-
-  // Set the window reference in the Brain
   mBrain.SetWindow(&mAnalysisWindow);
 
-  // Configure UISyncManager with DSP context pointers
-  mUISyncManager.SetDSPContext(
-    mDSPContext.GetTransformerPtr(),
-    mDSPContext.GetMorphPtr(),
-    mDSPContext.GetPendingTransformerPtr(),
-    mDSPContext.GetPendingMorphPtr(),
-    &mDSPContext.GetChunker()
-  );
+  // Configure UISyncManager with DSP context reference
+  mUISyncManager.SetDSPContext(&mDSPContext, &mDSPContext.GetChunker());
 
-  // Initialize parameters using ParameterManager
+  // Initialize parameters
   mParamManager.InitializeCoreParameters(this, mDSPConfig);
   mParamManager.InitializeTransformerParameters(this);
 }
@@ -92,7 +87,7 @@ void SynapticResynthesis::OnReset()
 {
   auto sr = GetSampleRate();
 
-  // Pull current values from IParams into DSPConfig using ParameterManager
+  // Pull current values from IParams into DSPConfig
   const int chunkSizeIdx = mParamManager.GetChunkSizeParamIdx();
   const int bufferWindowIdx = mParamManager.GetBufferWindowParamIdx();
   const int algorithmIdx = mParamManager.GetAlgorithmParamIdx();
@@ -103,29 +98,22 @@ void SynapticResynthesis::OnReset()
   if (chunkSizeIdx >= 0) mDSPConfig.chunkSize = std::max(1, GetParam(chunkSizeIdx)->Int());
   if (bufferWindowIdx >= 0) mDSPConfig.bufferWindowSize = std::max(1, GetParam(bufferWindowIdx)->Int());
   if (algorithmIdx >= 0) mDSPConfig.algorithmId = GetParam(algorithmIdx)->Int();
-  if (outputWindowIdx >= 0) mDSPConfig.outputWindowMode = 1 + std::clamp(GetParam(outputWindowIdx)->Int(), 0, 3);
-  if (analysisWindowIdx >= 0) mDSPConfig.analysisWindowMode = 1 + std::clamp(GetParam(analysisWindowIdx)->Int(), 0, 3);
+  if (outputWindowIdx >= 0) mDSPConfig.outputWindowMode = synaptic::WindowMode::ParamToConfig(GetParam(outputWindowIdx)->Int());
+  if (analysisWindowIdx >= 0) mDSPConfig.analysisWindowMode = synaptic::WindowMode::ParamToConfig(GetParam(analysisWindowIdx)->Int());
   if (enableOverlapIdx >= 0) mDSPConfig.enableOverlapAdd = GetParam(enableOverlapIdx)->Bool();
 
   mWindowCoordinator.UpdateBrainAnalysisWindow(mDSPConfig);
 
-  // Delegate DSP reset
   mDSPContext.OnReset(sr, GetBlockSize(), NInChansConnected(), this, mDSPConfig, &mParamManager, &mBrain);
 
-  mWindowCoordinator.UpdateChunkerWindowing(mDSPConfig, mDSPContext.GetTransformerPtr()->get());
+  mWindowCoordinator.UpdateChunkerWindowing(mDSPConfig, mDSPContext.GetTransformerRaw());
 
-  // Report algorithmic latency to the host (in samples)
   SetLatency(mDSPContext.ComputeLatencySamples(mDSPConfig.chunkSize, mDSPConfig.bufferWindowSize));
 
-  // When audio engine resets, leave brain state intact; just resend summary to UI
+  // Schedule UI updates
   mUISyncManager.SetPendingUpdate(synaptic::PendingUpdate::BrainSummary);
   mUISyncManager.SetPendingUpdate(synaptic::PendingUpdate::RebuildTransformer);
   mUISyncManager.SetPendingUpdate(synaptic::PendingUpdate::RebuildMorph);
-
-  // Update and send DSP config to UI via UISyncManager?
-  // UISyncManager has SyncAndSendDSPConfig but it's private helper.
-  // Actually SyncAndSendDSPConfig was called in OnReset.
-  // I should probably expose it or set the update flag.
   mUISyncManager.SetPendingUpdate(synaptic::PendingUpdate::DSPConfig);
 }
 
@@ -169,28 +157,22 @@ void SynapticResynthesis::OnRestoreState()
 
 void SynapticResynthesis::OnParamChange(int paramIdx)
 {
-  // Create context for centralized parameter coordination
   synaptic::ParameterChangeContext ctx;
   ctx.plugin = this;
   ctx.config = &mDSPConfig;
+  ctx.dspContext = &mDSPContext;
   ctx.chunker = &mDSPContext.GetChunker();
   ctx.brain = &mBrain;
   ctx.analysisWindow = &mAnalysisWindow;
-  ctx.currentTransformer = mDSPContext.GetTransformerPtr();
-  ctx.pendingTransformer = mDSPContext.GetPendingTransformerPtr();
-  ctx.currentMorph = mDSPContext.GetMorphPtr();
-  ctx.pendingMorph = mDSPContext.GetPendingMorphPtr();
   ctx.windowCoordinator = &mWindowCoordinator;
   ctx.brainManager = &mBrainManager;
   ctx.progressOverlayMgr = &mProgressOverlayMgr;
 
-  // Bind callbacks
   ctx.setPendingUpdate = [this](uint32_t flag) { mUISyncManager.SetPendingUpdate((synaptic::PendingUpdate)flag); };
   ctx.checkAndClearPendingUpdate = [this](uint32_t flag) { return mUISyncManager.CheckAndClearPendingUpdate((synaptic::PendingUpdate)flag); };
   ctx.computeLatency = [this]() { return mDSPContext.ComputeLatencySamples(mDSPConfig.chunkSize, mDSPConfig.bufferWindowSize); };
   ctx.setLatency = [this](int latency) { SetLatency(latency); };
 
-  // Delegate to ParameterManager for all coordination
   mParamManager.OnParamChange(paramIdx, ctx);
 }
 
@@ -220,13 +202,10 @@ int SynapticResynthesis::UnserializeState(const IByteChunk& chunk, int startPos)
 
   pos = mStateSerializer.DeserializeBrainState(chunk, pos, mBrain, mBrainManager);
 
-  // When loading project state, sync the compact mode setting from the loaded brain
   synaptic::Brain::sUseCompactBrainFormat = mBrain.WasLastLoadedInCompactFormat();
 
-  // Re-link window pointer and notify UI
   mBrain.SetWindow(&mAnalysisWindow);
   mUISyncManager.SetPendingUpdate(synaptic::PendingUpdate::BrainSummary);
-
   mUISyncManager.SetPendingUpdate(synaptic::PendingUpdate::DSPConfig);
   mUISyncManager.SetPendingUpdate(synaptic::PendingUpdate::RebuildTransformer);
   mUISyncManager.SetPendingUpdate(synaptic::PendingUpdate::RebuildMorph);

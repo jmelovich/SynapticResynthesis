@@ -1,13 +1,26 @@
+/**
+ * @file ParameterManager.h
+ * @brief Manages all plugin parameters including dynamic transformer/morph parameters
+ *
+ * Responsibilities:
+ * - Initialize core DSP parameters and dynamic transformer parameters
+ * - Maintain bindings between IParams and transformer/morph instances
+ * - Route parameter changes to appropriate handlers
+ * - Provide parameter utility methods (set from UI, rollback, sync controls)
+ */
+
 #pragma once
 
 #include "IPlug_include_in_plug_hdr.h"
 #include "plugin_src/params/DynamicParamSchema.h"
+#include "plugin_src/params/ParameterIds.h"
 #include "plugin_src/transformers/BaseTransformer.h"
 #include "plugin_src/transformers/types/ExpandedSimpleSampleBrainTransformer.h"
 #include "plugin_src/transformers/TransformerFactory.h"
 #include "plugin_src/morph/IMorph.h"
 #include "plugin_src/morph/MorphFactory.h"
 #include "plugin_src/modules/DSPConfig.h"
+#include "plugin_src/modules/WindowModeHelpers.h"
 #include <vector>
 #include <string>
 #include <functional>
@@ -21,56 +34,54 @@ namespace synaptic
   class Window;
   class BrainManager;
   class WindowCoordinator;
+  class DSPContext;
   namespace ui {
     class ProgressOverlayManager;
   }
+
   /**
-   * @brief Binding between IParam and transformer parameter
+   * @brief Binding between IParam and transformer/morph parameter
    */
   struct TransformerParamBinding
   {
     std::string id;
     synaptic::ParamType type;
     int paramIdx = -1;
-    // For enums, map index<->string value
-    std::vector<std::string> enumValues; // order corresponds to indices 0..N-1
+    std::vector<std::string> enumValues; // For enums: index -> string value mapping
   };
 
   /**
    * @brief Context for parameter change coordination
-   * 
+   *
    * Bundles all dependencies needed to handle parameter changes.
-   * Reduces parameter passing and makes the API cleaner.
+   * Uses DSPContext reference instead of raw pointers to shared_ptrs.
    */
   struct ParameterChangeContext
   {
     // Core plugin reference
     iplug::Plugin* plugin = nullptr;
-    
+
     // Configuration
     DSPConfig* config = nullptr;
-    
-    // DSP components
+
+    // DSP context (owns transformer/morph instances)
+    DSPContext* dspContext = nullptr;
+
+    // Individual DSP components
     AudioStreamChunker* chunker = nullptr;
     Brain* brain = nullptr;
     Window* analysisWindow = nullptr;
-    
-    // Transformers/Morphs (use shared_ptr to keep alive during async operations)
-    std::shared_ptr<IChunkBufferTransformer>* currentTransformer = nullptr;
-    std::shared_ptr<IChunkBufferTransformer>* pendingTransformer = nullptr;
-    std::shared_ptr<IMorph>* currentMorph = nullptr;
-    std::shared_ptr<IMorph>* pendingMorph = nullptr;
-    
+
     // Coordinators/Managers
     WindowCoordinator* windowCoordinator = nullptr;
     BrainManager* brainManager = nullptr;
     ui::ProgressOverlayManager* progressOverlayMgr = nullptr;
-    
+
     // Callbacks for plugin state management
-    std::function<void(uint32_t)> setPendingUpdate;  // Set pending update flags
-    std::function<bool(uint32_t)> checkAndClearPendingUpdate;  // Check and clear flags
-    std::function<int()> computeLatency;  // Compute current latency
-    std::function<void(int)> setLatency;  // Update plugin latency
+    std::function<void(uint32_t)> setPendingUpdate;
+    std::function<bool(uint32_t)> checkAndClearPendingUpdate;
+    std::function<int()> computeLatency;
+    std::function<void(int)> setLatency;
   };
 
   /**
@@ -89,44 +100,21 @@ namespace synaptic
      */
     static int GetTotalParams();
 
-    // === Initialization (called from plugin constructor) ===
+    // === Initialization ===
 
-    /**
-     * @brief Initialize core DSP parameters (chunk size, algorithm, windows, etc.)
-     * @param plugin Plugin instance to add parameters to
-     * @param config DSPConfig with default values
-     */
     void InitializeCoreParameters(iplug::Plugin* plugin, const DSPConfig& config);
-
-    /**
-     * @brief Initialize transformer parameters (dynamic union across all transformers)
-     * @param plugin Plugin instance to add parameters to
-     */
     void InitializeTransformerParameters(iplug::Plugin* plugin);
 
-    // === Parameter Change Handlers ===
+    // === Core Parameter Handlers ===
 
-    /**
-     * @brief Handle core parameter change
-     * @param paramIdx Parameter index that changed
-     * @param param The parameter object
-     * @param config DSPConfig to update
-     * @return true if this was a core parameter
-     */
     bool HandleCoreParameterChange(int paramIdx, iplug::IParam* param, DSPConfig& config);
 
-    // === Coordinated Parameter Change Handlers (with side effects) ===
-    // These methods handle parameter changes AND coordinate updates to DSP components
+    // === Coordinated Parameter Change Handlers ===
 
-    /**
-     * @brief Handle chunk size parameter change with side effects
-     * Coordinates: config update, chunker resize, window resize, latency update
-     * @return true if chunk size changed (triggers rechunking)
-     */
     template<typename PluginT>
     bool HandleChunkSizeChange(int paramIdx, iplug::IParam* param, DSPConfig& config,
-                              PluginT* plugin, synaptic::AudioStreamChunker& chunker,
-                              synaptic::Window& analysisWindow)
+                               PluginT* plugin, synaptic::AudioStreamChunker& chunker,
+                               synaptic::Window& analysisWindow)
     {
       int oldChunkSize = config.chunkSize;
       HandleCoreParameterChange(paramIdx, param, config);
@@ -135,10 +123,6 @@ namespace synaptic
       return config.chunkSize != oldChunkSize;
     }
 
-    /**
-     * @brief Handle algorithm parameter change with side effects
-     * Coordinates: config update, transformer creation, brain wiring, reset, binding application, latency
-     */
     template<typename PluginT>
     std::shared_ptr<IChunkBufferTransformer> HandleAlgorithmChange(
       int paramIdx, iplug::IParam* param, DSPConfig& config,
@@ -146,7 +130,6 @@ namespace synaptic
     {
       HandleCoreParameterChange(paramIdx, param, config);
 
-      // Create new transformer
       auto newTransformer = synaptic::TransformerFactory::CreateByUiIndex(config.algorithmId);
       if (!newTransformer)
       {
@@ -154,101 +137,82 @@ namespace synaptic
         newTransformer = synaptic::TransformerFactory::CreateByUiIndex(config.algorithmId);
       }
 
-      // Wire brain if needed
       if (auto sb = dynamic_cast<synaptic::BaseSampleBrainTransformer*>(newTransformer.get()))
         sb->SetBrain(&brain);
 
-      // Reset transformer
       if (newTransformer)
         newTransformer->OnReset(sampleRate, config.chunkSize, config.bufferWindowSize, channels);
 
-      // Apply bindings
-      ApplyBindingsToTransformer(plugin, newTransformer.get());
+      ApplyBindingsTo(plugin, newTransformer.get(), nullptr);
 
       return newTransformer;
     }
 
-    // Create/reset morph on morph mode change; apply bindings
     template<typename PluginT>
     std::shared_ptr<IMorph> HandleMorphModeChange(
       int paramIdx, iplug::IParam* param,
       PluginT* plugin, double sampleRate, int fftSize, int channels)
     {
-      (void) paramIdx;
-      (void) param;
-      // Create new morph by UI index stored in param
+      (void)paramIdx;
       const int modeIdx = param->Int();
       auto newMorph = synaptic::MorphFactory::CreateByUiIndex(modeIdx);
       if (newMorph)
         newMorph->OnReset(sampleRate, fftSize, channels);
-      // Apply current bindings to morph (and transformer if caller passes it)
-      ApplyBindingsToOwners(plugin, nullptr, newMorph.get());
+      ApplyBindingsTo(plugin, nullptr, newMorph.get());
       return newMorph;
     }
 
-    /**
-     * @brief Handle analysis window parameter change with side effects
-     * Returns true if reanalysis should be triggered
-     */
     bool HandleAnalysisWindowChange(int paramIdx, iplug::IParam* param, DSPConfig& config,
-                                   synaptic::Window& analysisWindow, synaptic::Brain& brain)
+                                    synaptic::Window& analysisWindow, synaptic::Brain& brain)
     {
       int oldAnalysisWindowMode = config.analysisWindowMode;
       HandleCoreParameterChange(paramIdx, param, config);
       analysisWindow.Set(synaptic::Window::IntToType(config.analysisWindowMode), config.chunkSize);
       brain.SetWindow(&analysisWindow);
-      return config.analysisWindowMode != oldAnalysisWindowMode; // Only trigger reanalysis if mode changed
+      return config.analysisWindowMode != oldAnalysisWindowMode;
     }
 
-    /**
-     * @brief Handle transformer parameter change
-     * @param paramIdx Parameter index that changed
-     * @param param The parameter object
-     * @param transformer Transformer to update
-     * @return true if this was a transformer parameter
-     */
+    // === Dynamic Parameter Handlers ===
+
     bool HandleTransformerParameterChange(int paramIdx, iplug::IParam* param,
                                           IChunkBufferTransformer* transformer);
 
-    // Unified handler: routes to transformer and/or morph
-    // Optional output parameters indicate if UI rebuild is needed
     bool HandleDynamicParameterChange(int paramIdx, iplug::IParam* param,
                                       IChunkBufferTransformer* transformer,
                                       IMorph* morph,
                                       bool* outNeedsTransformerRebuild = nullptr,
                                       bool* outNeedsMorphRebuild = nullptr);
 
-    // === Transformer Binding Management ===
+    // === Unified Binding Application ===
 
     /**
-     * @brief Apply all current parameter values to transformer
+     * @brief Apply all current parameter bindings to transformer and/or morph
+     *
+     * This unified method replaces the separate ApplyBindingsToTransformer and
+     * ApplyBindingsToOwners methods.
+     *
      * @param plugin Plugin instance to read parameter values from
-     * @param transformer Transformer to apply values to
+     * @param transformer Transformer to apply values to (can be nullptr)
+     * @param morph Morph to apply values to (can be nullptr)
      */
-    void ApplyBindingsToTransformer(iplug::Plugin* plugin, IChunkBufferTransformer* transformer);
-    void ApplyBindingsToOwners(iplug::Plugin* plugin, IChunkBufferTransformer* transformer, IMorph* morph);
+    void ApplyBindingsTo(iplug::Plugin* plugin, IChunkBufferTransformer* transformer, IMorph* morph);
+
+    // Legacy wrappers for backward compatibility
+    void ApplyBindingsToTransformer(iplug::Plugin* plugin, IChunkBufferTransformer* transformer)
+    {
+      ApplyBindingsTo(plugin, transformer, nullptr);
+    }
+
+    void ApplyBindingsToOwners(iplug::Plugin* plugin, IChunkBufferTransformer* transformer, IMorph* morph)
+    {
+      ApplyBindingsTo(plugin, transformer, morph);
+    }
 
     // === Query Methods ===
 
-    /**
-     * @brief Check if parameter index is a core parameter
-     */
     bool IsCoreParameter(int paramIdx) const;
-
-    /**
-     * @brief Check if parameter index is a transformer parameter
-     */
     bool IsTransformerParameter(int paramIdx) const;
-
-    /**
-     * @brief Get binding for a parameter index
-     * @return Binding pointer or nullptr if not found
-     */
     const TransformerParamBinding* GetBindingForParam(int paramIdx) const;
-
-    /**
-     * @brief Get all transformer bindings (for state serialization)
-     */
     const std::vector<TransformerParamBinding>& GetBindings() const { return mBindings; }
 
     // === Parameter Index Accessors ===
@@ -265,16 +229,13 @@ namespace synaptic
     int GetAutotuneToleranceOctavesParamIdx() const { return mParamIdxAutotuneToleranceOctaves; }
     int GetMorphModeParamIdx() const { return mParamIdxMorphMode; }
 
-    // === Phase 3: Centralized Parameter Coordination ===
+    // === Main Entry Point for Parameter Changes ===
 
     /**
      * @brief Handle ALL parameter changes with centralized coordination
-     * 
-     * This is the main entry point for parameter changes. It routes to specific
-     * handlers based on parameter type and coordinates all necessary side effects.
-     * 
-     * @param paramIdx Parameter index that changed
-     * @param ctx Context with all dependencies needed for coordination
+     *
+     * Routes to specific handlers based on parameter type and coordinates
+     * all necessary side effects.
      */
     void OnParamChange(int paramIdx, ParameterChangeContext& ctx);
 
@@ -298,14 +259,35 @@ namespace synaptic
     static void RollbackParameter(iplug::Plugin* plugin, int paramIdx, double oldValue, const char* debugName);
 
     /**
-     * @brief Sync UI control to match parameter value (C++ UI only)
+     * @brief Sync UI control to match parameter value
      * @param plugin Plugin instance
      * @param paramIdx Parameter index to sync
      */
     static void SyncControlToParameter(iplug::Plugin* plugin, int paramIdx);
 
   private:
-    // Transformer parameter bindings (union across all transformers)
+    // === Per-Parameter Handlers ===
+    // These are called by OnParamChange to handle specific parameter types
+
+    void HandleChunkSizeParam(int paramIdx, ParameterChangeContext& ctx);
+    void HandleBufferWindowParam(int paramIdx, ParameterChangeContext& ctx);
+    void HandleAlgorithmParam(int paramIdx, ParameterChangeContext& ctx);
+    void HandleOutputWindowParam(int paramIdx, ParameterChangeContext& ctx);
+    void HandleAnalysisWindowParam(int paramIdx, ParameterChangeContext& ctx);
+    void HandleEnableOverlapParam(int paramIdx, ParameterChangeContext& ctx);
+    void HandleAutotuneBlendParam(int paramIdx, ParameterChangeContext& ctx);
+    void HandleAutotuneModeParam(int paramIdx, ParameterChangeContext& ctx);
+    void HandleAutotuneToleranceParam(int paramIdx, ParameterChangeContext& ctx);
+    void HandleMorphModeParam(int paramIdx, ParameterChangeContext& ctx);
+    void HandleWindowLockParam(int paramIdx, ParameterChangeContext& ctx);
+    void HandleDynamicParam(int paramIdx, ParameterChangeContext& ctx);
+
+    // === Internal Helpers ===
+
+    void ApplyBindingValue(const TransformerParamBinding& binding, iplug::IParam* param,
+                          IChunkBufferTransformer* transformer, IMorph* morph);
+
+    // Bindings
     std::vector<TransformerParamBinding> mBindings;
 
     // Core parameter indices
@@ -321,8 +303,6 @@ namespace synaptic
     int mParamIdxAutotuneToleranceOctaves = -1;
     int mParamIdxMorphMode = -1;
 
-    // First transformer parameter index (base for dynamic params)
     int mTransformerParamBase = -1;
   };
 }
-

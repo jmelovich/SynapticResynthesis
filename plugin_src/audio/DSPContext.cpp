@@ -1,5 +1,11 @@
+/**
+ * @file DSPContext.cpp
+ * @brief Implementation of the real-time audio processing context
+ */
+
 #include "plugin_src/audio/DSPContext.h"
 #include "plugin_src/params/ParameterManager.h"
+#include "plugin_src/params/ParameterIds.h"
 #include "plugin_src/transformers/TransformerFactory.h"
 #include "plugin_src/transformers/types/ExpandedSimpleSampleBrainTransformer.h"
 #include "plugin_src/morph/MorphFactory.h"
@@ -47,7 +53,7 @@ void DSPContext::OnReset(double sampleRate, int blockSize, int nChans,
   auto& autotune = mChunker.GetAutotuneProcessor();
   autotune.OnReset(sampleRate, mChunker.GetFFTSize(), mChunker.GetNumChannels());
   
-  const int autotuneBlendIdx = ::kAutotuneBlend;
+  const int autotuneBlendIdx = kAutotuneBlend;
   if (plugin->GetParam(autotuneBlendIdx))
   {
     const double blendPercent = plugin->GetParam(autotuneBlendIdx)->Value();
@@ -55,11 +61,11 @@ void DSPContext::OnReset(double sampleRate, int blockSize, int nChans,
   }
   
   {
-    const int modeIdx = ::kAutotuneMode;
+    const int modeIdx = kAutotuneMode;
     if (plugin->GetParam(modeIdx))
       autotune.SetMode(plugin->GetParam(modeIdx)->Int() == 1);
       
-    const int tolIdx = ::kAutotuneToleranceOctaves;
+    const int tolIdx = kAutotuneToleranceOctaves;
     if (plugin->GetParam(tolIdx))
     {
       const int enumIdx = std::clamp(plugin->GetParam(tolIdx)->Int(), 0, 4);
@@ -78,7 +84,7 @@ void DSPContext::OnReset(double sampleRate, int blockSize, int nChans,
   mChunker.SetMorph(mMorph);
 
   // Apply parameter bindings
-  paramManager->ApplyBindingsToOwners(plugin, mTransformer.get(), mMorph.get());
+  paramManager->ApplyBindingsTo(plugin, mTransformer.get(), mMorph.get());
 }
 
 void DSPContext::ProcessBlock(iplug::sample** inputs, iplug::sample** outputs, int nFrames, 
@@ -90,13 +96,10 @@ void DSPContext::ProcessBlock(iplug::sample** inputs, iplug::sample** outputs, i
     mTransformer = std::move(mPendingTransformer);
     mPendingTransformer.reset();
     
-    // Update latency after swap
-    // Use 0 if mTransformer is null (though it shouldn't be after swap if pending was valid)
     int extraLatency = mTransformer ? mTransformer->GetAdditionalLatencySamples(config.chunkSize, config.bufferWindowSize) : 0;
     plugin->SetLatency(config.chunkSize + extraLatency);
 
-    // Apply bindings
-    paramManager->ApplyBindingsToOwners(plugin, mTransformer.get(), mMorph.get());
+    paramManager->ApplyBindingsTo(plugin, mTransformer.get(), mMorph.get());
   }
 
   // Thread-safe morph swap
@@ -106,13 +109,12 @@ void DSPContext::ProcessBlock(iplug::sample** inputs, iplug::sample** outputs, i
     mPendingMorph.reset();
     mChunker.SetMorph(mMorph);
 
-    // Apply bindings
-    paramManager->ApplyBindingsToOwners(plugin, mTransformer.get(), mMorph.get());
+    paramManager->ApplyBindingsTo(plugin, mTransformer.get(), mMorph.get());
   }
 
-  const double inGain = plugin->GetParam(::kInGain)->DBToAmp();
-  const double outGain = plugin->GetParam(::kOutGain)->DBToAmp();
-  const bool agcEnabled = plugin->GetParam(::kAGC)->Bool();
+  const double inGain = plugin->GetParam(kInGain)->DBToAmp();
+  const double outGain = plugin->GetParam(kOutGain)->DBToAmp();
+  const bool agcEnabled = plugin->GetParam(kAGC)->Bool();
 
   const int inChans = plugin->NInChansConnected();
   const int outChans = plugin->NOutChansConnected();
@@ -159,4 +161,3 @@ void DSPContext::ProcessBlock(iplug::sample** inputs, iplug::sample** outputs, i
 }
 
 } // namespace synaptic
-

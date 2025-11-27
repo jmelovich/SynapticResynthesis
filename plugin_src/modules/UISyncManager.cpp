@@ -1,18 +1,26 @@
+/**
+ * @file UISyncManager.cpp
+ * @brief Implementation of UI synchronization and message handling
+ */
+
 #include "plugin_src/modules/UISyncManager.h"
 #include "plugin_src/ui/core/SynapticUI.h"
 #include "plugin_src/ui/core/ProgressOverlayManager.h"
+#include "plugin_src/ui/core/UIConstants.h"
+#include "plugin_src/audio/DSPContext.h"
 #include "plugin_src/brain/Brain.h"
 #include "plugin_src/brain/BrainManager.h"
 #include "plugin_src/params/ParameterManager.h"
 #include "plugin_src/modules/WindowCoordinator.h"
+#include "plugin_src/modules/WindowModeHelpers.h"
 #include "plugin_src/modules/DSPConfig.h"
 #include "plugin_src/modules/AudioStreamChunker.h"
 #include "plugin_src/transformers/BaseTransformer.h"
-#include "plugin_src/transformers/TransformerFactory.h" // For dynamic param rebuild
+#include "plugin_src/transformers/TransformerFactory.h"
 #include "plugin_src/morph/MorphFactory.h"
 #include "plugin_src/ui_bridge/MessageTags.h"
-#include "plugin_src/Structs.h" // For EParams
-#include "plugin_src/ui/controls/UIControls.h" // For lock button
+#include "plugin_src/Structs.h"
+#include "plugin_src/ui/controls/UIControls.h"
 
 namespace synaptic {
 
@@ -33,16 +41,9 @@ UISyncManager::UISyncManager(iplug::Plugin* plugin,
 {
 }
 
-void UISyncManager::SetDSPContext(std::shared_ptr<IChunkBufferTransformer>* transformer,
-                                  std::shared_ptr<IMorph>* morph,
-                                  std::shared_ptr<IChunkBufferTransformer>* pendingTransformer,
-                                  std::shared_ptr<IMorph>* pendingMorph,
-                                  AudioStreamChunker* chunker)
+void UISyncManager::SetDSPContext(DSPContext* dspContext, AudioStreamChunker* chunker)
 {
-  mTransformer = transformer;
-  mMorph = morph;
-  mPendingTransformer = pendingTransformer;
-  mPendingMorph = pendingMorph;
+  mDSPContext = dspContext;
   mChunker = chunker;
 }
 
@@ -67,7 +68,6 @@ void UISyncManager::OnUIClose()
 
 void UISyncManager::OnRestoreState()
 {
-  // For C++ UI, rebuild dynamic parameter controls and brain file list
   SyncAllUIState();
 }
 
@@ -81,7 +81,6 @@ bool UISyncManager::CheckAndClearPendingUpdate(PendingUpdate flag)
 
 void UISyncManager::MarkHostStateDirty()
 {
-  // Delegate to ParameterManager to toggle the dirty flag param
   if (!mPlugin || !mParamManager) return;
 
   int idx = mParamManager->GetDirtyFlagParamIdx();
@@ -95,11 +94,6 @@ void UISyncManager::MarkHostStateDirty()
     mPlugin->SendParameterValueFromUI(idx, norm);
     mPlugin->EndInformHostOfParamChangeFromUI(idx);
   }
-
-  // AAX support if needed
-#ifdef AAX_API
-  // Note: Requires dynamic_cast to IPlugAAX*, omitting for now or need strict include
-#endif
 }
 
 void UISyncManager::SyncAndSendDSPConfig()
@@ -108,14 +102,6 @@ void UISyncManager::SyncAndSendDSPConfig()
 
   mDSPConfig->useExternalBrain = mBrainManager->UseExternal();
   mDSPConfig->externalPath = mBrainManager->UseExternal() ? mBrainManager->ExternalPath() : std::string();
-
-  int morphIdx = 0;
-  if (mParamManager)
-  {
-    const int morphModeParamIdx = mParamManager->GetMorphModeParamIdx();
-    if (morphModeParamIdx >= 0 && mPlugin->GetParam(morphModeParamIdx))
-      morphIdx = mPlugin->GetParam(morphModeParamIdx)->Int();
-  }
 }
 
 void UISyncManager::SyncBrainUIState()
@@ -123,7 +109,6 @@ void UISyncManager::SyncBrainUIState()
 #if IPLUG_EDITOR
   if (!mUI || !mBrain || !mBrainManager) return;
 
-  // Convert Brain summary to UI format
   auto brainSummary = mBrain->GetSummary();
   std::vector<synaptic::ui::BrainFileEntry> uiEntries;
   for (const auto& s : brainSummary)
@@ -132,10 +117,8 @@ void UISyncManager::SyncBrainUIState()
   }
   mUI->updateBrainFileList(uiEntries);
 
-  // Update brain state (storage info, button visibility, control states)
   mUI->updateBrainState(mBrainManager->UseExternal(), mBrainManager->ExternalPath());
 
-  // Update the UI toggle control to reflect the current setting
   auto* compactToggle = mUI->getCompactModeToggle();
   if (compactToggle)
   {
@@ -148,32 +131,31 @@ void UISyncManager::SyncBrainUIState()
 void UISyncManager::SyncAllUIState()
 {
 #if IPLUG_EDITOR
-  if (!mUI || !mTransformer || !mMorph || !mParamManager) return;
+  if (!mUI || !mDSPContext || !mParamManager) return;
 
-  // Update context with shared_ptr copies to prevent race conditions
-  // Note: mTransformer and mMorph are pointers to shared_ptrs in DSPContext
-  if (*mTransformer)
-    mUI->setDynamicParamContext(*mTransformer, *mMorph, mParamManager, mPlugin);
+  auto transformer = mDSPContext->GetTransformer();
+  auto morph = mDSPContext->GetMorph();
 
-  // Rebuild dynamic params
-  mUI->rebuildDynamicParams(synaptic::ui::DynamicParamType::Transformer, mTransformer->get(), *mParamManager, mPlugin);
-  mUI->rebuildDynamicParams(synaptic::ui::DynamicParamType::Morph, mMorph->get(), *mParamManager, mPlugin);
+  if (transformer)
+    mUI->setDynamicParamContext(transformer, morph, mParamManager, mPlugin);
 
-  // Sync brain state
+  mUI->rebuildDynamicParams(synaptic::ui::DynamicParamType::Transformer,
+                             mDSPContext->GetTransformerRaw(), *mParamManager, mPlugin);
+  mUI->rebuildDynamicParams(synaptic::ui::DynamicParamType::Morph,
+                             mDSPContext->GetMorphRaw(), *mParamManager, mPlugin);
+
   SyncBrainUIState();
 
-  // Resize to fit
   mUI->resizeWindowToFitContent();
 #endif
 }
 
 void UISyncManager::DrainUiQueue()
 {
-  // MarkDirty is shared by both UI modes
   if (CheckAndClearPendingUpdate(PendingUpdate::MarkDirty))
     MarkHostStateDirty();
 
-  // Apply any pending imported settings (chunk size + analysis window) on main thread
+  // Apply any pending imported settings
   if (mBrainManager && mParamManager && mDSPConfig && mWindowCoordinator && mChunker)
   {
     const int impCS = mBrainManager->GetPendingImportedChunkSize();
@@ -186,57 +168,65 @@ void UISyncManager::DrainUiQueue()
 
       if (impCS > 0 && chunkSizeIdx >= 0)
       {
-        synaptic::ParameterManager::SetParameterFromUI(mPlugin, chunkSizeIdx, (double) impCS);
+        synaptic::ParameterManager::SetParameterFromUI(mPlugin, chunkSizeIdx, (double)impCS);
         mDSPConfig->chunkSize = impCS;
         mChunker->SetChunkSize(mDSPConfig->chunkSize);
 
-        // Reset transformer and morph with new chunk size
-        if (mTransformer && *mTransformer)
+        if (mDSPContext)
         {
-          (*mTransformer)->OnReset(mPlugin->GetSampleRate(), mDSPConfig->chunkSize,
-                                    mDSPConfig->bufferWindowSize, mPlugin->NInChansConnected());
-        }
-        if (mMorph && *mMorph)
-        {
-          (*mMorph)->OnReset(mPlugin->GetSampleRate(), mDSPConfig->chunkSize,
-                              mPlugin->NInChansConnected());
+          auto transformer = mDSPContext->GetTransformer();
+          auto morph = mDSPContext->GetMorph();
+
+          if (transformer)
+          {
+            transformer->OnReset(mPlugin->GetSampleRate(), mDSPConfig->chunkSize,
+                                 mDSPConfig->bufferWindowSize, mPlugin->NInChansConnected());
+          }
+          if (morph)
+          {
+            morph->OnReset(mPlugin->GetSampleRate(), mDSPConfig->chunkSize,
+                           mPlugin->NInChansConnected());
+          }
         }
       }
+
       if (impAW > 0 && analysisWindowIdx >= 0)
       {
-        const int idx = std::clamp(impAW - 1, 0, 3);
+        const int idx = WindowMode::ClampParam(impAW - 1);
 
-        // Check if we need to unlock BEFORE setting the analysis window parameter
-        // (to prevent OnParamChange from syncing output window)
-        if (mPlugin->GetParam(::kWindowLock)->Bool())
+        if (mPlugin->GetParam(kWindowLock)->Bool())
         {
-          const int currentOutputWindowIdx = mPlugin->GetParam(::kOutputWindow)->Int();
+          const int currentOutputWindowIdx = mPlugin->GetParam(kOutputWindow)->Int();
 
-          // If imported analysis window differs from current output window, unlock FIRST
           if (idx != currentOutputWindowIdx)
           {
-            // Unlock the windows since they're now different
-            mPlugin->GetParam(::kWindowLock)->Set(0.0); // Set to unlocked directly
-            synaptic::ParameterManager::SetParameterFromUI(mPlugin, ::kWindowLock, 0.0); // Also notify UI
-            MarkHostStateDirty(); // Mark state as dirty so unlock gets saved
+            mPlugin->GetParam(kWindowLock)->Set(0.0);
+            synaptic::ParameterManager::SetParameterFromUI(mPlugin, kWindowLock, 0.0);
+            MarkHostStateDirty();
           }
         }
 
-        // Now set the analysis window parameter (won't trigger sync if we just unlocked)
         SetPendingUpdate(PendingUpdate::SuppressAnalysisReanalyze);
-        synaptic::ParameterManager::SetParameterFromUI(mPlugin, analysisWindowIdx, (double) idx);
+        synaptic::ParameterManager::SetParameterFromUI(mPlugin, analysisWindowIdx, (double)idx);
         mDSPConfig->analysisWindowMode = impAW;
       }
 
       mWindowCoordinator->UpdateBrainAnalysisWindow(*mDSPConfig);
       if (mUI) mWindowCoordinator->SyncWindowControls(mUI->graphics());
-      mWindowCoordinator->UpdateChunkerWindowing(*mDSPConfig, mTransformer ? mTransformer->get() : nullptr);
+
+      if (mDSPContext)
+        mWindowCoordinator->UpdateChunkerWindowing(*mDSPConfig, mDSPContext->GetTransformerRaw());
 
       // Update latency
-      if (mTransformer)
+      if (mDSPContext)
       {
-          int latency = mDSPConfig->chunkSize + (*mTransformer)->GetAdditionalLatencySamples(mDSPConfig->chunkSize, mDSPConfig->bufferWindowSize);
+        auto transformer = mDSPContext->GetTransformer();
+        if (transformer)
+        {
+          int latency = mDSPConfig->chunkSize + transformer->GetAdditionalLatencySamples(
+            mDSPConfig->chunkSize, mDSPConfig->bufferWindowSize);
           mPlugin->SetLatency(latency);
+        }
       }
 
       SyncAndSendDSPConfig();
@@ -271,14 +261,25 @@ void UISyncManager::OnIdle()
 
     if (HasPendingUpdate(PendingUpdate::RebuildTransformer) || HasPendingUpdate(PendingUpdate::RebuildMorph))
     {
-      std::shared_ptr<const IChunkBufferTransformer> currentTransformer =
-        (mPendingTransformer && *mPendingTransformer) ? *mPendingTransformer : (mTransformer ? *mTransformer : nullptr);
-      std::shared_ptr<const IMorph> currentMorph =
-        (mPendingMorph && *mPendingMorph) ? *mPendingMorph : (mMorph ? *mMorph : nullptr);
+      if (mDSPContext)
+      {
+        std::shared_ptr<const IChunkBufferTransformer> currentTransformer =
+          mDSPContext->HasPendingTransformer()
+            ? std::const_pointer_cast<const IChunkBufferTransformer>(
+                std::shared_ptr<IChunkBufferTransformer>(
+                  mDSPContext->GetPendingTransformerRaw(), [](IChunkBufferTransformer*){}))
+            : mDSPContext->GetTransformer();
 
-      mUI->setDynamicParamContext(currentTransformer, currentMorph, mParamManager, mPlugin);
+        std::shared_ptr<const IMorph> currentMorph =
+          mDSPContext->HasPendingMorph()
+            ? std::const_pointer_cast<const IMorph>(
+                std::shared_ptr<IMorph>(mDSPContext->GetPendingMorphRaw(), [](IMorph*){}))
+            : mDSPContext->GetMorph();
+
+        mUI->setDynamicParamContext(currentTransformer, currentMorph, mParamManager, mPlugin);
+      }
+
       mUI->rebuild();
-
       SyncBrainUIState();
       mWindowCoordinator->SyncWindowControls(mUI->graphics());
 
@@ -305,19 +306,18 @@ void UISyncManager::OnIdle()
         if (!files.empty())
         {
           mOverlayMgr->Show("Importing Files", "Starting...", 0.0f, true);
-          mBrainManager->AddMultipleFilesAsync(std::move(files), (int)mPlugin->GetSampleRate(), mPlugin->NInChansConnected(), mDSPConfig->chunkSize,
+          mBrainManager->AddMultipleFilesAsync(
+            std::move(files),
+            (int)mPlugin->GetSampleRate(),
+            mPlugin->NInChansConnected(),
+            mDSPConfig->chunkSize,
             MakeProgressCallback(),
-            [this](bool wasCancelled)
-            {
+            [this](bool wasCancelled) {
               mOverlayMgr->Hide();
               if (!wasCancelled)
               {
                 SetPendingUpdate(PendingUpdate::BrainSummary);
                 MarkHostStateDirty();
-              }
-              else
-              {
-                // Cancelled
               }
             }
           );
@@ -335,15 +335,15 @@ bool UISyncManager::OnMessage(int msgTag, int ctrlTag, int dataSize, const void*
 {
   switch (msgTag)
   {
-    case ::kMsgTagBrainAddFile: return HandleBrainAddFileMsg(dataSize, pData);
-    case ::kMsgTagBrainRemoveFile: return HandleBrainRemoveFileMsg(ctrlTag);
-    case ::kMsgTagBrainExport: return HandleBrainExportMsg();
-    case ::kMsgTagBrainImport: return HandleBrainImportMsg();
-    case ::kMsgTagBrainEject: return HandleBrainEjectMsg();
-    case ::kMsgTagBrainDetach: return HandleBrainDetachMsg();
-    case ::kMsgTagBrainCreateNew: return HandleBrainCreateNewMsg();
-    case ::kMsgTagBrainSetCompactMode: return HandleBrainSetCompactModeMsg(ctrlTag);
-    case ::kMsgTagCancelOperation: return HandleCancelOperationMsg();
+    case kMsgTagBrainAddFile: return HandleBrainAddFileMsg(dataSize, pData);
+    case kMsgTagBrainRemoveFile: return HandleBrainRemoveFileMsg(ctrlTag);
+    case kMsgTagBrainExport: return HandleBrainExportMsg();
+    case kMsgTagBrainImport: return HandleBrainImportMsg();
+    case kMsgTagBrainEject: return HandleBrainEjectMsg();
+    case kMsgTagBrainDetach: return HandleBrainDetachMsg();
+    case kMsgTagBrainCreateNew: return HandleBrainCreateNewMsg();
+    case kMsgTagBrainSetCompactMode: return HandleBrainSetCompactModeMsg(ctrlTag);
+    case kMsgTagCancelOperation: return HandleCancelOperationMsg();
     default: return false;
   }
 }
@@ -393,14 +393,14 @@ bool UISyncManager::HandleBrainImportMsg()
 {
   mBrainManager->ImportFromFileAsync(
     [this](const std::string& message, int current, int total) {
-       const float progress = (total > 0) ? ((float)current / (float)total * 100.0f) : 0.0f;
-       mOverlayMgr->Show("Importing Brain", message, progress, false);
+      const float progress = (total > 0) ? ((float)current / (float)total * ui::Progress::kMaxProgress) : 0.0f;
+      mOverlayMgr->Show("Importing Brain", message, progress, false);
     },
     [this](bool wasCancelled) {
-       mOverlayMgr->Hide();
-       synaptic::Brain::sUseCompactBrainFormat = mBrain->WasLastLoadedInCompactFormat();
-       SetPendingUpdate(PendingUpdate::BrainSummary);
-       SetPendingUpdate(PendingUpdate::MarkDirty);
+      mOverlayMgr->Hide();
+      synaptic::Brain::sUseCompactBrainFormat = mBrain->WasLastLoadedInCompactFormat();
+      SetPendingUpdate(PendingUpdate::BrainSummary);
+      SetPendingUpdate(PendingUpdate::MarkDirty);
     });
   return true;
 }
@@ -443,17 +443,17 @@ bool UISyncManager::HandleBrainSetCompactModeMsg(int enabled)
 
 synaptic::BrainManager::ProgressFn UISyncManager::MakeProgressCallback()
 {
-  return [this](const std::string& fileName, int current, int total)
-  {
-    const float p = (total > 0) ? ((float)current / (float)total * 100.0f) : 50.0f;
+  return [this](const std::string& fileName, int current, int total) {
+    const float p = (total > 0)
+      ? ((float)current / (float)total * ui::Progress::kMaxProgress)
+      : ui::Progress::kDefaultProgress;
     mOverlayMgr->Update(fileName, p);
   };
 }
 
 synaptic::BrainManager::CompletionFn UISyncManager::MakeStandardCompletionCallback()
 {
-  return [this](bool wasCancelled)
-  {
+  return [this](bool wasCancelled) {
     mOverlayMgr->Hide();
     if (!wasCancelled)
     {
@@ -465,4 +465,3 @@ synaptic::BrainManager::CompletionFn UISyncManager::MakeStandardCompletionCallba
 }
 
 } // namespace synaptic
-
