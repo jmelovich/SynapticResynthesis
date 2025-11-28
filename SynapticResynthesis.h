@@ -55,7 +55,7 @@ private:
   // === Modules ===
   synaptic::DSPConfig mDSPConfig;
   synaptic::ParameterManager mParamManager;
-  synaptic::BrainManager mBrainManager;
+  mutable synaptic::BrainManager mBrainManager;  // mutable: dirty flag updated during const SerializeState
   synaptic::WindowCoordinator mWindowCoordinator;
   synaptic::StateSerializer mStateSerializer;
 

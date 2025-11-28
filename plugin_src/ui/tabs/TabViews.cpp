@@ -16,6 +16,7 @@
 #include "../styles/UITheme.h"
 #include "../layout/UILayout.h"
 #include "SynapticResynthesis.h"
+#include "plugin_src/ui_bridge/MessageTags.h"
 
 using namespace iplug;
 using namespace igraphics;
@@ -356,7 +357,7 @@ void BuildBrainTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, 
       auto* pGraphics = pCaller->GetUI();
       auto* pDelegate = dynamic_cast<iplug::IEditorDelegate*>(pGraphics->GetDelegate());
       if (pDelegate) {
-        pDelegate->SendArbitraryMsgFromUI(kMsgTagBrainCreateNew, kNoTag, 0, nullptr);
+        pDelegate->SendArbitraryMsgFromUI(synaptic::kMsgTagBrainCreateNew, kNoTag, 0, nullptr);
       }
     }, "Create New Brain", kButtonStyle);
     createButton->SetTooltip("Initialize a new brain for storing audio samples. Drag and drop audio files to populate it");
@@ -459,7 +460,7 @@ void BuildBrainTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, 
       auto* pGraphics = pCaller->GetUI();
       auto* pDelegate = dynamic_cast<iplug::IEditorDelegate*>(pGraphics->GetDelegate());
       if (pDelegate) {
-        pDelegate->SendArbitraryMsgFromUI(kMsgTagBrainImport, kNoTag, 0, nullptr);
+        pDelegate->SendArbitraryMsgFromUI(synaptic::kMsgTagBrainImport, kNoTag, 0, nullptr);
       }
     }, "Import Brain", kButtonStyle);
     importBtn->SetTooltip("Load a brain file from disk. Brain stores analyzed audio samples for synthesis");
@@ -470,7 +471,7 @@ void BuildBrainTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, 
       auto* pGraphics = pCaller->GetUI();
       auto* pDelegate = dynamic_cast<iplug::IEditorDelegate*>(pGraphics->GetDelegate());
       if (pDelegate) {
-        pDelegate->SendArbitraryMsgFromUI(kMsgTagBrainExport, kNoTag, 0, nullptr);
+        pDelegate->SendArbitraryMsgFromUI(synaptic::kMsgTagBrainExport, kNoTag, 0, nullptr);
       }
     }, "Export Brain", kButtonStyle);
     exportBtn->SetTooltip("Save current brain to disk. Allows reusing analyzed samples across projects");
@@ -483,7 +484,7 @@ void BuildBrainTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, 
       auto* pGraphics = pCaller->GetUI();
       auto* pDelegate = dynamic_cast<iplug::IEditorDelegate*>(pGraphics->GetDelegate());
       if (pDelegate) {
-        pDelegate->SendArbitraryMsgFromUI(kMsgTagBrainEject, kNoTag, 0, nullptr);
+        pDelegate->SendArbitraryMsgFromUI(synaptic::kMsgTagBrainEject, kNoTag, 0, nullptr);
       }
     }, "Eject Brain", kButtonStyle);
     ejectBtn->SetTooltip("Ejects the current Brain file. This unreferences the external brain file, and clears the loaded brain data.");
@@ -506,7 +507,7 @@ void BuildBrainTab(SynapticUI& ui, const IRECT& bounds, const UILayout& layout, 
           auto* pGraphics = pCaller->GetUI();
           auto* pDelegate = dynamic_cast<iplug::IEditorDelegate*>(pGraphics->GetDelegate());
           if (pDelegate) {
-            pDelegate->SendArbitraryMsgFromUI(kMsgTagBrainSetCompactMode, value, 0, nullptr);
+            pDelegate->SendArbitraryMsgFromUI(synaptic::kMsgTagBrainSetCompactMode, value, 0, nullptr);
           }
         }
       },

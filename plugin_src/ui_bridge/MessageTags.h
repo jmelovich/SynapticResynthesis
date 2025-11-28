@@ -48,23 +48,5 @@ namespace synaptic
     kMsgTagUiReady = MsgTagCategory::kUI + 0,
     kMsgTagResizeToFit = MsgTagCategory::kUI + 1
   };
-}
 
-// Expose at global scope for backward compatibility
-using synaptic::EMsgTags;
-using synaptic::kMsgTagSetChunkSize;
-using synaptic::kMsgTagSetAlgorithm;
-using synaptic::kMsgTagSetOutputWindowMode;
-using synaptic::kMsgTagSetAnalysisWindowMode;
-using synaptic::kMsgTagTransformerSetParam;
-using synaptic::kMsgTagBrainAddFile;
-using synaptic::kMsgTagBrainRemoveFile;
-using synaptic::kMsgTagBrainExport;
-using synaptic::kMsgTagBrainImport;
-using synaptic::kMsgTagBrainEject;
-using synaptic::kMsgTagBrainDetach;
-using synaptic::kMsgTagBrainCreateNew;
-using synaptic::kMsgTagBrainSetCompactMode;
-using synaptic::kMsgTagCancelOperation;
-using synaptic::kMsgTagUiReady;
-using synaptic::kMsgTagResizeToFit;
+}

@@ -98,10 +98,8 @@ void UISyncManager::MarkHostStateDirty()
 
 void UISyncManager::SyncAndSendDSPConfig()
 {
+  // Brain state is now managed by BrainManager, not DSPConfig
   if (!mDSPConfig || !mBrainManager) return;
-
-  mDSPConfig->useExternalBrain = mBrainManager->UseExternal();
-  mDSPConfig->externalPath = mBrainManager->UseExternal() ? mBrainManager->ExternalPath() : std::string();
 }
 
 void UISyncManager::SyncBrainUIState()
@@ -259,33 +257,30 @@ void UISyncManager::OnIdle()
     if (mOverlayMgr)
       mOverlayMgr->ProcessPendingUpdates(mUI);
 
-    if (HasPendingUpdate(PendingUpdate::RebuildTransformer) || HasPendingUpdate(PendingUpdate::RebuildMorph))
-    {
-      if (mDSPContext)
+      if (HasPendingUpdate(PendingUpdate::RebuildTransformer) || HasPendingUpdate(PendingUpdate::RebuildMorph))
       {
-        std::shared_ptr<const IChunkBufferTransformer> currentTransformer =
-          mDSPContext->HasPendingTransformer()
-            ? std::const_pointer_cast<const IChunkBufferTransformer>(
-                std::shared_ptr<IChunkBufferTransformer>(
-                  mDSPContext->GetPendingTransformerRaw(), [](IChunkBufferTransformer*){}))
+        if (mDSPContext)
+        {
+          // Use current or pending transformer/morph for UI rebuild
+          // Prefer pending if available (will be swapped in next audio block)
+          auto currentTransformer = mDSPContext->HasPendingTransformer()
+            ? mDSPContext->GetPendingTransformer()
             : mDSPContext->GetTransformer();
 
-        std::shared_ptr<const IMorph> currentMorph =
-          mDSPContext->HasPendingMorph()
-            ? std::const_pointer_cast<const IMorph>(
-                std::shared_ptr<IMorph>(mDSPContext->GetPendingMorphRaw(), [](IMorph*){}))
+          auto currentMorph = mDSPContext->HasPendingMorph()
+            ? mDSPContext->GetPendingMorph()
             : mDSPContext->GetMorph();
 
-        mUI->setDynamicParamContext(currentTransformer, currentMorph, mParamManager, mPlugin);
+          mUI->setDynamicParamContext(currentTransformer, currentMorph, mParamManager, mPlugin);
+        }
+
+        mUI->rebuild();
+        SyncBrainUIState();
+        mWindowCoordinator->SyncWindowControls(mUI->graphics());
+
+        CheckAndClearPendingUpdate(PendingUpdate::RebuildTransformer);
+        CheckAndClearPendingUpdate(PendingUpdate::RebuildMorph);
       }
-
-      mUI->rebuild();
-      SyncBrainUIState();
-      mWindowCoordinator->SyncWindowControls(mUI->graphics());
-
-      CheckAndClearPendingUpdate(PendingUpdate::RebuildTransformer);
-      CheckAndClearPendingUpdate(PendingUpdate::RebuildMorph);
-    }
   }
 #endif
 

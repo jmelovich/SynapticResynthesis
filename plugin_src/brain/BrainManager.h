@@ -105,7 +105,7 @@ namespace synaptic
     /**
      * @brief Mark brain as dirty (has unsaved changes)
      */
-    void SetDirty(bool dirty) const { mBrainDirty = dirty; }
+    void SetDirty(bool dirty) { mBrainDirty = dirty; }
 
     /**
      * @brief Check if using external brain file
@@ -187,7 +187,7 @@ namespace synaptic
     // External brain state
     bool mUseExternalBrain = false;
     std::string mExternalBrainPath;
-    mutable bool mBrainDirty = false;
+    bool mBrainDirty = false;
 
     // Threading coordination
     std::atomic<bool> mOperationInProgress{false};

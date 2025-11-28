@@ -13,7 +13,7 @@ namespace synaptic
   bool StateSerializer::sEnableInlineBrains = false;
   bool StateSerializer::SerializeBrainState(iplug::IByteChunk& chunk,
                                            const Brain& brain,
-                                           const BrainManager& brainMgr,
+                                           BrainManager& brainMgr,
                                            ui::ProgressOverlayManager* progressMgr) const
   {
     // Append brain section with tag

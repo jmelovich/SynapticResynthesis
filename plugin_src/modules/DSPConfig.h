@@ -8,7 +8,8 @@ namespace synaptic
   /**
    * @brief Configuration state for DSP parameters
    *
-   * Central struct holding all configurable DSP settings.
+   * Contains only DSP-related settings. Brain storage state has been
+   * moved to BrainManager to maintain single responsibility.
    */
   struct DSPConfig
   {
@@ -19,10 +20,6 @@ namespace synaptic
     int analysisWindowMode = 1;    // Same encoding as output window
     int algorithmId = 0;           // Index into transformer factory UI list
     bool enableOverlapAdd = true;
-
-    // External brain storage info (for UI display)
-    bool useExternalBrain = false;
-    std::string externalPath;
 
     /**
      * @brief Validate and clamp parameters to safe ranges
@@ -35,5 +32,20 @@ namespace synaptic
       analysisWindowMode = std::clamp(analysisWindowMode, 1, 4);
       algorithmId = std::max(0, algorithmId);
     }
+
+    /**
+     * @brief Check if two configs have equivalent DSP settings
+     */
+    bool operator==(const DSPConfig& other) const
+    {
+      return chunkSize == other.chunkSize &&
+             bufferWindowSize == other.bufferWindowSize &&
+             outputWindowMode == other.outputWindowMode &&
+             analysisWindowMode == other.analysisWindowMode &&
+             algorithmId == other.algorithmId &&
+             enableOverlapAdd == other.enableOverlapAdd;
+    }
+
+    bool operator!=(const DSPConfig& other) const { return !(*this == other); }
   };
 }

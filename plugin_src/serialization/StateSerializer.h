@@ -46,13 +46,13 @@ namespace synaptic
      *
      * @param chunk Chunk to append brain state to
      * @param brain Brain instance to serialize
-     * @param brainMgr BrainManager for state info
+     * @param brainMgr BrainManager for state info (non-const to allow dirty flag updates)
      * @param progressMgr Optional progress overlay manager for showing save progress
      * @return true on success
      */
     bool SerializeBrainState(iplug::IByteChunk& chunk,
                             const Brain& brain,
-                            const BrainManager& brainMgr,
+                            BrainManager& brainMgr,
                             ui::ProgressOverlayManager* progressMgr = nullptr) const;
 
     /**

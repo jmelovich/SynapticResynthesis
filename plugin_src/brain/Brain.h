@@ -14,17 +14,28 @@
 
 namespace synaptic
 {
+  /**
+   * @brief A chunk of audio stored in the Brain with analysis metadata
+   *
+   * Note on spectrum storage:
+   * - audio.complexSpectrum: Full ordered FFT output (length=fftSize per channel)
+   *   Used for spectral morphing and IFFT reconstruction
+   * - magnitudeSpectrum: Magnitude-only spectrum (length=fftSize/2+1 per channel)
+   *   Used for feature analysis and matching algorithms
+   */
   struct BrainChunk
   {
-    AudioChunk audio; // same format as realtime chunks (now includes complexSpectrum and fftSize)
+    AudioChunk audio;  ///< Audio data with optional full FFT spectrum
     int fileId = -1;
     int chunkIndexInFile = -1;
+
     // Per-channel analysis
-    std::vector<float> rmsPerChannel;     // RMS per channel
-    std::vector<double> freqHzPerChannel; // ZCR-based frequency per channel
+    std::vector<float> rmsPerChannel;      ///< RMS per channel
+    std::vector<double> freqHzPerChannel;  ///< ZCR-based frequency per channel
+
     // FFT analysis (per channel)
-    // Magnitude spectrum per channel (length = fftSize/2 + 1), computed via PFFFT
-    std::vector<std::vector<float>> complexSpectrum;
+    /// Magnitude spectrum per channel (length = fftSize/2 + 1), for matching
+    std::vector<std::vector<float>> magnitudeSpectrum;
     // Dominant frequency (Hz) derived from FFT magnitude peak per channel
     std::vector<double> fftDominantHzPerChannel;
     // FFT size actually used for analysis. PFFFT has strict size constraints:

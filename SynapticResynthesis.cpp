@@ -188,10 +188,11 @@ bool SynapticResynthesis::SerializeState(IByteChunk& chunk) const
   if (!Plugin::SerializeState(chunk)) return false;
 
 #if IPLUG_EDITOR
-  synaptic::ui::ProgressOverlayManager* overlayMgr = const_cast<SynapticResynthesis*>(this)->mUISyncManager.GetUI() ? &mProgressOverlayMgr : nullptr;
-  return mStateSerializer.SerializeBrainState(chunk, mBrain, const_cast<synaptic::BrainManager&>(mBrainManager), overlayMgr);
+  // Progress overlay is only used for UI feedback, optional for serialization
+  synaptic::ui::ProgressOverlayManager* overlayMgr = mUI ? &mProgressOverlayMgr : nullptr;
+  return mStateSerializer.SerializeBrainState(chunk, mBrain, mBrainManager, overlayMgr);
 #else
-  return mStateSerializer.SerializeBrainState(chunk, mBrain, const_cast<synaptic::BrainManager&>(mBrainManager), nullptr);
+  return mStateSerializer.SerializeBrainState(chunk, mBrain, mBrainManager, nullptr);
 #endif
 }
 

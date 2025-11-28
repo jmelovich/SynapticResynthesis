@@ -14,6 +14,7 @@
 #include "BrainFileListControl.h"
 #include "BrainFileHelpers.h"
 #include "SynapticResynthesis.h"
+#include "plugin_src/ui_bridge/MessageTags.h"
 #include <algorithm>
 
 
@@ -211,7 +212,7 @@ bool BrainFileListControl::IsInRemoveButton(float x, float y, int rowIndex) cons
 
 void BrainFileListControl::SendRemoveFileMessage(int fileId)
 {
-  BrainFileHelpers::SendMessageToPlugin(GetUI(), kMsgTagBrainRemoveFile, fileId, 0, nullptr);
+  BrainFileHelpers::SendMessageToPlugin(GetUI(), synaptic::kMsgTagBrainRemoveFile, fileId, 0, nullptr);
 }
 
 void BrainFileListControl::SendAddFileMessage(const char* path)

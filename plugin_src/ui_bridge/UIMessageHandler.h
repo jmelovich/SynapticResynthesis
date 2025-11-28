@@ -29,31 +29,31 @@ namespace synaptic
       switch (msgTag)
       {
         // Brain Messages
-        case ::kMsgTagBrainAddFile:
+        case kMsgTagBrainAddFile:
           return plugin->HandleBrainAddFileMsg(dataSize, pData);
 
-        case ::kMsgTagBrainRemoveFile:
+        case kMsgTagBrainRemoveFile:
           return plugin->HandleBrainRemoveFileMsg(ctrlTag);
 
-        case ::kMsgTagBrainExport:
+        case kMsgTagBrainExport:
           return plugin->HandleBrainExportMsg();
 
-        case ::kMsgTagBrainImport:
+        case kMsgTagBrainImport:
           return plugin->HandleBrainImportMsg();
 
-        case ::kMsgTagBrainEject:
+        case kMsgTagBrainEject:
           return plugin->HandleBrainEjectMsg();
 
-        case ::kMsgTagBrainDetach:
+        case kMsgTagBrainDetach:
           return plugin->HandleBrainDetachMsg();
 
-        case ::kMsgTagBrainCreateNew:
+        case kMsgTagBrainCreateNew:
           return plugin->HandleBrainCreateNewMsg();
 
-        case ::kMsgTagBrainSetCompactMode:
+        case kMsgTagBrainSetCompactMode:
           return plugin->HandleBrainSetCompactModeMsg(ctrlTag);
 
-        case ::kMsgTagCancelOperation:
+        case kMsgTagCancelOperation:
           return plugin->HandleCancelOperationMsg();
 
         default:

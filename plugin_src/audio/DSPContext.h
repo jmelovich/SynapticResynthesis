@@ -82,6 +82,9 @@ public:
   
   /** @brief Get pending transformer (for parameter binding before swap) */
   IChunkBufferTransformer* GetPendingTransformerRaw() const { return mPendingTransformer.get(); }
+
+  /** @brief Get pending transformer as shared_ptr */
+  std::shared_ptr<IChunkBufferTransformer> GetPendingTransformer() const { return mPendingTransformer; }
   
   // === Morph Access ===
   
@@ -102,6 +105,9 @@ public:
   
   /** @brief Get pending morph (for parameter binding before swap) */
   IMorph* GetPendingMorphRaw() const { return mPendingMorph.get(); }
+
+  /** @brief Get pending morph as shared_ptr */
+  std::shared_ptr<IMorph> GetPendingMorph() const { return mPendingMorph; }
 
 private:
   // Gain smoothers
