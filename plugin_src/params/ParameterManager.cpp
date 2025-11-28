@@ -74,10 +74,12 @@ namespace synaptic
   void ParameterManager::InitializeCoreParameters(iplug::Plugin* plugin, const DSPConfig& config)
   {
     mParamIdxChunkSize = kChunkSize;
-    plugin->GetParam(mParamIdxChunkSize)->InitInt("Chunk Size", config.chunkSize, 1, 262144, "samples", iplug::IParam::kFlagCannotAutomate);
+    plugin->GetParam(mParamIdxChunkSize)->InitInt("Chunk Size", config.chunkSize, 
+      DSPDefaults::kMinChunkSize, DSPDefaults::kMaxChunkSize, "samples", iplug::IParam::kFlagCannotAutomate);
 
     mParamIdxBufferWindow = kBufferWindow;
-    plugin->GetParam(mParamIdxBufferWindow)->InitInt("Buffer Window", config.bufferWindowSize, 1, 1024, "chunks", iplug::IParam::kFlagCannotAutomate);
+    plugin->GetParam(mParamIdxBufferWindow)->InitInt("Buffer Window", config.bufferWindowSize, 
+      DSPDefaults::kMinBufferWindow, DSPDefaults::kMaxBufferWindow, "chunks", iplug::IParam::kFlagCannotAutomate);
 
     mParamIdxDirtyFlag = kDirtyFlag;
     plugin->GetParam(mParamIdxDirtyFlag)->InitBool("Dirty Flag", false, "", iplug::IParam::kFlagCannotAutomate);

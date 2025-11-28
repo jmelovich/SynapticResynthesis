@@ -188,25 +188,11 @@ namespace synaptic
     /**
      * @brief Apply all current parameter bindings to transformer and/or morph
      *
-     * This unified method replaces the separate ApplyBindingsToTransformer and
-     * ApplyBindingsToOwners methods.
-     *
      * @param plugin Plugin instance to read parameter values from
      * @param transformer Transformer to apply values to (can be nullptr)
      * @param morph Morph to apply values to (can be nullptr)
      */
     void ApplyBindingsTo(iplug::Plugin* plugin, IChunkBufferTransformer* transformer, IMorph* morph);
-
-    // Legacy wrappers for backward compatibility
-    void ApplyBindingsToTransformer(iplug::Plugin* plugin, IChunkBufferTransformer* transformer)
-    {
-      ApplyBindingsTo(plugin, transformer, nullptr);
-    }
-
-    void ApplyBindingsToOwners(iplug::Plugin* plugin, IChunkBufferTransformer* transformer, IMorph* morph)
-    {
-      ApplyBindingsTo(plugin, transformer, morph);
-    }
 
     // === Query Methods ===
 

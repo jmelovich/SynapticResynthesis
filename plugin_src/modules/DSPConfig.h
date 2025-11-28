@@ -6,6 +6,29 @@
 namespace synaptic
 {
   /**
+   * @brief Default values for DSP configuration
+   *
+   * All DSP-related defaults are centralized here for easy modification
+   * and to eliminate magic numbers throughout the codebase.
+   */
+  namespace DSPDefaults
+  {
+    constexpr int kChunkSize = 3000;              ///< Default chunk size in samples
+    constexpr int kBufferWindowSize = 1;          ///< Default lookahead window count
+    constexpr int kOutputWindowMode = 1;          ///< 1=Hann (default)
+    constexpr int kAnalysisWindowMode = 1;        ///< 1=Hann (default)
+    constexpr int kAlgorithmId = 0;               ///< First transformer in UI list
+    constexpr bool kEnableOverlapAdd = true;      ///< Overlap-add enabled by default
+
+    constexpr int kMinChunkSize = 1;
+    constexpr int kMaxChunkSize = 262144;
+    constexpr int kMinBufferWindow = 1;
+    constexpr int kMaxBufferWindow = 1024;
+    constexpr int kMinWindowMode = 1;
+    constexpr int kMaxWindowMode = 4;
+  }
+
+  /**
    * @brief Configuration state for DSP parameters
    *
    * Contains only DSP-related settings. Brain storage state has been
@@ -13,23 +36,23 @@ namespace synaptic
    */
   struct DSPConfig
   {
-    // Core DSP parameters
-    int chunkSize = 3000;
-    int bufferWindowSize = 1;
-    int outputWindowMode = 1;      // 1=Hann, 2=Hamming, 3=Blackman, 4=Rectangular
-    int analysisWindowMode = 1;    // Same encoding as output window
-    int algorithmId = 0;           // Index into transformer factory UI list
-    bool enableOverlapAdd = true;
+    // Core DSP parameters (initialized with defaults)
+    int chunkSize = DSPDefaults::kChunkSize;
+    int bufferWindowSize = DSPDefaults::kBufferWindowSize;
+    int outputWindowMode = DSPDefaults::kOutputWindowMode;      // 1=Hann, 2=Hamming, 3=Blackman, 4=Rectangular
+    int analysisWindowMode = DSPDefaults::kAnalysisWindowMode;  // Same encoding as output window
+    int algorithmId = DSPDefaults::kAlgorithmId;                // Index into transformer factory UI list
+    bool enableOverlapAdd = DSPDefaults::kEnableOverlapAdd;
 
     /**
      * @brief Validate and clamp parameters to safe ranges
      */
     void Validate()
     {
-      chunkSize = std::max(1, chunkSize);
-      bufferWindowSize = std::max(1, bufferWindowSize);
-      outputWindowMode = std::clamp(outputWindowMode, 1, 4);
-      analysisWindowMode = std::clamp(analysisWindowMode, 1, 4);
+      chunkSize = std::clamp(chunkSize, DSPDefaults::kMinChunkSize, DSPDefaults::kMaxChunkSize);
+      bufferWindowSize = std::clamp(bufferWindowSize, DSPDefaults::kMinBufferWindow, DSPDefaults::kMaxBufferWindow);
+      outputWindowMode = std::clamp(outputWindowMode, DSPDefaults::kMinWindowMode, DSPDefaults::kMaxWindowMode);
+      analysisWindowMode = std::clamp(analysisWindowMode, DSPDefaults::kMinWindowMode, DSPDefaults::kMaxWindowMode);
       algorithmId = std::max(0, algorithmId);
     }
 

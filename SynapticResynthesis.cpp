@@ -36,13 +36,6 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
   GetParam(kAGC)->InitBool("AGC", false);
   GetParam(kWindowLock)->InitBool("Window Lock", true);
 
-  // Initialize DSP config with defaults
-  mDSPConfig.chunkSize = 3000;
-  mDSPConfig.bufferWindowSize = 1;
-  mDSPConfig.outputWindowMode = 1;
-  mDSPConfig.analysisWindowMode = 1;
-  mDSPConfig.algorithmId = 0;
-  mDSPConfig.enableOverlapAdd = true;
 
 #if IPLUG_EDITOR
   // IGraphics UI setup

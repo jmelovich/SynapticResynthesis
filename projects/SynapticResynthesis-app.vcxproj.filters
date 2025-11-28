@@ -62,6 +62,9 @@
     <ClCompile Include="..\plugin_src\modules\WindowCoordinator.cpp">
       <Filter>plugin_src\modules</Filter>
     </ClCompile>
+    <ClCompile Include="..\plugin_src\modules\AudioStreamChunker.cpp">
+      <Filter>plugin_src\modules</Filter>
+    </ClCompile>
     <ClCompile Include="..\plugin_src\ui_bridge\MessageHandlers.cpp">
       <Filter>plugin_src\modules</Filter>
     </ClCompile>
