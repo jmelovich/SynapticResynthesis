@@ -35,6 +35,7 @@ namespace synaptic
   class BrainManager;
   class WindowCoordinator;
   class DSPContext;
+  class UISyncManager;
 
   /**
    * @brief Binding between IParam and transformer/morph parameter
@@ -48,43 +49,10 @@ namespace synaptic
   };
 
   /**
-   * @brief Context for parameter change coordination
-   *
-   * Bundles all dependencies needed to handle parameter changes.
-   * Uses DSPContext reference instead of raw pointers to shared_ptrs.
-   */
-  struct ParameterChangeContext
-  {
-    // Core plugin reference
-    iplug::Plugin* plugin = nullptr;
-
-    // Configuration
-    DSPConfig* config = nullptr;
-
-    // DSP context (owns transformer/morph instances)
-    DSPContext* dspContext = nullptr;
-
-    // Individual DSP components
-    AudioStreamChunker* chunker = nullptr;
-    Brain* brain = nullptr;
-    Window* analysisWindow = nullptr;
-
-    // Coordinators/Managers
-    WindowCoordinator* windowCoordinator = nullptr;
-    BrainManager* brainManager = nullptr;
-
-    // Callbacks for plugin state management
-    std::function<void(uint32_t)> setPendingUpdate;
-    std::function<bool(uint32_t)> checkAndClearPendingUpdate;
-    std::function<int()> computeLatency;
-    std::function<void(int)> setLatency;
-  };
-
-  /**
    * @brief Manages all plugin parameters
    *
-   * Handles initialization of core DSP parameters and dynamic transformer parameters,
-   * maintains bindings between IParams and transformers, and routes parameter changes.
+   * Stores references to all plugin components it needs, set once via SetContext().
+   * This eliminates the need to pass a large context struct on every parameter change.
    */
   class ParameterManager
   {
@@ -95,6 +63,25 @@ namespace synaptic
      * @brief Calculate total number of parameters including dynamic ones
      */
     static int GetTotalParams();
+
+    // === Context Setup (call once after construction) ===
+
+    /**
+     * @brief Set all component references needed for parameter handling
+     *
+     * Call this once after all components are constructed.
+     * Must be called before any parameter changes occur.
+     */
+    void SetContext(
+      iplug::Plugin* plugin,
+      DSPConfig* config,
+      DSPContext* dspContext,
+      Brain* brain,
+      Window* analysisWindow,
+      WindowCoordinator* windowCoordinator,
+      BrainManager* brainManager,
+      UISyncManager* uiSyncManager
+    );
 
     // === Initialization ===
 
@@ -217,9 +204,11 @@ namespace synaptic
      * @brief Handle ALL parameter changes with centralized coordination
      *
      * Routes to specific handlers based on parameter type and coordinates
-     * all necessary side effects.
+     * all necessary side effects. Uses stored context references.
+     *
+     * @param paramIdx Parameter index that changed
      */
-    void OnParamChange(int paramIdx, ParameterChangeContext& ctx);
+    void OnParamChange(int paramIdx);
 
     // === Parameter Utility Methods ===
 
@@ -251,23 +240,39 @@ namespace synaptic
     // === Per-Parameter Handlers ===
     // These are called by OnParamChange to handle specific parameter types
 
-    void HandleChunkSizeParam(int paramIdx, ParameterChangeContext& ctx);
-    void HandleBufferWindowParam(int paramIdx, ParameterChangeContext& ctx);
-    void HandleAlgorithmParam(int paramIdx, ParameterChangeContext& ctx);
-    void HandleOutputWindowParam(int paramIdx, ParameterChangeContext& ctx);
-    void HandleAnalysisWindowParam(int paramIdx, ParameterChangeContext& ctx);
-    void HandleEnableOverlapParam(int paramIdx, ParameterChangeContext& ctx);
-    void HandleAutotuneBlendParam(int paramIdx, ParameterChangeContext& ctx);
-    void HandleAutotuneModeParam(int paramIdx, ParameterChangeContext& ctx);
-    void HandleAutotuneToleranceParam(int paramIdx, ParameterChangeContext& ctx);
-    void HandleMorphModeParam(int paramIdx, ParameterChangeContext& ctx);
-    void HandleWindowLockParam(int paramIdx, ParameterChangeContext& ctx);
-    void HandleDynamicParam(int paramIdx, ParameterChangeContext& ctx);
+    void HandleChunkSizeParam(int paramIdx);
+    void HandleBufferWindowParam(int paramIdx);
+    void HandleAlgorithmParam(int paramIdx);
+    void HandleOutputWindowParam(int paramIdx);
+    void HandleAnalysisWindowParam(int paramIdx);
+    void HandleEnableOverlapParam(int paramIdx);
+    void HandleAutotuneBlendParam(int paramIdx);
+    void HandleAutotuneModeParam(int paramIdx);
+    void HandleAutotuneToleranceParam(int paramIdx);
+    void HandleMorphModeParam(int paramIdx);
+    void HandleWindowLockParam(int paramIdx);
+    void HandleDynamicParam(int paramIdx);
 
     // === Internal Helpers ===
 
     void ApplyBindingValue(const TransformerParamBinding& binding, iplug::IParam* param,
                           IChunkBufferTransformer* transformer, IMorph* morph);
+    
+    AudioStreamChunker* GetChunker() const;
+    int ComputeLatency() const;
+    void SetLatency(int latency);
+    void SetPendingUpdate(uint32_t flag);
+    bool CheckAndClearPendingUpdate(uint32_t flag);
+
+    // === Stored Context (set once via SetContext) ===
+    iplug::Plugin* mPlugin = nullptr;
+    DSPConfig* mConfig = nullptr;
+    DSPContext* mDSPContext = nullptr;
+    Brain* mBrain = nullptr;
+    Window* mAnalysisWindow = nullptr;
+    WindowCoordinator* mWindowCoordinator = nullptr;
+    BrainManager* mBrainManager = nullptr;
+    UISyncManager* mUISyncManager = nullptr;
 
     // Bindings
     std::vector<TransformerParamBinding> mBindings;

@@ -75,7 +75,7 @@ public:
    * @param progress Progress value (0-100)
    * @param showCancelButton Whether to show cancel button
    */
-  void Show(const std::string& title, const std::string& message, 
+  void Show(const std::string& title, const std::string& message,
             float progress = 0.0f, bool showCancelButton = true);
 
   /**

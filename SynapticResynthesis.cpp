@@ -71,6 +71,18 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
   // Initialize parameters
   mParamManager.InitializeCoreParameters(this, mDSPConfig);
   mParamManager.InitializeTransformerParameters(this);
+
+  // Set ParameterManager context for parameter change handling
+  mParamManager.SetContext(
+    this,
+    &mDSPConfig,
+    &mDSPContext,
+    &mBrain,
+    &mAnalysisWindow,
+    &mWindowCoordinator,
+    &mBrainManager,
+    &mUISyncManager
+  );
 }
 
 void SynapticResynthesis::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
@@ -152,22 +164,7 @@ void SynapticResynthesis::OnRestoreState()
 
 void SynapticResynthesis::OnParamChange(int paramIdx)
 {
-  synaptic::ParameterChangeContext ctx;
-  ctx.plugin = this;
-  ctx.config = &mDSPConfig;
-  ctx.dspContext = &mDSPContext;
-  ctx.chunker = &mDSPContext.GetChunker();
-  ctx.brain = &mBrain;
-  ctx.analysisWindow = &mAnalysisWindow;
-  ctx.windowCoordinator = &mWindowCoordinator;
-  ctx.brainManager = &mBrainManager;
-
-  ctx.setPendingUpdate = [this](uint32_t flag) { mUISyncManager.SetPendingUpdate((synaptic::PendingUpdate)flag); };
-  ctx.checkAndClearPendingUpdate = [this](uint32_t flag) { return mUISyncManager.CheckAndClearPendingUpdate((synaptic::PendingUpdate)flag); };
-  ctx.computeLatency = [this]() { return mDSPContext.ComputeLatencySamples(mDSPConfig.chunkSize, mDSPConfig.bufferWindowSize); };
-  ctx.setLatency = [this](int latency) { SetLatency(latency); };
-
-  mParamManager.OnParamChange(paramIdx, ctx);
+  mParamManager.OnParamChange(paramIdx);
 }
 
 void SynapticResynthesis::ProcessMidiMsg(const IMidiMsg& msg)

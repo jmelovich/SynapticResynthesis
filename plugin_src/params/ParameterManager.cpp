@@ -59,10 +59,30 @@ namespace synaptic
   }
 
   // ============================================================================
-  // Construction and Initialization
+  // Construction and Context Setup
   // ============================================================================
 
   ParameterManager::ParameterManager() {}
+
+  void ParameterManager::SetContext(
+    iplug::Plugin* plugin,
+    DSPConfig* config,
+    DSPContext* dspContext,
+    Brain* brain,
+    Window* analysisWindow,
+    WindowCoordinator* windowCoordinator,
+    BrainManager* brainManager,
+    UISyncManager* uiSyncManager)
+  {
+    mPlugin = plugin;
+    mConfig = config;
+    mDSPContext = dspContext;
+    mBrain = brain;
+    mAnalysisWindow = analysisWindow;
+    mWindowCoordinator = windowCoordinator;
+    mBrainManager = brainManager;
+    mUISyncManager = uiSyncManager;
+  }
 
   int ParameterManager::GetTotalParams()
   {
@@ -70,6 +90,43 @@ namespace synaptic
     BuildTransformerUnion(unionDescs);
     return kNumParams + (int)unionDescs.size();
   }
+
+  // ============================================================================
+  // Context Helper Methods
+  // ============================================================================
+
+  AudioStreamChunker* ParameterManager::GetChunker() const
+  {
+    return mDSPContext ? &mDSPContext->GetChunker() : nullptr;
+  }
+
+  int ParameterManager::ComputeLatency() const
+  {
+    if (!mDSPContext || !mConfig) return 0;
+    return mDSPContext->ComputeLatencySamples(mConfig->chunkSize, mConfig->bufferWindowSize);
+  }
+
+  void ParameterManager::SetLatency(int latency)
+  {
+    if (mPlugin) mPlugin->SetLatency(latency);
+  }
+
+  void ParameterManager::SetPendingUpdate(uint32_t flag)
+  {
+    if (mUISyncManager)
+      mUISyncManager->SetPendingUpdate(static_cast<PendingUpdate>(flag));
+  }
+
+  bool ParameterManager::CheckAndClearPendingUpdate(uint32_t flag)
+  {
+    if (mUISyncManager)
+      return mUISyncManager->CheckAndClearPendingUpdate(static_cast<PendingUpdate>(flag));
+    return false;
+  }
+
+  // ============================================================================
+  // Initialization
+  // ============================================================================
 
   void ParameterManager::InitializeCoreParameters(iplug::Plugin* plugin, const DSPConfig& config)
   {
@@ -398,78 +455,77 @@ namespace synaptic
   // Main Entry Point: OnParamChange
   // ============================================================================
 
-  void ParameterManager::OnParamChange(int paramIdx, ParameterChangeContext& ctx)
+  void ParameterManager::OnParamChange(int paramIdx)
   {
-    if (!ctx.plugin || !ctx.config) return;
+    if (!mPlugin || !mConfig) return;
 
     // Route to specific handler based on parameter type
     if (paramIdx == mParamIdxChunkSize)
-      HandleChunkSizeParam(paramIdx, ctx);
+      HandleChunkSizeParam(paramIdx);
     else if (paramIdx == mParamIdxBufferWindow)
-      HandleBufferWindowParam(paramIdx, ctx);
+      HandleBufferWindowParam(paramIdx);
     else if (paramIdx == mParamIdxAlgorithm)
-      HandleAlgorithmParam(paramIdx, ctx);
+      HandleAlgorithmParam(paramIdx);
     else if (paramIdx == mParamIdxOutputWindow)
-      HandleOutputWindowParam(paramIdx, ctx);
+      HandleOutputWindowParam(paramIdx);
     else if (paramIdx == mParamIdxAnalysisWindow)
-      HandleAnalysisWindowParam(paramIdx, ctx);
+      HandleAnalysisWindowParam(paramIdx);
     else if (paramIdx == mParamIdxEnableOverlap)
-      HandleEnableOverlapParam(paramIdx, ctx);
+      HandleEnableOverlapParam(paramIdx);
     else if (paramIdx == mParamIdxAutotuneBlend)
-      HandleAutotuneBlendParam(paramIdx, ctx);
+      HandleAutotuneBlendParam(paramIdx);
     else if (paramIdx == mParamIdxAutotuneMode)
-      HandleAutotuneModeParam(paramIdx, ctx);
+      HandleAutotuneModeParam(paramIdx);
     else if (paramIdx == mParamIdxAutotuneToleranceOctaves)
-      HandleAutotuneToleranceParam(paramIdx, ctx);
+      HandleAutotuneToleranceParam(paramIdx);
     else if (paramIdx == mParamIdxMorphMode)
-      HandleMorphModeParam(paramIdx, ctx);
+      HandleMorphModeParam(paramIdx);
     else if (paramIdx == kWindowLock)
-      HandleWindowLockParam(paramIdx, ctx);
+      HandleWindowLockParam(paramIdx);
     else
-      HandleDynamicParam(paramIdx, ctx);
+      HandleDynamicParam(paramIdx);
   }
 
   // ============================================================================
   // Per-Parameter Handlers
   // ============================================================================
 
-  void ParameterManager::HandleChunkSizeParam(int paramIdx, ParameterChangeContext& ctx)
+  void ParameterManager::HandleChunkSizeParam(int paramIdx)
   {
-    const int oldChunkSize = ctx.config->chunkSize;
+    const int oldChunkSize = mConfig->chunkSize;
+    auto* chunker = GetChunker();
 
-    if (ctx.brainManager && ctx.brainManager->IsOperationInProgress())
+    if (mBrainManager && mBrainManager->IsOperationInProgress())
     {
-      HandleCoreParameterChange(paramIdx, ctx.plugin->GetParam(paramIdx), *ctx.config);
-      if (ctx.windowCoordinator && ctx.dspContext)
-        ctx.windowCoordinator->UpdateChunkerWindowing(*ctx.config, ctx.dspContext->GetTransformerRaw());
-      if (ctx.setLatency && ctx.computeLatency)
-        ctx.setLatency(ctx.computeLatency());
+      HandleCoreParameterChange(paramIdx, mPlugin->GetParam(paramIdx), *mConfig);
+      if (mWindowCoordinator && mDSPContext)
+        mWindowCoordinator->UpdateChunkerWindowing(*mConfig, mDSPContext->GetTransformerRaw());
+      SetLatency(ComputeLatency());
       return;
     }
 
-    bool chunkSizeChanged = HandleChunkSizeChange(paramIdx, ctx.plugin->GetParam(paramIdx), *ctx.config,
-                                                  ctx.plugin, *ctx.chunker, *ctx.analysisWindow);
-    if (ctx.windowCoordinator && ctx.dspContext)
-      ctx.windowCoordinator->UpdateChunkerWindowing(*ctx.config, ctx.dspContext->GetTransformerRaw());
-    if (ctx.setLatency && ctx.computeLatency)
-      ctx.setLatency(ctx.computeLatency());
+    bool chunkSizeChanged = chunker && mAnalysisWindow
+      ? HandleChunkSizeChange(paramIdx, mPlugin->GetParam(paramIdx), *mConfig, mPlugin, *chunker, *mAnalysisWindow)
+      : false;
 
-    if (chunkSizeChanged && ctx.brainManager)
+    if (mWindowCoordinator && mDSPContext)
+      mWindowCoordinator->UpdateChunkerWindowing(*mConfig, mDSPContext->GetTransformerRaw());
+    SetLatency(ComputeLatency());
+
+    if (chunkSizeChanged && mBrainManager)
     {
       if (auto* overlayMgr = ui::ProgressOverlayManager::Get())
         overlayMgr->Show("Rechunking", "Starting...", 0.0f, true);
 
-      auto* plugin = ctx.plugin;
-      auto* config = ctx.config;
-      auto* chunker = ctx.chunker;
-      auto* windowCoordinator = ctx.windowCoordinator;
-      auto* dspContext = ctx.dspContext;
-      auto setPendingUpdate = ctx.setPendingUpdate;
-      auto computeLatency = ctx.computeLatency;
-      auto setLatency = ctx.setLatency;
+      // Capture what we need for the async callback
+      auto* plugin = mPlugin;
+      auto* config = mConfig;
+      auto* windowCoordinator = mWindowCoordinator;
+      auto* dspContext = mDSPContext;
+      ParameterManager* self = this;
 
-      ctx.brainManager->RechunkAllFilesAsync(
-        ctx.config->chunkSize, (int)ctx.plugin->GetSampleRate(),
+      mBrainManager->RechunkAllFilesAsync(
+        mConfig->chunkSize, (int)mPlugin->GetSampleRate(),
         [](const std::string& fileName, int current, int total) {
           if (auto* mgr = ui::ProgressOverlayManager::Get())
           {
@@ -479,30 +535,26 @@ namespace synaptic
             mgr->Update(buf, p);
           }
         },
-        [plugin, config, chunker, windowCoordinator, dspContext,
-         setPendingUpdate, computeLatency, setLatency, oldChunkSize, paramIdx](bool wasCancelled) {
+        [self, plugin, config, chunker, windowCoordinator, dspContext,
+         oldChunkSize, paramIdx](bool wasCancelled) {
           if (auto* mgr = ui::ProgressOverlayManager::Get())
             mgr->Hide();
           if (!wasCancelled)
           {
-            if (setPendingUpdate)
-            {
-              setPendingUpdate((uint32_t)PendingUpdate::BrainSummary);
-              setPendingUpdate((uint32_t)PendingUpdate::MarkDirty);
-            }
+            self->SetPendingUpdate((uint32_t)PendingUpdate::BrainSummary);
+            self->SetPendingUpdate((uint32_t)PendingUpdate::MarkDirty);
           }
           else
           {
             config->chunkSize = oldChunkSize;
-            chunker->SetChunkSize(oldChunkSize);
+            if (chunker) chunker->SetChunkSize(oldChunkSize);
             if (windowCoordinator)
             {
               windowCoordinator->UpdateBrainAnalysisWindow(*config);
-              windowCoordinator->UpdateChunkerWindowing(*config, dspContext->GetTransformerRaw());
+              if (dspContext)
+                windowCoordinator->UpdateChunkerWindowing(*config, dspContext->GetTransformerRaw());
             }
-            if (setLatency && computeLatency)
-              setLatency(computeLatency());
-
+            self->SetLatency(self->ComputeLatency());
             RollbackParameter(plugin, paramIdx, (double)oldChunkSize, "Rechunking");
           }
         }
@@ -510,67 +562,63 @@ namespace synaptic
     }
   }
 
-  void ParameterManager::HandleBufferWindowParam(int paramIdx, ParameterChangeContext& ctx)
+  void ParameterManager::HandleBufferWindowParam(int paramIdx)
   {
-    HandleCoreParameterChange(paramIdx, ctx.plugin->GetParam(paramIdx), *ctx.config);
-    if (ctx.chunker)
-      ctx.chunker->SetBufferWindowSize(ctx.config->bufferWindowSize);
+    HandleCoreParameterChange(paramIdx, mPlugin->GetParam(paramIdx), *mConfig);
+    if (auto* chunker = GetChunker())
+      chunker->SetBufferWindowSize(mConfig->bufferWindowSize);
   }
 
-  void ParameterManager::HandleAlgorithmParam(int paramIdx, ParameterChangeContext& ctx)
+  void ParameterManager::HandleAlgorithmParam(int paramIdx)
   {
-    if (ctx.dspContext && ctx.brain)
+    if (mDSPContext && mBrain)
     {
-      auto newTransformer = HandleAlgorithmChange(paramIdx, ctx.plugin->GetParam(paramIdx), *ctx.config,
-                                                   ctx.plugin, *ctx.brain, ctx.plugin->GetSampleRate(),
-                                                   ctx.plugin->NInChansConnected());
-      ctx.dspContext->SetPendingTransformer(newTransformer);
+      auto newTransformer = HandleAlgorithmChange(paramIdx, mPlugin->GetParam(paramIdx), *mConfig,
+                                                   mPlugin, *mBrain, mPlugin->GetSampleRate(),
+                                                   mPlugin->NInChansConnected());
+      mDSPContext->SetPendingTransformer(newTransformer);
 
-      if (ctx.windowCoordinator)
-        ctx.windowCoordinator->UpdateChunkerWindowing(*ctx.config, newTransformer.get());
+      if (mWindowCoordinator)
+        mWindowCoordinator->UpdateChunkerWindowing(*mConfig, newTransformer.get());
     }
 
 #if IPLUG_EDITOR
-    if (ctx.setPendingUpdate)
-      ctx.setPendingUpdate((uint32_t)PendingUpdate::RebuildTransformer);
+    SetPendingUpdate((uint32_t)PendingUpdate::RebuildTransformer);
 #endif
   }
 
-  void ParameterManager::HandleOutputWindowParam(int paramIdx, ParameterChangeContext& ctx)
+  void ParameterManager::HandleOutputWindowParam(int paramIdx)
   {
-    const int oldWindowMode = ctx.config->outputWindowMode;
+    const int oldWindowMode = mConfig->outputWindowMode;
 
-    HandleCoreParameterChange(paramIdx, ctx.plugin->GetParam(paramIdx), *ctx.config);
-    if (ctx.windowCoordinator && ctx.dspContext)
-      ctx.windowCoordinator->UpdateChunkerWindowing(*ctx.config, ctx.dspContext->GetTransformerRaw());
+    HandleCoreParameterChange(paramIdx, mPlugin->GetParam(paramIdx), *mConfig);
+    if (mWindowCoordinator && mDSPContext)
+      mWindowCoordinator->UpdateChunkerWindowing(*mConfig, mDSPContext->GetTransformerRaw());
 
-    const bool windowsAreLocked = ctx.plugin->GetParam(kWindowLock)->Bool();
+    const bool windowsAreLocked = mPlugin->GetParam(kWindowLock)->Bool();
     if (windowsAreLocked)
     {
-      const int outputWindowIdx = ctx.plugin->GetParam(kOutputWindow)->Int();
-      const int analysisWindowIdx = ctx.plugin->GetParam(kAnalysisWindow)->Int();
+      const int outputWindowIdx = mPlugin->GetParam(kOutputWindow)->Int();
+      const int analysisWindowIdx = mPlugin->GetParam(kAnalysisWindow)->Int();
 
-      if (outputWindowIdx != analysisWindowIdx && ctx.windowCoordinator)
+      if (outputWindowIdx != analysisWindowIdx && mWindowCoordinator)
       {
-        ctx.windowCoordinator->SyncAnalysisToOutputWindow(ctx.plugin, *ctx.config, false);
+        mWindowCoordinator->SyncAnalysisToOutputWindow(mPlugin, *mConfig, false);
 
-        auto* plugin = ctx.plugin;
-        auto* config = ctx.config;
-        auto* windowCoordinator = ctx.windowCoordinator;
-        auto* dspContext = ctx.dspContext;
-        auto setPendingUpdate = ctx.setPendingUpdate;
+        auto* config = mConfig;
+        auto* windowCoordinator = mWindowCoordinator;
+        auto* dspContext = mDSPContext;
+        auto* plugin = mPlugin;
+        ParameterManager* self = this;
 
-        ctx.windowCoordinator->TriggerBrainReanalysisAsync(
-          (int)ctx.plugin->GetSampleRate(),
-          [this, plugin, config, windowCoordinator, dspContext, setPendingUpdate,
+        mWindowCoordinator->TriggerBrainReanalysisAsync(
+          (int)mPlugin->GetSampleRate(),
+          [self, plugin, config, windowCoordinator, dspContext,
            oldWindowMode, paramIdx](bool wasCancelled) {
             if (!wasCancelled)
             {
-              if (setPendingUpdate)
-              {
-                setPendingUpdate((uint32_t)PendingUpdate::BrainSummary);
-                setPendingUpdate((uint32_t)PendingUpdate::MarkDirty);
-              }
+              self->SetPendingUpdate((uint32_t)PendingUpdate::BrainSummary);
+              self->SetPendingUpdate((uint32_t)PendingUpdate::MarkDirty);
             }
             else
             {
@@ -584,7 +632,7 @@ namespace synaptic
                   windowCoordinator->UpdateChunkerWindowing(*config, dspContext->GetTransformerRaw());
               }
 
-              setPendingUpdate((uint32_t)PendingUpdate::SuppressAnalysisReanalyze);
+              self->SetPendingUpdate((uint32_t)PendingUpdate::SuppressAnalysisReanalyze);
 
               const int oldIdx = WindowMode::ConfigToParam(oldWindowMode);
               RollbackParameter(plugin, kAnalysisWindow, (double)oldIdx, nullptr);
@@ -594,66 +642,60 @@ namespace synaptic
             }
           });
 
-        if (ctx.setPendingUpdate)
-          ctx.setPendingUpdate((uint32_t)PendingUpdate::DSPConfig);
+        SetPendingUpdate((uint32_t)PendingUpdate::DSPConfig);
       }
     }
   }
 
-  void ParameterManager::HandleAnalysisWindowParam(int paramIdx, ParameterChangeContext& ctx)
+  void ParameterManager::HandleAnalysisWindowParam(int paramIdx)
   {
-    const int oldWindowMode = ctx.config->analysisWindowMode;
+    const int oldWindowMode = mConfig->analysisWindowMode;
 
-    if (ctx.brainManager && ctx.brainManager->IsOperationInProgress())
+    if (mBrainManager && mBrainManager->IsOperationInProgress())
     {
-      if (ctx.checkAndClearPendingUpdate)
-        ctx.checkAndClearPendingUpdate((uint32_t)PendingUpdate::SuppressAnalysisReanalyze);
-
-      HandleCoreParameterChange(paramIdx, ctx.plugin->GetParam(paramIdx), *ctx.config);
-      if (ctx.windowCoordinator)
-        ctx.windowCoordinator->UpdateBrainAnalysisWindow(*ctx.config);
+      CheckAndClearPendingUpdate((uint32_t)PendingUpdate::SuppressAnalysisReanalyze);
+      HandleCoreParameterChange(paramIdx, mPlugin->GetParam(paramIdx), *mConfig);
+      if (mWindowCoordinator)
+        mWindowCoordinator->UpdateBrainAnalysisWindow(*mConfig);
       return;
     }
 
-    bool analysisWindowChanged = HandleAnalysisWindowChange(paramIdx, ctx.plugin->GetParam(paramIdx),
-                                                             *ctx.config, *ctx.analysisWindow, *ctx.brain);
+    bool analysisWindowChanged = (mAnalysisWindow && mBrain)
+      ? HandleAnalysisWindowChange(paramIdx, mPlugin->GetParam(paramIdx), *mConfig, *mAnalysisWindow, *mBrain)
+      : false;
 
-    const bool windowsAreLocked = ctx.plugin->GetParam(kWindowLock)->Bool();
+    const bool windowsAreLocked = mPlugin->GetParam(kWindowLock)->Bool();
     if (windowsAreLocked)
     {
-      const int analysisWindowIdx = ctx.plugin->GetParam(kAnalysisWindow)->Int();
-      const int outputWindowIdx = ctx.plugin->GetParam(kOutputWindow)->Int();
+      const int analysisWindowIdx = mPlugin->GetParam(kAnalysisWindow)->Int();
+      const int outputWindowIdx = mPlugin->GetParam(kOutputWindow)->Int();
 
-      if (analysisWindowIdx != outputWindowIdx && ctx.windowCoordinator)
+      if (analysisWindowIdx != outputWindowIdx && mWindowCoordinator)
       {
-        ctx.windowCoordinator->SyncOutputToAnalysisWindow(ctx.plugin, *ctx.config);
-        if (ctx.dspContext)
-          ctx.windowCoordinator->UpdateChunkerWindowing(*ctx.config, ctx.dspContext->GetTransformerRaw());
+        mWindowCoordinator->SyncOutputToAnalysisWindow(mPlugin, *mConfig);
+        if (mDSPContext)
+          mWindowCoordinator->UpdateChunkerWindowing(*mConfig, mDSPContext->GetTransformerRaw());
       }
     }
 
-    if (analysisWindowChanged && ctx.checkAndClearPendingUpdate &&
-        !ctx.checkAndClearPendingUpdate((uint32_t)PendingUpdate::SuppressAnalysisReanalyze))
+    if (analysisWindowChanged && !CheckAndClearPendingUpdate((uint32_t)PendingUpdate::SuppressAnalysisReanalyze))
     {
-      if (ctx.windowCoordinator)
+      if (mWindowCoordinator)
       {
-        auto* plugin = ctx.plugin;
-        auto* config = ctx.config;
-        auto* windowCoordinator = ctx.windowCoordinator;
-        auto* dspContext = ctx.dspContext;
-        auto setPendingUpdate = ctx.setPendingUpdate;
+        auto* config = mConfig;
+        auto* windowCoordinator = mWindowCoordinator;
+        auto* dspContext = mDSPContext;
+        auto* plugin = mPlugin;
+        ParameterManager* self = this;
 
-        ctx.windowCoordinator->TriggerBrainReanalysisAsync(
-          (int)ctx.plugin->GetSampleRate(),
-          [this, plugin, config, windowCoordinator, dspContext, setPendingUpdate,
+        mWindowCoordinator->TriggerBrainReanalysisAsync(
+          (int)mPlugin->GetSampleRate(),
+          [self, plugin, config, windowCoordinator, dspContext,
            oldWindowMode, windowsAreLocked, paramIdx](bool wasCancelled) {
             if (!wasCancelled)
             {
-              if (setPendingUpdate)
-              {
-                setPendingUpdate((uint32_t)PendingUpdate::BrainSummary);
-                setPendingUpdate((uint32_t)PendingUpdate::MarkDirty);
-              }
+              self->SetPendingUpdate((uint32_t)PendingUpdate::BrainSummary);
+              self->SetPendingUpdate((uint32_t)PendingUpdate::MarkDirty);
             }
             else
             {
@@ -668,7 +710,7 @@ namespace synaptic
                   windowCoordinator->UpdateChunkerWindowing(*config, dspContext->GetTransformerRaw());
               }
 
-              setPendingUpdate((uint32_t)PendingUpdate::SuppressAnalysisReanalyze);
+              self->SetPendingUpdate((uint32_t)PendingUpdate::SuppressAnalysisReanalyze);
 
               const int oldIdx = WindowMode::ConfigToParam(oldWindowMode);
               RollbackParameter(plugin, paramIdx, (double)oldIdx, "Reanalysis (Analysis Window)");
@@ -683,57 +725,55 @@ namespace synaptic
       }
     }
 
-    if (ctx.setPendingUpdate)
-      ctx.setPendingUpdate((uint32_t)PendingUpdate::DSPConfig);
+    SetPendingUpdate((uint32_t)PendingUpdate::DSPConfig);
   }
 
-  void ParameterManager::HandleEnableOverlapParam(int paramIdx, ParameterChangeContext& ctx)
+  void ParameterManager::HandleEnableOverlapParam(int paramIdx)
   {
-    HandleCoreParameterChange(paramIdx, ctx.plugin->GetParam(paramIdx), *ctx.config);
-    if (ctx.windowCoordinator && ctx.dspContext)
-      ctx.windowCoordinator->UpdateChunkerWindowing(*ctx.config, ctx.dspContext->GetTransformerRaw());
+    HandleCoreParameterChange(paramIdx, mPlugin->GetParam(paramIdx), *mConfig);
+    if (mWindowCoordinator && mDSPContext)
+      mWindowCoordinator->UpdateChunkerWindowing(*mConfig, mDSPContext->GetTransformerRaw());
   }
 
-  void ParameterManager::HandleAutotuneBlendParam(int paramIdx, ParameterChangeContext& ctx)
+  void ParameterManager::HandleAutotuneBlendParam(int paramIdx)
   {
-    const double blendPercent = ctx.plugin->GetParam(paramIdx)->Value();
-    if (ctx.chunker)
-      ctx.chunker->GetAutotuneProcessor().SetBlend((float)(blendPercent / 100.0));
+    const double blendPercent = mPlugin->GetParam(paramIdx)->Value();
+    if (auto* chunker = GetChunker())
+      chunker->GetAutotuneProcessor().SetBlend((float)(blendPercent / 100.0));
   }
 
-  void ParameterManager::HandleAutotuneModeParam(int paramIdx, ParameterChangeContext& ctx)
+  void ParameterManager::HandleAutotuneModeParam(int paramIdx)
   {
-    const int mode = ctx.plugin->GetParam(paramIdx)->Int();
-    if (ctx.chunker)
-      ctx.chunker->GetAutotuneProcessor().SetMode(mode == 1);
+    const int mode = mPlugin->GetParam(paramIdx)->Int();
+    if (auto* chunker = GetChunker())
+      chunker->GetAutotuneProcessor().SetMode(mode == 1);
   }
 
-  void ParameterManager::HandleAutotuneToleranceParam(int paramIdx, ParameterChangeContext& ctx)
+  void ParameterManager::HandleAutotuneToleranceParam(int paramIdx)
   {
-    const int enumIdx = std::clamp(ctx.plugin->GetParam(paramIdx)->Int(), 0, 4);
-    if (ctx.chunker)
-      ctx.chunker->GetAutotuneProcessor().SetToleranceOctaves(enumIdx + 1);
+    const int enumIdx = std::clamp(mPlugin->GetParam(paramIdx)->Int(), 0, 4);
+    if (auto* chunker = GetChunker())
+      chunker->GetAutotuneProcessor().SetToleranceOctaves(enumIdx + 1);
   }
 
-  void ParameterManager::HandleMorphModeParam(int paramIdx, ParameterChangeContext& ctx)
+  void ParameterManager::HandleMorphModeParam(int paramIdx)
   {
-    if (ctx.dspContext)
+    if (mDSPContext)
     {
-      auto newMorph = HandleMorphModeChange(paramIdx, ctx.plugin->GetParam(paramIdx), ctx.plugin,
-                                             ctx.plugin->GetSampleRate(), ctx.config->chunkSize,
-                                             ctx.plugin->NInChansConnected());
-      ctx.dspContext->SetPendingMorph(newMorph);
+      auto newMorph = HandleMorphModeChange(paramIdx, mPlugin->GetParam(paramIdx), mPlugin,
+                                             mPlugin->GetSampleRate(), mConfig->chunkSize,
+                                             mPlugin->NInChansConnected());
+      mDSPContext->SetPendingMorph(newMorph);
     }
 
 #if IPLUG_EDITOR
-    if (ctx.setPendingUpdate)
-      ctx.setPendingUpdate((uint32_t)PendingUpdate::RebuildMorph);
+    SetPendingUpdate((uint32_t)PendingUpdate::RebuildMorph);
 #endif
   }
 
-  void ParameterManager::HandleWindowLockParam(int paramIdx, ParameterChangeContext& ctx)
+  void ParameterManager::HandleWindowLockParam(int paramIdx)
   {
-    if (ctx.plugin->GetParam(kWindowLock)->Bool())
+    if (mPlugin->GetParam(kWindowLock)->Bool())
     {
 #if IPLUG_EDITOR
       int clickedWindowParam = synaptic::ui::LockButtonControl::GetLastClickedWindowParam();
@@ -741,36 +781,32 @@ namespace synaptic
       int clickedWindowParam = kOutputWindow;
 #endif
 
-      if (ctx.windowCoordinator)
+      if (mWindowCoordinator)
       {
-        ctx.windowCoordinator->HandleWindowLockToggle(true, clickedWindowParam, ctx.plugin, *ctx.config);
-        if (ctx.dspContext)
-          ctx.windowCoordinator->UpdateChunkerWindowing(*ctx.config, ctx.dspContext->GetTransformerRaw());
+        mWindowCoordinator->HandleWindowLockToggle(true, clickedWindowParam, mPlugin, *mConfig);
+        if (mDSPContext)
+          mWindowCoordinator->UpdateChunkerWindowing(*mConfig, mDSPContext->GetTransformerRaw());
       }
-      if (ctx.setPendingUpdate)
-        ctx.setPendingUpdate((uint32_t)PendingUpdate::DSPConfig);
+      SetPendingUpdate((uint32_t)PendingUpdate::DSPConfig);
     }
   }
 
-  void ParameterManager::HandleDynamicParam(int paramIdx, ParameterChangeContext& ctx)
+  void ParameterManager::HandleDynamicParam(int paramIdx)
   {
     bool needsTransformerRebuild = false;
     bool needsMorphRebuild = false;
 
-    IChunkBufferTransformer* transformer = ctx.dspContext ? ctx.dspContext->GetTransformerRaw() : nullptr;
-    IMorph* morph = ctx.dspContext ? ctx.dspContext->GetMorphRaw() : nullptr;
+    IChunkBufferTransformer* transformer = mDSPContext ? mDSPContext->GetTransformerRaw() : nullptr;
+    IMorph* morph = mDSPContext ? mDSPContext->GetMorphRaw() : nullptr;
 
-    if (HandleDynamicParameterChange(paramIdx, ctx.plugin->GetParam(paramIdx), transformer, morph,
+    if (HandleDynamicParameterChange(paramIdx, mPlugin->GetParam(paramIdx), transformer, morph,
                                       &needsTransformerRebuild, &needsMorphRebuild))
     {
 #if IPLUG_EDITOR
-      if (ctx.setPendingUpdate)
-      {
-        if (needsTransformerRebuild)
-          ctx.setPendingUpdate((uint32_t)PendingUpdate::RebuildTransformer);
-        if (needsMorphRebuild)
-          ctx.setPendingUpdate((uint32_t)PendingUpdate::RebuildMorph);
-      }
+      if (needsTransformerRebuild)
+        SetPendingUpdate((uint32_t)PendingUpdate::RebuildTransformer);
+      if (needsMorphRebuild)
+        SetPendingUpdate((uint32_t)PendingUpdate::RebuildMorph);
 #endif
     }
   }
