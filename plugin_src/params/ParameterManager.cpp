@@ -454,31 +454,35 @@ namespace synaptic
     if (ctx.setLatency && ctx.computeLatency)
       ctx.setLatency(ctx.computeLatency());
 
-    if (chunkSizeChanged && ctx.brainManager && ctx.progressOverlayMgr)
+    if (chunkSizeChanged && ctx.brainManager)
     {
-      ctx.progressOverlayMgr->Show("Rechunking", "Starting...", 0.0f, true);
+      if (auto* overlayMgr = ui::ProgressOverlayManager::Get())
+        overlayMgr->Show("Rechunking", "Starting...", 0.0f, true);
 
       auto* plugin = ctx.plugin;
       auto* config = ctx.config;
       auto* chunker = ctx.chunker;
       auto* windowCoordinator = ctx.windowCoordinator;
       auto* dspContext = ctx.dspContext;
-      auto* progressOverlayMgr = ctx.progressOverlayMgr;
       auto setPendingUpdate = ctx.setPendingUpdate;
       auto computeLatency = ctx.computeLatency;
       auto setLatency = ctx.setLatency;
 
       ctx.brainManager->RechunkAllFilesAsync(
         ctx.config->chunkSize, (int)ctx.plugin->GetSampleRate(),
-        [progressOverlayMgr](const std::string& fileName, int current, int total) {
-          const float p = (total > 0) ? ((float)current / (float)total * 100.0f) : 50.0f;
-          char buf[256];
-          snprintf(buf, sizeof(buf), "%s (chunk %d/%d)", fileName.c_str(), current, total);
-          progressOverlayMgr->Update(buf, p);
+        [](const std::string& fileName, int current, int total) {
+          if (auto* mgr = ui::ProgressOverlayManager::Get())
+          {
+            const float p = (total > 0) ? ((float)current / (float)total * 100.0f) : 50.0f;
+            char buf[256];
+            snprintf(buf, sizeof(buf), "%s (chunk %d/%d)", fileName.c_str(), current, total);
+            mgr->Update(buf, p);
+          }
         },
-        [plugin, config, chunker, windowCoordinator, dspContext, progressOverlayMgr,
+        [plugin, config, chunker, windowCoordinator, dspContext,
          setPendingUpdate, computeLatency, setLatency, oldChunkSize, paramIdx](bool wasCancelled) {
-          progressOverlayMgr->Hide();
+          if (auto* mgr = ui::ProgressOverlayManager::Get())
+            mgr->Hide();
           if (!wasCancelled)
           {
             if (setPendingUpdate)

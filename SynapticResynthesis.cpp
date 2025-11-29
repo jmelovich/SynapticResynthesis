@@ -28,9 +28,11 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
 : Plugin(info, MakeConfig(synaptic::ParameterManager::GetTotalParams(), kNumPresets))
 , mBrainManager(&mBrain, &mAnalysisWindow)
 , mDSPContext(2)
-, mWindowCoordinator(&mAnalysisWindow, &mDSPContext.GetOutputWindow(), &mBrain, &mDSPContext.GetChunker(), &mParamManager, &mBrainManager, &mProgressOverlayMgr)
-, mUISyncManager(this, &mBrain, &mBrainManager, &mParamManager, &mWindowCoordinator, &mDSPConfig, &mProgressOverlayMgr)
+, mWindowCoordinator(&mAnalysisWindow, &mDSPContext.GetOutputWindow(), &mBrain, &mDSPContext.GetChunker(), &mParamManager, &mBrainManager)
+, mUISyncManager(this, &mBrain, &mBrainManager, &mParamManager, &mWindowCoordinator, &mDSPConfig)
 {
+  // Register progress overlay manager
+  synaptic::ui::ProgressOverlayManager::SetCurrent(&mProgressOverlayMgr);
   GetParam(kInGain)->InitGain("Input Gain", 0.0, -70, 12.);
   GetParam(kOutGain)->InitGain("Output Gain", 0.0, -70, 12.);
   GetParam(kAGC)->InitBool("AGC", false);
@@ -159,7 +161,6 @@ void SynapticResynthesis::OnParamChange(int paramIdx)
   ctx.analysisWindow = &mAnalysisWindow;
   ctx.windowCoordinator = &mWindowCoordinator;
   ctx.brainManager = &mBrainManager;
-  ctx.progressOverlayMgr = &mProgressOverlayMgr;
 
   ctx.setPendingUpdate = [this](uint32_t flag) { mUISyncManager.SetPendingUpdate((synaptic::PendingUpdate)flag); };
   ctx.checkAndClearPendingUpdate = [this](uint32_t flag) { return mUISyncManager.CheckAndClearPendingUpdate((synaptic::PendingUpdate)flag); };
@@ -179,14 +180,7 @@ void SynapticResynthesis::ProcessMidiMsg(const IMidiMsg& msg)
 bool SynapticResynthesis::SerializeState(IByteChunk& chunk) const
 {
   if (!Plugin::SerializeState(chunk)) return false;
-
-#if IPLUG_EDITOR
-  // Progress overlay is only used for UI feedback, optional for serialization
-  synaptic::ui::ProgressOverlayManager* overlayMgr = mUI ? &mProgressOverlayMgr : nullptr;
-  return mStateSerializer.SerializeBrainState(chunk, mBrain, mBrainManager, overlayMgr);
-#else
-  return mStateSerializer.SerializeBrainState(chunk, mBrain, mBrainManager, nullptr);
-#endif
+  return mStateSerializer.SerializeBrainState(chunk, mBrain, mBrainManager);
 }
 
 int SynapticResynthesis::UnserializeState(const IByteChunk& chunk, int startPos)

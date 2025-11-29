@@ -26,7 +26,7 @@ class AudioStreamChunker;
 class DSPContext;
 struct DSPConfig;
 
-namespace ui { class SynapticUI; class ProgressOverlayManager; }
+namespace ui { class SynapticUI; }
 
 /**
  * @brief Bitflags for pending deferred updates
@@ -67,8 +67,7 @@ public:
                 BrainManager* brainManager,
                 ParameterManager* paramManager,
                 WindowCoordinator* windowCoordinator,
-                DSPConfig* dspConfig,
-                ui::ProgressOverlayManager* overlayMgr);
+                DSPConfig* dspConfig);
 
   // === Configuration ===
 
@@ -125,7 +124,6 @@ private:
   ParameterManager* mParamManager;
   WindowCoordinator* mWindowCoordinator;
   DSPConfig* mDSPConfig;
-  ui::ProgressOverlayManager* mOverlayMgr;
   ui::SynapticUI* mUI = nullptr;
 
   // DSP Context reference

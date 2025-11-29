@@ -2,8 +2,9 @@
  * @file ProgressOverlayManager.h
  * @brief Thread-safe manager for progress overlay operations
  *
- * Handles showing/updating/hiding progress overlays from background threads,
- * queuing updates to be applied on the main UI thread.
+ * Provides centralized access to progress overlay functionality.
+ * Components can access the manager via Get() without needing
+ * direct pointer passing through constructors.
  */
 
 #pragma once
@@ -24,6 +25,8 @@ class SynapticUI;
  * This class provides a simple interface for showing progress overlays
  * from any thread (including background threads), while ensuring all
  * actual UI updates happen on the main thread.
+ *
+ * Access via the static Get() method after SetCurrent() has been called.
  */
 class ProgressOverlayManager
 {
@@ -32,6 +35,27 @@ public:
    * @brief Construct manager
    */
   explicit ProgressOverlayManager() = default;
+
+  // === Centralized Access ===
+
+  /**
+   * @brief Get the current progress overlay manager instance
+   * @return Pointer to current manager, or nullptr if none set
+   *
+   * Use this to access the progress overlay from any component without
+   * needing to pass pointers through constructors.
+   */
+  static ProgressOverlayManager* Get() { return sCurrent; }
+
+  /**
+   * @brief Set the current progress overlay manager instance
+   * @param manager Pointer to manager (owned by caller, typically the plugin)
+   *
+   * Call this once during plugin initialization.
+   */
+  static void SetCurrent(ProgressOverlayManager* manager) { sCurrent = manager; }
+
+  // === UI Binding ===
 
   /**
    * @brief Set the SynapticUI pointer for immediate updates
@@ -42,6 +66,8 @@ public:
    */
   void SetSynapticUI(SynapticUI* ui) { mSynapticUI = ui; }
 
+  // === Thread-Safe Operations ===
+
   /**
    * @brief Show progress overlay (thread-safe)
    * @param title Operation title
@@ -49,7 +75,8 @@ public:
    * @param progress Progress value (0-100)
    * @param showCancelButton Whether to show cancel button
    */
-  void Show(const std::string& title, const std::string& message, float progress, bool showCancelButton = true);
+  void Show(const std::string& title, const std::string& message, 
+            float progress = 0.0f, bool showCancelButton = true);
 
   /**
    * @brief Update progress overlay (thread-safe)
@@ -71,6 +98,8 @@ public:
    */
   void ProcessPendingUpdates(SynapticUI* ui);
 
+  // === Synchronous Operations ===
+
   /**
    * @brief Force immediate display of overlay (for synchronous operations)
    * @param title Operation title
@@ -79,9 +108,6 @@ public:
    * Use this for synchronous blocking operations where the normal queued
    * updates won't be processed until after the operation completes.
    * Requires SetSynapticUI() to have been called.
-   *
-   * This function marks the UI dirty and yields briefly to allow the overlay
-   * to actually render before returning.
    */
   void ShowImmediate(const std::string& title, const std::string& message);
 
@@ -93,7 +119,9 @@ public:
   void HideImmediate();
 
 private:
-  SynapticUI* mSynapticUI = nullptr;  // For immediate updates
+  static inline ProgressOverlayManager* sCurrent = nullptr;
+
+  SynapticUI* mSynapticUI = nullptr;
 
   enum class UpdateType { None, Show, Update, Hide };
 
@@ -112,4 +140,3 @@ private:
 
 } // namespace ui
 } // namespace synaptic
-

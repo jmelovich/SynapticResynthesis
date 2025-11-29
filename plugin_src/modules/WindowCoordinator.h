@@ -17,9 +17,6 @@ class ParameterManager;
 class BrainManager;
 struct DSPConfig;
 
-namespace ui {
-  class ProgressOverlayManager;
-}
 
 /**
  * @brief Coordinates window operations across the plugin
@@ -42,7 +39,6 @@ public:
    * @param chunker Reference to audio stream chunker
    * @param paramManager Reference to parameter manager
    * @param brainManager Reference to brain manager
-   * @param progressOverlayMgr Reference to progress overlay manager (can be nullptr)
    */
   WindowCoordinator(
     Window* analysisWindow,
@@ -50,8 +46,7 @@ public:
     Brain* brain,
     AudioStreamChunker* chunker,
     ParameterManager* paramManager,
-    BrainManager* brainManager,
-    ui::ProgressOverlayManager* progressOverlayMgr
+    BrainManager* brainManager
   );
 
   /**
@@ -161,7 +156,6 @@ private:
   AudioStreamChunker* mChunker;
   ParameterManager* mParamManager;
   BrainManager* mBrainManager;
-  ui::ProgressOverlayManager* mProgressOverlayMgr;
 };
 
 } // namespace synaptic

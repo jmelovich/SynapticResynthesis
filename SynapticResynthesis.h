@@ -68,6 +68,6 @@ private:
   std::unique_ptr<synaptic::ui::SynapticUI> mUI;
 #endif
 
-  // === Progress overlay management ===
-  mutable synaptic::ui::ProgressOverlayManager mProgressOverlayMgr;
+  // === Progress overlay (centralized access via ProgressOverlayManager::Get()) ===
+  synaptic::ui::ProgressOverlayManager mProgressOverlayMgr;
 };

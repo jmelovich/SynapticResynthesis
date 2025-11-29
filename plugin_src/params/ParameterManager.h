@@ -35,9 +35,6 @@ namespace synaptic
   class BrainManager;
   class WindowCoordinator;
   class DSPContext;
-  namespace ui {
-    class ProgressOverlayManager;
-  }
 
   /**
    * @brief Binding between IParam and transformer/morph parameter
@@ -75,7 +72,6 @@ namespace synaptic
     // Coordinators/Managers
     WindowCoordinator* windowCoordinator = nullptr;
     BrainManager* brainManager = nullptr;
-    ui::ProgressOverlayManager* progressOverlayMgr = nullptr;
 
     // Callbacks for plugin state management
     std::function<void(uint32_t)> setPendingUpdate;

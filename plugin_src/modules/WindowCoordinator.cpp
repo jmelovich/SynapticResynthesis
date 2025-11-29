@@ -29,8 +29,7 @@ WindowCoordinator::WindowCoordinator(
   Brain* brain,
   AudioStreamChunker* chunker,
   ParameterManager* paramManager,
-  BrainManager* brainManager,
-  ui::ProgressOverlayManager* progressOverlayMgr
+  BrainManager* brainManager
 )
   : mAnalysisWindow(analysisWindow)
   , mOutputWindow(outputWindow)
@@ -38,7 +37,6 @@ WindowCoordinator::WindowCoordinator(
   , mChunker(chunker)
   , mParamManager(paramManager)
   , mBrainManager(brainManager)
-  , mProgressOverlayMgr(progressOverlayMgr)
 {
 }
 
@@ -139,19 +137,20 @@ void WindowCoordinator::TriggerBrainReanalysisAsync(
   int sampleRate,
   std::function<void(bool wasCancelled)> completion)
 {
-  if (mProgressOverlayMgr)
+  auto* overlayMgr = ui::ProgressOverlayManager::Get();
+  if (overlayMgr)
   {
-    mProgressOverlayMgr->Show("Reanalyzing", "Starting...", 0.0f, true);
+    overlayMgr->Show("Reanalyzing", "Starting...", 0.0f, true);
   }
 
   mBrainManager->ReanalyzeAllChunksAsync(
     sampleRate,
     MakeProgressCallback(),
-    [this, completion](bool wasCancelled)
+    [completion](bool wasCancelled)
     {
-      if (mProgressOverlayMgr)
+      if (auto* mgr = ui::ProgressOverlayManager::Get())
       {
-        mProgressOverlayMgr->Hide();
+        mgr->Hide();
       }
       if (completion)
       {
@@ -195,9 +194,10 @@ void WindowCoordinator::HandleWindowLockToggle(
 
 std::function<void(const std::string&, int, int)> WindowCoordinator::MakeProgressCallback()
 {
-  return [this](const std::string& fileName, int current, int total)
+  return [](const std::string& fileName, int current, int total)
   {
-    if (!mProgressOverlayMgr)
+    auto* overlayMgr = ui::ProgressOverlayManager::Get();
+    if (!overlayMgr)
       return;
 
     const float p = (total > 0)
@@ -205,7 +205,7 @@ std::function<void(const std::string&, int, int)> WindowCoordinator::MakeProgres
       : ui::Progress::kDefaultProgress;
     char buf[256];
     snprintf(buf, sizeof(buf), "%s (chunk %d/%d)", fileName.c_str(), current, total);
-    mProgressOverlayMgr->Update(buf, p);
+    overlayMgr->Update(buf, p);
   };
 }
 

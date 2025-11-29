@@ -11,10 +11,10 @@ namespace synaptic
 {
   // Initialize inline brain feature flag (disabled by default to prevent freezes)
   bool StateSerializer::sEnableInlineBrains = false;
+
   bool StateSerializer::SerializeBrainState(iplug::IByteChunk& chunk,
                                            const Brain& brain,
-                                           BrainManager& brainMgr,
-                                           ui::ProgressOverlayManager* progressMgr) const
+                                           BrainManager& brainMgr) const
   {
     // Append brain section with tag
     chunk.Put(&kBrainSectionTag);
@@ -40,11 +40,9 @@ namespace synaptic
       if (brainMgr.IsDirty() && !brainMgr.IsOperationInProgress())
       {
         // Show progress overlay immediately before the blocking save operation
-        // This ensures the overlay is visible during the file write
-        if (progressMgr)
-        {
-          progressMgr->ShowImmediate("Saving Brain", "Writing brain to external file...");
-        }
+        auto* overlayMgr = ui::ProgressOverlayManager::Get();
+        if (overlayMgr)
+          overlayMgr->ShowImmediate("Saving Brain", "Writing brain to external file...");
 
         iplug::IByteChunk blob;
         brain.SerializeSnapshotToChunk(blob);
@@ -58,10 +56,8 @@ namespace synaptic
         }
 
         // Hide progress overlay immediately after save completes
-        if (progressMgr)
-        {
-          progressMgr->HideImmediate();
-        }
+        if (overlayMgr)
+          overlayMgr->HideImmediate();
       }
     }
     else

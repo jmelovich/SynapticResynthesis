@@ -29,15 +29,13 @@ UISyncManager::UISyncManager(iplug::Plugin* plugin,
                              BrainManager* brainManager,
                              ParameterManager* paramManager,
                              WindowCoordinator* windowCoordinator,
-                             DSPConfig* dspConfig,
-                             ui::ProgressOverlayManager* overlayMgr)
+                             DSPConfig* dspConfig)
   : mPlugin(plugin)
   , mBrain(brain)
   , mBrainManager(brainManager)
   , mParamManager(paramManager)
   , mWindowCoordinator(windowCoordinator)
   , mDSPConfig(dspConfig)
-  , mOverlayMgr(overlayMgr)
 {
 }
 
@@ -50,18 +48,17 @@ void UISyncManager::SetDSPContext(DSPContext* dspContext, AudioStreamChunker* ch
 void UISyncManager::SetUI(ui::SynapticUI* ui)
 {
   mUI = ui;
-  if (mUI && mOverlayMgr)
+  if (mUI)
   {
-    mOverlayMgr->SetSynapticUI(mUI);
+    if (auto* overlayMgr = ui::ProgressOverlayManager::Get())
+      overlayMgr->SetSynapticUI(mUI);
   }
 }
 
 void UISyncManager::OnUIClose()
 {
-  if (mOverlayMgr)
-  {
-    mOverlayMgr->SetSynapticUI(nullptr);
-  }
+  if (auto* overlayMgr = ui::ProgressOverlayManager::Get())
+    overlayMgr->SetSynapticUI(nullptr);
   mUI = nullptr;
   mNeedsInitialUIRebuild = true;
 }
@@ -254,10 +251,10 @@ void UISyncManager::OnIdle()
       SyncBrainUIState();
     }
 
-    if (mOverlayMgr)
-      mOverlayMgr->ProcessPendingUpdates(mUI);
+    if (auto* overlayMgr = ui::ProgressOverlayManager::Get())
+      overlayMgr->ProcessPendingUpdates(mUI);
 
-      if (HasPendingUpdate(PendingUpdate::RebuildTransformer) || HasPendingUpdate(PendingUpdate::RebuildMorph))
+    if (HasPendingUpdate(PendingUpdate::RebuildTransformer) || HasPendingUpdate(PendingUpdate::RebuildMorph))
       {
         if (mDSPContext)
         {
@@ -300,7 +297,8 @@ void UISyncManager::OnIdle()
 
         if (!files.empty())
         {
-          mOverlayMgr->Show("Importing Files", "Starting...", 0.0f, true);
+          if (auto* overlayMgr = ui::ProgressOverlayManager::Get())
+            overlayMgr->Show("Importing Files", "Starting...", 0.0f, true);
           mBrainManager->AddMultipleFilesAsync(
             std::move(files),
             (int)mPlugin->GetSampleRate(),
@@ -308,7 +306,8 @@ void UISyncManager::OnIdle()
             mDSPConfig->chunkSize,
             MakeProgressCallback(),
             [this](bool wasCancelled) {
-              mOverlayMgr->Hide();
+              if (auto* mgr = ui::ProgressOverlayManager::Get())
+                mgr->Hide();
               if (!wasCancelled)
               {
                 SetPendingUpdate(PendingUpdate::BrainSummary);
@@ -387,12 +386,16 @@ bool UISyncManager::HandleBrainExportMsg()
 bool UISyncManager::HandleBrainImportMsg()
 {
   mBrainManager->ImportFromFileAsync(
-    [this](const std::string& message, int current, int total) {
-      const float progress = (total > 0) ? ((float)current / (float)total * ui::Progress::kMaxProgress) : 0.0f;
-      mOverlayMgr->Show("Importing Brain", message, progress, false);
+    [](const std::string& message, int current, int total) {
+      if (auto* overlayMgr = ui::ProgressOverlayManager::Get())
+      {
+        const float progress = (total > 0) ? ((float)current / (float)total * ui::Progress::kMaxProgress) : 0.0f;
+        overlayMgr->Show("Importing Brain", message, progress, false);
+      }
     },
     [this](bool wasCancelled) {
-      mOverlayMgr->Hide();
+      if (auto* overlayMgr = ui::ProgressOverlayManager::Get())
+        overlayMgr->Hide();
       synaptic::Brain::sUseCompactBrainFormat = mBrain->WasLastLoadedInCompactFormat();
       SetPendingUpdate(PendingUpdate::BrainSummary);
       SetPendingUpdate(PendingUpdate::MarkDirty);
@@ -438,18 +441,22 @@ bool UISyncManager::HandleBrainSetCompactModeMsg(int enabled)
 
 synaptic::BrainManager::ProgressFn UISyncManager::MakeProgressCallback()
 {
-  return [this](const std::string& fileName, int current, int total) {
-    const float p = (total > 0)
-      ? ((float)current / (float)total * ui::Progress::kMaxProgress)
-      : ui::Progress::kDefaultProgress;
-    mOverlayMgr->Update(fileName, p);
+  return [](const std::string& fileName, int current, int total) {
+    if (auto* overlayMgr = ui::ProgressOverlayManager::Get())
+    {
+      const float p = (total > 0)
+        ? ((float)current / (float)total * ui::Progress::kMaxProgress)
+        : ui::Progress::kDefaultProgress;
+      overlayMgr->Update(fileName, p);
+    }
   };
 }
 
 synaptic::BrainManager::CompletionFn UISyncManager::MakeStandardCompletionCallback()
 {
   return [this](bool wasCancelled) {
-    mOverlayMgr->Hide();
+    if (auto* overlayMgr = ui::ProgressOverlayManager::Get())
+      overlayMgr->Hide();
     if (!wasCancelled)
     {
       SetPendingUpdate(PendingUpdate::BrainSummary);
