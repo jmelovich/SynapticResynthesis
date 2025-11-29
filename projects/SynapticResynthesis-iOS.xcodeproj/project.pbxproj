@@ -17,7 +17,6 @@
 		4F7DB9D4247895C200ACF64B /* IPlugWebViewEditorDelegate.h in Headers */ = {isa = PBXBuildFile; fileRef = 4F7DB9D0247895C200ACF64B /* IPlugWebViewEditorDelegate.h */; };
 		4F7DB9D5247895C200ACF64B /* IPlugWebView_mac.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4F7DB9D1247895C200ACF64B /* IPlugWebView_mac.mm */; settings = {COMPILER_FLAGS = "-fobjc-arc"; }; };
 		4FA0FB22247D4E5600E25C73 /* IPlugWebViewEditorDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4F7DB9CE247895C200ACF64B /* IPlugWebViewEditorDelegate.mm */; };
-		4FA0FB25247D4FE800E25C73 /* web in Resources */ = {isa = PBXBuildFile; fileRef = 4FC46E58231440C8000045E7 /* web */; };
 		4FA61F6822E8996C00A92C58 /* IPlugAUv3Appex.m in Sources */ = {isa = PBXBuildFile; fileRef = 4FA61F6722E8996C00A92C58 /* IPlugAUv3Appex.m */; };
 		4FA61F7522E899B500A92C58 /* AUv3Framework.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4FA61F6E22E899B500A92C58 /* AUv3Framework.framework */; };
 		4FA61F7622E899B500A92C58 /* AUv3Framework.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 4FA61F6E22E899B500A92C58 /* AUv3Framework.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -130,7 +129,6 @@
 		4FA758452186222E00F1BCC3 /* IPlugPaths.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = IPlugPaths.mm; path = ../../../IPlug/IPlugPaths.mm; sourceTree = "<group>"; };
 		4FB2269620A0D3A800614769 /* SynapticResynthesis-iOS-LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = "SynapticResynthesis-iOS-LaunchScreen.storyboard"; path = "../resources/SynapticResynthesis-iOS-LaunchScreen.storyboard"; sourceTree = "<group>"; };
 		4FBBD7F420B6ABE700A37DE2 /* config */ = {isa = PBXFileReference; lastKnownFileType = folder; name = config; path = ../config; sourceTree = "<group>"; };
-		4FC46E58231440C8000045E7 /* web */ = {isa = PBXFileReference; lastKnownFileType = folder; name = web; path = ../resources/web; sourceTree = "<group>"; };
 		4FC82B4720BD524700722133 /* img */ = {isa = PBXFileReference; lastKnownFileType = folder; name = img; path = ../resources/img; sourceTree = "<group>"; };
 		4FC82B4820BD524700722133 /* fonts */ = {isa = PBXFileReference; lastKnownFileType = folder; name = fonts; path = ../resources/fonts; sourceTree = "<group>"; };
 		4FDA600520B5868D00C49ABA /* SynapticResynthesis-ios.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = "SynapticResynthesis-ios.xcconfig"; path = "../config/SynapticResynthesis-ios.xcconfig"; sourceTree = "<group>"; };
@@ -262,7 +260,6 @@
 				4FC82B4820BD524700722133 /* fonts */,
 				4FC82B4720BD524700722133 /* img */,
 				4F2602DB2269F79200C7E97E /* tex */,
-				4FC46E58231440C8000045E7 /* web */,
 				4F10E7C520B189DD00F5B09B /* SynapticResynthesis-iOS.entitlements */,
 				4F3E0F6820A0BCAF00A9C2BE /* Images.xcassets */,
 				4F3E0F6720A0BC5B00A9C2BE /* SynapticResynthesis-iOS.storyboard */,
@@ -569,7 +566,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4FA0FB25247D4FE800E25C73 /* web in Resources */,
 				4F1115CF2296DA95000CFCBF /* SynapticResynthesis-iOS-MainInterface.storyboard in Resources */,
 				4F3E0F6B20A0BCE300A9C2BE /* Images.xcassets in Resources */,
 				4FB2269720A0D3A800614769 /* SynapticResynthesis-iOS-LaunchScreen.storyboard in Resources */,

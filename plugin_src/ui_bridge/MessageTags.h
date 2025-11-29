@@ -1,32 +1,52 @@
+/**
+ * @file MessageTags.h
+ * @brief Message tags for UI-to-C++ communication
+ *
+ * This enum defines all message types used for communication between
+ * the UI layer and the C++ backend. Tags are organized by category
+ * with contiguous IDs within each category.
+ */
+
 #pragma once
 
-// Message tags for UI-to-C++ communication
-// This enum is separated from SynapticResynthesis.h to avoid circular dependencies
-enum EMsgTags
+namespace synaptic
 {
-  kMsgTagSetChunkSize = 4,
-  // kMsgTagSetBufferWindowSize = 5, // DEPRECATED - removed
-  kMsgTagSetAlgorithm = 6,
-  kMsgTagSetOutputWindowMode = 7,
-  // Analysis window used for offline brain analysis (non-automatable IParam mirrors this)
-  kMsgTagSetAnalysisWindowMode = 8,
-  // Brain UI -> C++ messages
-  kMsgTagBrainAddFile = 100,
-  kMsgTagBrainRemoveFile = 101,
-  // Transformer params UI -> C++
-  kMsgTagTransformerSetParam = 102,
-  // UI lifecycle
-  kMsgTagUiReady = 103,
-  // Brain snapshot external IO
-  kMsgTagBrainExport = 104,
-  kMsgTagBrainImport = 105,
-  kMsgTagBrainEject = 106,
-  kMsgTagBrainDetach = 107,
-  kMsgTagBrainCreateNew = 109,
-  kMsgTagBrainSetCompactMode = 110,
-  kMsgTagCancelOperation = 111,
-  // Window resize
-  kMsgTagResizeToFit = 108,
-  // C++ -> UI JSON updates use msgTag = -1, with id fields "brainSummary"
-};
+  /**
+   * @brief Message tag categories and their base offsets
+   */
+  namespace MsgTagCategory
+  {
+    constexpr int kDSP = 0;       // DSP configuration messages
+    constexpr int kBrain = 100;   // Brain management messages
+    constexpr int kUI = 200;      // UI lifecycle messages
+  }
 
+  /**
+   * @brief All message tags for UI-to-C++ communication
+   */
+  enum EMsgTags
+  {
+    // === DSP Configuration Messages (0-99) ===
+    kMsgTagSetChunkSize = MsgTagCategory::kDSP + 0,
+    kMsgTagSetAlgorithm = MsgTagCategory::kDSP + 1,
+    kMsgTagSetOutputWindowMode = MsgTagCategory::kDSP + 2,
+    kMsgTagSetAnalysisWindowMode = MsgTagCategory::kDSP + 3,
+    kMsgTagTransformerSetParam = MsgTagCategory::kDSP + 4,
+
+    // === Brain Management Messages (100-199) ===
+    kMsgTagBrainAddFile = MsgTagCategory::kBrain + 0,
+    kMsgTagBrainRemoveFile = MsgTagCategory::kBrain + 1,
+    kMsgTagBrainExport = MsgTagCategory::kBrain + 2,
+    kMsgTagBrainImport = MsgTagCategory::kBrain + 3,
+    kMsgTagBrainEject = MsgTagCategory::kBrain + 4,
+    kMsgTagBrainDetach = MsgTagCategory::kBrain + 5,
+    kMsgTagBrainCreateNew = MsgTagCategory::kBrain + 6,
+    kMsgTagBrainSetCompactMode = MsgTagCategory::kBrain + 7,
+    kMsgTagCancelOperation = MsgTagCategory::kBrain + 8,
+
+    // === UI Lifecycle Messages (200-299) ===
+    kMsgTagUiReady = MsgTagCategory::kUI + 0,
+    kMsgTagResizeToFit = MsgTagCategory::kUI + 1
+  };
+
+}

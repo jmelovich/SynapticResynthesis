@@ -1,76 +1,74 @@
 #pragma once
 
-#include "json.hpp"
 #include <string>
 #include <algorithm>
 
 namespace synaptic
 {
   /**
+   * @brief Default values for DSP configuration
+   *
+   * All DSP-related defaults are centralized here for easy modification
+   * and to eliminate magic numbers throughout the codebase.
+   */
+  namespace DSPDefaults
+  {
+    constexpr int kChunkSize = 3000;              ///< Default chunk size in samples
+    constexpr int kBufferWindowSize = 1;          ///< Default lookahead window count
+    constexpr int kOutputWindowMode = 1;          ///< 1=Hann (default)
+    constexpr int kAnalysisWindowMode = 1;        ///< 1=Hann (default)
+    constexpr int kAlgorithmId = 0;               ///< First transformer in UI list
+    constexpr bool kEnableOverlapAdd = true;      ///< Overlap-add enabled by default
+
+    constexpr int kMinChunkSize = 1;
+    constexpr int kMaxChunkSize = 262144;
+    constexpr int kMinBufferWindow = 1;
+    constexpr int kMaxBufferWindow = 1024;
+    constexpr int kMinWindowMode = 1;
+    constexpr int kMaxWindowMode = 4;
+  }
+
+  /**
    * @brief Configuration state for DSP parameters
    *
-   * Central struct holding all configurable DSP settings.
-   * Provides serialization to/from JSON for UI communication.
+   * Contains only DSP-related settings. Brain storage state has been
+   * moved to BrainManager to maintain single responsibility.
    */
   struct DSPConfig
   {
-    // Core DSP parameters
-    int chunkSize = 3000;
-    int bufferWindowSize = 1;
-    int outputWindowMode = 1;      // 1=Hann, 2=Hamming, 3=Blackman, 4=Rectangular
-    int analysisWindowMode = 1;    // Same encoding as output window
-    int algorithmId = 0;           // Index into transformer factory UI list
-    bool enableOverlapAdd = true;
-
-    // External brain storage info (for UI display)
-    bool useExternalBrain = false;
-    std::string externalPath;
+    // Core DSP parameters (initialized with defaults)
+    int chunkSize = DSPDefaults::kChunkSize;
+    int bufferWindowSize = DSPDefaults::kBufferWindowSize;
+    int outputWindowMode = DSPDefaults::kOutputWindowMode;      // 1=Hann, 2=Hamming, 3=Blackman, 4=Rectangular
+    int analysisWindowMode = DSPDefaults::kAnalysisWindowMode;  // Same encoding as output window
+    int algorithmId = DSPDefaults::kAlgorithmId;                // Index into transformer factory UI list
+    bool enableOverlapAdd = DSPDefaults::kEnableOverlapAdd;
 
     /**
      * @brief Validate and clamp parameters to safe ranges
      */
     void Validate()
     {
-      chunkSize = std::max(1, chunkSize);
-      bufferWindowSize = std::max(1, bufferWindowSize);
-      outputWindowMode = std::clamp(outputWindowMode, 1, 4);
-      analysisWindowMode = std::clamp(analysisWindowMode, 1, 4);
+      chunkSize = std::clamp(chunkSize, DSPDefaults::kMinChunkSize, DSPDefaults::kMaxChunkSize);
+      bufferWindowSize = std::clamp(bufferWindowSize, DSPDefaults::kMinBufferWindow, DSPDefaults::kMaxBufferWindow);
+      outputWindowMode = std::clamp(outputWindowMode, DSPDefaults::kMinWindowMode, DSPDefaults::kMaxWindowMode);
+      analysisWindowMode = std::clamp(analysisWindowMode, DSPDefaults::kMinWindowMode, DSPDefaults::kMaxWindowMode);
       algorithmId = std::max(0, algorithmId);
     }
 
     /**
-     * @brief Serialize to JSON for UI communication
+     * @brief Check if two configs have equivalent DSP settings
      */
-    nlohmann::json ToJSON() const
+    bool operator==(const DSPConfig& other) const
     {
-      nlohmann::json j;
-      j["chunkSize"] = chunkSize;
-      j["bufferWindowSize"] = bufferWindowSize;
-      j["outputWindowMode"] = outputWindowMode;
-      j["analysisWindowMode"] = analysisWindowMode;
-      j["algorithmId"] = algorithmId;
-      j["enableOverlapAdd"] = enableOverlapAdd;
-      j["useExternalBrain"] = useExternalBrain;
-      j["externalPath"] = externalPath;
-      return j;
+      return chunkSize == other.chunkSize &&
+             bufferWindowSize == other.bufferWindowSize &&
+             outputWindowMode == other.outputWindowMode &&
+             analysisWindowMode == other.analysisWindowMode &&
+             algorithmId == other.algorithmId &&
+             enableOverlapAdd == other.enableOverlapAdd;
     }
 
-    /**
-     * @brief Deserialize from JSON (used when receiving from UI)
-     */
-    void FromJSON(const nlohmann::json& j)
-    {
-      if (j.contains("chunkSize")) chunkSize = j["chunkSize"].get<int>();
-      if (j.contains("bufferWindowSize")) bufferWindowSize = j["bufferWindowSize"].get<int>();
-      if (j.contains("outputWindowMode")) outputWindowMode = j["outputWindowMode"].get<int>();
-      if (j.contains("analysisWindowMode")) analysisWindowMode = j["analysisWindowMode"].get<int>();
-      if (j.contains("algorithmId")) algorithmId = j["algorithmId"].get<int>();
-      if (j.contains("enableOverlapAdd")) enableOverlapAdd = j["enableOverlapAdd"].get<bool>();
-      if (j.contains("useExternalBrain")) useExternalBrain = j["useExternalBrain"].get<bool>();
-      if (j.contains("externalPath")) externalPath = j["externalPath"].get<std::string>();
-
-      Validate();
-    }
+    bool operator!=(const DSPConfig& other) const { return !(*this == other); }
   };
 }
-

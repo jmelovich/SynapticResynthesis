@@ -53,10 +53,8 @@ namespace synaptic
         if (!in || !out || in->numFrames <= 0)
           continue;
 
-        const int N = in->numFrames;
-        const double nyquist = 0.5 * mSampleRate;
-
         // Analyze input chunk using precomputed spectra and FeatureAnalysis
+        const double nyquist = 0.5 * mSampleRate;
         std::vector<std::vector<float>> inFeatures(numChannels, std::vector<float>(7, 0.0f));
         std::vector<float> inFeaturesAvg(7, 0.0f);
         std::vector<double> inFftDominantHz(numChannels, 0.0);
@@ -64,6 +62,9 @@ namespace synaptic
 
         if (in->fftSize > 0)
         {
+          (void)inFftDominantHzAvg; // Suppress unused variable warning if not used in mChannelIndependent block
+          (void)inFeaturesAvg;      // Suppress unused variable warning if not used in mChannelIndependent block
+
           for (int ch = 0; ch < numChannels; ++ch)
           {
             if (ch >= (int)in->complexSpectrum.size() || in->complexSpectrum[ch].empty())
@@ -255,8 +256,6 @@ namespace synaptic
             continue;
           }
 
-          const int framesToWrite = std::min(chunkSize, match->audio.numFrames);
-          const int srcChans = (int) match->audio.channelSamples.size();
           CopyBrainChannelsToOutput(match, chunkSize, numChannels, *out);
           chunker.CommitOutputChunk(idx, std::min(chunkSize, match->audio.numFrames));
         }

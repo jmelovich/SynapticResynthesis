@@ -14,17 +14,28 @@
 
 namespace synaptic
 {
+  /**
+   * @brief A chunk of audio stored in the Brain with analysis metadata
+   *
+   * Note on spectrum storage:
+   * - audio.complexSpectrum: Full ordered FFT output (length=fftSize per channel)
+   *   Used for spectral morphing and IFFT reconstruction
+   * - magnitudeSpectrum: Magnitude-only spectrum (length=fftSize/2+1 per channel)
+   *   Used for feature analysis and matching algorithms
+   */
   struct BrainChunk
   {
-    AudioChunk audio; // same format as realtime chunks (now includes complexSpectrum and fftSize)
+    AudioChunk audio;  ///< Audio data with optional full FFT spectrum
     int fileId = -1;
     int chunkIndexInFile = -1;
+
     // Per-channel analysis
-    std::vector<float> rmsPerChannel;     // RMS per channel
-    std::vector<double> freqHzPerChannel; // ZCR-based frequency per channel
+    std::vector<float> rmsPerChannel;      ///< RMS per channel
+    std::vector<double> freqHzPerChannel;  ///< ZCR-based frequency per channel
+
     // FFT analysis (per channel)
-    // Magnitude spectrum per channel (length = fftSize/2 + 1), computed via PFFFT
-    std::vector<std::vector<float>> complexSpectrum;
+    /// Magnitude spectrum per channel (length = fftSize/2 + 1), for matching
+    std::vector<std::vector<float>> magnitudeSpectrum;
     // Dominant frequency (Hz) derived from FFT magnitude peak per channel
     std::vector<double> fftDominantHzPerChannel;
     // FFT size actually used for analysis. PFFFT has strict size constraints:
@@ -54,7 +65,7 @@ namespace synaptic
   {
   public:
     /**
-     * @brief Global flag to enable compact brain format
+     * @brief Get/set compact brain format for this instance
      *
      * When true, .sbrain files save only reconstructed original audio + metadata.
      * This dramatically reduces file size (~100MB input = ~100MB output vs 800MB).
@@ -63,11 +74,12 @@ namespace synaptic
      * When false (default), saves full chunked data with all analysis (faster load, larger files).
      *
      * Usage:
-     *   Brain::sUseCompactBrainFormat = true;   // Enable compact mode
+     *   brain.SetUseCompactFormat(true);        // Enable compact mode
      *   brain.SerializeSnapshotToChunk(chunk);  // Saves in compact format
      *   brain.DeserializeSnapshotFromChunk(...);// Auto-detects and re-chunks
      */
-    static bool sUseCompactBrainFormat;
+    bool GetUseCompactFormat() const { return mUseCompactFormat; }
+    void SetUseCompactFormat(bool compact) { mUseCompactFormat = compact; }
 
     void Reset()
     {
@@ -153,6 +165,8 @@ namespace synaptic
     Window::Type mSavedAnalysisWindowType = Window::Type::Hann;
     // Track if the last loaded brain was in compact format (for UI sync)
     bool mLastLoadedWasCompact = false;
+    // Per-instance compact format setting (default: true for smaller files)
+    bool mUseCompactFormat = true;
   };
 }
 

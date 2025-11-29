@@ -276,8 +276,6 @@
     <ClInclude Include="..\..\..\Dependencies\IPlug\VST3_SDK\public.sdk\source\vst\vstcomponentbase.h" />
     <ClInclude Include="..\..\..\Dependencies\IPlug\VST3_SDK\public.sdk\source\vst\vstparameters.h" />
     <ClInclude Include="..\..\..\Dependencies\IPlug\VST3_SDK\public.sdk\source\vst\vstsinglecomponenteffect.h" />
-    <ClInclude Include="..\..\..\IPlug\Extras\WebView\IPlugWebView.h" />
-    <ClInclude Include="..\..\..\IPlug\Extras\WebView\IPlugWebViewEditorDelegate.h" />
     <ClInclude Include="..\..\..\IPlug\IPlugAPIBase.h" />
     <ClInclude Include="..\..\..\IPlug\IPlugConstants.h" />
     <ClInclude Include="..\..\..\IPlug\IPlugEditorDelegate.h" />
@@ -320,8 +318,6 @@
     <ClInclude Include="..\plugin_src\modules\DSPConfig.h" />
     <ClInclude Include="..\plugin_src\params\ParameterManager.h" />
     <ClInclude Include="..\plugin_src\serialization\StateSerializer.h" />
-    <ClInclude Include="..\plugin_src\ui_bridge\UIBridge.h" />
-    <ClInclude Include="..\plugin_src\ui_bridge\UIMessageHandler.h" />
     <ClInclude Include="..\plugin_src\brain\Brain.h" />
     <ClInclude Include="..\plugin_src\transformers\types\ExpandedSimpleSampleBrainTransformer.h" />
     <ClInclude Include="..\plugin_src\transformers\SimpleSampleBrainTransformer.h" />
@@ -332,20 +328,16 @@
   <ItemGroup>
     <ClCompile Include="..\plugin_src\brain\BrainManager.cpp" />
     <ClCompile Include="..\plugin_src\modules\WindowCoordinator.cpp" />
-    <ClCompile Include="..\plugin_src\ui_bridge\MessageHandlers.cpp" />
+    <ClCompile Include="..\plugin_src\modules\AudioStreamChunker.cpp" />
     <ClCompile Include="..\plugin_src\params\ParameterManager.cpp" />
     <ClCompile Include="..\plugin_src\serialization\StateSerializer.cpp" />
-    <ClCompile Include="..\plugin_src\ui_bridge\UIBridge.cpp" />
     <ClCompile Include="..\plugin_src\brain\Brain.cpp" />
     <ClCompile Include="..\exdeps\pffft\pffft.c" />
     <ClCompile Include="..\..\..\IGraphics\Controls\IControls.cpp">
-      <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\..\..\IGraphics\Controls\IPopupMenuControl.cpp">
-      <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\..\..\IGraphics\Controls\ITextEntryControl.cpp">
-      <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\..\..\IGraphics\Drawing\IGraphicsNanoVG.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
@@ -364,16 +356,12 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Tracer|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\..\..\IGraphics\IControl.cpp">
-      <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\..\..\IGraphics\IGraphics.cpp">
-      <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\..\..\IGraphics\Platforms\IGraphicsWin.cpp">
-      <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\..\..\IGraphics\IGraphicsEditorDelegate.cpp">
-      <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\..\..\Dependencies\IPlug\VST3_SDK\base\source\baseiids.cpp" />
     <ClCompile Include="..\..\..\Dependencies\IPlug\VST3_SDK\base\source\fbuffer.cpp" />
@@ -402,16 +390,6 @@
     <ClCompile Include="..\..\..\Dependencies\IPlug\VST3_SDK\public.sdk\source\vst\vstinitiids.cpp" />
     <ClCompile Include="..\..\..\Dependencies\IPlug\VST3_SDK\public.sdk\source\vst\vstparameters.cpp" />
     <ClCompile Include="..\..\..\Dependencies\IPlug\VST3_SDK\public.sdk\source\vst\vstsinglecomponenteffect.cpp" />
-    <ClCompile Include="..\..\..\IPlug\Extras\WebView\IPlugWebView.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Tracer|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Tracer|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
-    </ClCompile>
-    <ClCompile Include="..\..\..\IPlug\Extras\WebView\IPlugWebViewEditorDelegate.cpp" />
-    <ClCompile Include="..\..\..\IPlug\Extras\WebView\IPlugWebView_win.cpp" />
     <ClCompile Include="..\..\..\IPlug\IPlugAPIBase.cpp" />
     <ClCompile Include="..\..\..\IPlug\IPlugParameter.cpp" />
     <ClCompile Include="..\..\..\IPlug\IPlugPaths.cpp" />
@@ -422,29 +400,25 @@
     <ClCompile Include="..\..\..\IPlug\VST3\IPlugVST3_ProcessorBase.cpp" />
     <ClCompile Include="..\SynapticResynthesis.cpp" />
     <ClCompile Include="..\plugin_src\ui\core\SynapticUI.cpp">
-      <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\plugin_src\ui\core\ProgressOverlayManager.cpp" />
     <ClCompile Include="..\plugin_src\ui\controls\UIControls.cpp">
-      <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\plugin_src\ui\controls\BrainFileDropControl.cpp">
-      <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\plugin_src\ui\controls\BrainFileListControl.cpp">
-      <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\plugin_src\ui\controls\BrainFileHelpers.cpp">
-      <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\plugin_src\ui\controls\ProgressOverlay.cpp">
-      <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\plugin_src\ui\tabs\TabViews.cpp">
-      <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\plugin_src\ui\dynamic\DynamicParamManager.cpp">
-      <ExcludedFromBuild Condition="'$(SR_USE_WEB_UI)'=='1'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\plugin_src\modules\UISyncManager.cpp">
+    </ClCompile>
+    <ClCompile Include="..\plugin_src\audio\DSPContext.cpp">
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -453,11 +427,9 @@
   <ItemGroup>
     <None Include="..\config\SynapticResynthesis-ios.xcconfig" />
     <None Include="..\config\SynapticResynthesis-mac.xcconfig" />
-    <None Include="..\config\SynapticResynthesis-web.mk" />
     <None Include="..\config\SynapticResynthesis-win.props">
       <SubType>Designer</SubType>
     </None>
-    <None Include="..\resources\web\index.html" />
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
@@ -466,7 +438,6 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionSettings">
     <Import Project="..\packages\Microsoft.Windows.ImplementationLibrary.1.0.240803.1\build\native\Microsoft.Windows.ImplementationLibrary.targets" Condition="Exists('..\packages\Microsoft.Windows.ImplementationLibrary.1.0.240803.1\build\native\Microsoft.Windows.ImplementationLibrary.targets')" />
-    <Import Project="..\packages\Microsoft.Web.WebView2.1.0.2903.40\build\native\Microsoft.Web.WebView2.targets" Condition="Exists('..\packages\Microsoft.Web.WebView2.1.0.2903.40\build\native\Microsoft.Web.WebView2.targets')" />
   </ImportGroup>
   <Target Name="AfterBuild">
     <PaceFixLogs Condition="Exists('$(PACE_FUSION_HOME)PaceFusionUi2013.dll')" LogDirectory="$(IntDir)" />
@@ -476,9 +447,5 @@
       <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
     </PropertyGroup>
     <Error Condition="!Exists('..\packages\Microsoft.Windows.ImplementationLibrary.1.0.240803.1\build\native\Microsoft.Windows.ImplementationLibrary.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Windows.ImplementationLibrary.1.0.240803.1\build\native\Microsoft.Windows.ImplementationLibrary.targets'))" />
-    <Error Condition="!Exists('..\packages\Microsoft.Web.WebView2.1.0.2903.40\build\native\Microsoft.Web.WebView2.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Web.WebView2.1.0.2903.40\build\native\Microsoft.Web.WebView2.targets'))" />
   </Target>
-  <PropertyGroup>
-    <WebView2LoaderPreference>Static</WebView2LoaderPreference>
-  </PropertyGroup>
 </Project>

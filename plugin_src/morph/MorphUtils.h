@@ -40,6 +40,7 @@ namespace synaptic
     const int numChannels = (int) std::min(a.size(), b.size());
 
     const float magAmt = morphAmount;
+    (void)magAmt; // Avoid unused variable warning in older compilers
     const float phaseAmt = phaseMorphAmount;
     const float oneMinusMagAmt = 1.0f - morphAmount;
     const float oneMinusPhaseAmt = 1.0f - phaseMorphAmount;
@@ -93,6 +94,7 @@ namespace synaptic
     const int numChannels = (int)std::min(a.size(), b.size());
 
     const float magAmt = morphAmount;
+    (void)magAmt; // Avoid unused variable warning
     const float phaseAmt = phaseMorphAmount;
     const float oneMinusMagAmt = 1.0f - morphAmount;
     const float oneMinusPhaseAmt = 1.0f - phaseMorphAmount;

@@ -2,7 +2,6 @@
 #include "plugin_src/PlatformFileDialogs.h"
 #include "SynapticResynthesis.h"
 #include "IPlugStructs.h"
-#include "json.hpp"
 #include "../../exdeps/miniaudio/miniaudio.h"
 #include <thread>
 #include <cstdio>
@@ -10,96 +9,31 @@
 
 namespace synaptic
 {
-  BrainManager::BrainManager(Brain* brain, Window* analysisWindow, UIBridge* uiBridge)
+  BrainManager::BrainManager(Brain* brain, Window* analysisWindow)
     : mBrain(brain)
     , mAnalysisWindow(analysisWindow)
-    , mUIBridge(uiBridge)
   {
   }
 
-  bool BrainManager::HandleMessage(int msgTag, int ctrlTag, int dataSize, const void* pData)
+  BrainManager::~BrainManager()
   {
-    switch (msgTag)
+    // Ensure all background threads are joined before destruction
+    RequestCancellation();
+
+    std::lock_guard<std::mutex> lock(mThreadMutex);
+    for (auto& t : mActiveThreads)
     {
-      case ::kMsgTagBrainAddFile:
-      {
-        // pData holds raw bytes: [uint16_t nameLenLE][name bytes UTF-8][file bytes]
-        if (!pData || dataSize <= 2)
-          return false;
-
-        const uint8_t* bytes = reinterpret_cast<const uint8_t*>(pData);
-        uint16_t nameLen = (uint16_t)(bytes[0] | (bytes[1] << 8));
-        if (2 + nameLen > dataSize)
-          return false;
-
-        std::string name(reinterpret_cast<const char*>(bytes + 2),
-                        reinterpret_cast<const char*>(bytes + 2 + nameLen));
-        const void* fileData = bytes + 2 + nameLen;
-        size_t fileSize = static_cast<size_t>(dataSize - (2 + nameLen));
-
-        // AddFileFromMemory will handle overlay and return result
-        // We need sample rate, channels, and chunk size from caller context
-        // For now, return false - caller will handle inline
-        // (This is a synchronous operation that needs plugin context)
-        return false;  // Let caller handle this one inline
-      }
-
-      case ::kMsgTagBrainRemoveFile:
-      {
-        RemoveFile(ctrlTag);
-        return true;
-      }
-
-      case ::kMsgTagBrainExport:
-      {
-        ExportToFileAsync([](const std::string&, int, int){}, [](bool){});  // Empty progress and completion callbacks
-        return true;
-      }
-
-      case ::kMsgTagBrainImport:
-      {
-        ImportFromFileAsync([](const std::string&, int, int){}, [](bool){});  // Empty progress and completion callbacks
-        return true;
-      }
-
-      case ::kMsgTagBrainEject:
-      {
-        Reset();
-        return true;
-      }
-
-      case ::kMsgTagBrainDetach:
-      {
-        Detach();
-        return true;
-      }
-
-      case ::kMsgTagCancelOperation:
-      {
-        RequestCancellation();
-        return true;
-      }
-
-      default:
-        return false;
+      if (t.joinable())
+        t.join();
     }
   }
 
-  int BrainManager::AddFileFromMemory(const void* data, size_t size, const std::string& name,
-                                      int sampleRate, int channels, int chunkSize)
+  void BrainManager::LaunchThread(std::function<void()> task)
   {
-    if (!mBrain) return -1;
+    std::lock_guard<std::mutex> lock(mThreadMutex);
 
-    mUIBridge->ShowOverlay(std::string("Importing ") + name);
-    int newId = mBrain->AddAudioFileFromMemory(data, size, name, sampleRate, channels, chunkSize);
-
-    if (newId >= 0)
-    {
-      mBrainDirty = true;
-    }
-
-    mUIBridge->HideOverlay();
-    return newId;
+    // Store the task in the active threads vector to avoid unbounded growth
+    mActiveThreads.emplace_back(std::move(task));
   }
 
   void BrainManager::RemoveFile(int fileId)
@@ -119,9 +53,6 @@ namespace synaptic
     mUseExternalBrain = false;
     mExternalBrainPath.clear();
     mBrainDirty = false;
-
-    // Send external ref update to UI
-    mUIBridge->SendExternalRefInfo(false, std::string());
   }
 
   void BrainManager::Detach()
@@ -138,9 +69,6 @@ namespace synaptic
     }
 
     mBrainDirty = false;
-
-    // Send external ref update to UI
-    mUIBridge->SendExternalRefInfo(false, std::string());
   }
 
   void BrainManager::SetExternalRef(const std::string& path, bool useExternal)
@@ -171,7 +99,7 @@ namespace synaptic
     // Reset cancellation flag before starting
     ResetCancellationFlag();
 
-    std::thread([this, newChunkSize, sampleRate, onProgress, onComplete]()
+    LaunchThread([this, newChunkSize, sampleRate, onProgress, onComplete]()
     {
       // Brain's RechunkAllFiles now reports per-chunk progress with (fileName, currentChunk, totalChunks)
       auto stats = mBrain->RechunkAllFiles(newChunkSize, sampleRate,
@@ -195,9 +123,6 @@ namespace synaptic
       if (!stats.wasCancelled)
       {
         mBrainDirty = true;
-
-        // Queue UI updates
-        mUIBridge->MarkBrainSummaryPending();
       }
 
       // Call completion callback with cancellation status
@@ -206,7 +131,7 @@ namespace synaptic
         onComplete(stats.wasCancelled);
 
       mOperationInProgress = false;  // Clear flag AFTER callback completes
-    }).detach();
+    });
   }
 
   void BrainManager::ReanalyzeAllChunksAsync(int sampleRate, ProgressFn onProgress, CompletionFn onComplete)
@@ -231,7 +156,7 @@ namespace synaptic
     // Reset cancellation flag before starting
     ResetCancellationFlag();
 
-    std::thread([this, sampleRate, onProgress, onComplete]()
+    LaunchThread([this, sampleRate, onProgress, onComplete]()
     {
       // Brain's ReanalyzeAllChunks now reports per-chunk progress with (fileName, currentChunk, totalChunks)
       auto stats = mBrain->ReanalyzeAllChunks(sampleRate,
@@ -254,9 +179,6 @@ namespace synaptic
       if (!stats.wasCancelled)
       {
         mBrainDirty = true;
-
-        // Queue UI updates
-        mUIBridge->MarkBrainSummaryPending();
       }
 
       // Call completion callback with cancellation status
@@ -265,15 +187,15 @@ namespace synaptic
         onComplete(stats.wasCancelled);
 
       mOperationInProgress = false;  // Clear flag AFTER callback completes
-    }).detach();
+    });
   }
 
   void BrainManager::ExportToFileAsync(ProgressFn onProgress, CompletionFn onComplete)
   {
     if (!mBrain) return;
 
-    // Move to background thread to avoid WebView2 re-entrancy when showing native dialogs
-    std::thread([this, onProgress, onComplete]()
+    // Move to background thread to avoid blocking the UI thread with native dialogs
+    LaunchThread([this, onProgress, onComplete]()
     {
       // Show initial progress (0 of 2) - waiting for file selection
       if (onProgress)
@@ -309,21 +231,12 @@ namespace synaptic
         mExternalBrainPath = savePath;
         mUseExternalBrain = true;
         mBrainDirty = false;
-
-        // Notify UI about new external ref
-        nlohmann::json j;
-        j["id"] = "brainExternalRef";
-        j["info"] = {{"path", mExternalBrainPath}};
-        mUIBridge->EnqueueJSON(j);
-
-        // Refresh DSP config to show storage indicator
-        mUIBridge->MarkDSPConfigPending();
       }
 
       if (onComplete)
         onComplete(false);  // Export doesn't support cancellation yet
 
-    }).detach();
+    });
   }
 
   void BrainManager::ImportFromFileAsync(ProgressFn onProgress, CompletionFn onComplete)
@@ -331,7 +244,7 @@ namespace synaptic
     if (!mBrain) return;
 
     // Native Open dialog; C++ reads file directly
-    std::thread([this, onProgress, onComplete]()
+    LaunchThread([this, onProgress, onComplete]()
     {
       // Show initial progress (0 of 2) - waiting for file selection
       if (onProgress)
@@ -394,25 +307,18 @@ namespace synaptic
       mPendingImportedChunkSize = importedChunkSize;
       mPendingImportedAnalysisWindow = importedWindowMode;
 
-      // Queue UI updates
-      mUIBridge->MarkBrainSummaryPending();
-      nlohmann::json j;
-      j["id"] = "brainExternalRef";
-      j["info"] = {{"path", mExternalBrainPath}};
-      mUIBridge->EnqueueJSON(j);
-
       if (onComplete)
         onComplete(false);  // Import doesn't support cancellation yet
 
-    }).detach();
+    });
   }
 
   void BrainManager::CreateNewBrainAsync(ProgressFn onProgress, CompletionFn onComplete)
   {
     if (!mBrain) return;
 
-    // Move to background thread to avoid WebView2 re-entrancy when showing native dialogs
-    std::thread([this, onProgress, onComplete]()
+    // Move to background thread to avoid blocking the UI thread with native dialogs
+    LaunchThread([this, onProgress, onComplete]()
     {
       // Show initial progress (0 of 2) - waiting for file selection
       if (onProgress)
@@ -452,21 +358,12 @@ namespace synaptic
         mExternalBrainPath = savePath;
         mUseExternalBrain = true;
         mBrainDirty = false;
-
-        // Notify UI about new external ref
-        nlohmann::json j;
-        j["id"] = "brainExternalRef";
-        j["info"] = {{"path", mExternalBrainPath}};
-        mUIBridge->EnqueueJSON(j);
-
-        // Refresh DSP config to show storage indicator
-        mUIBridge->MarkDSPConfigPending();
       }
 
       if (onComplete)
         onComplete(false);  // Create new doesn't support cancellation yet
 
-    }).detach();
+    });
   }
 
   void BrainManager::AddMultipleFilesAsync(std::vector<FileData> files, int sampleRate, int channels,
@@ -491,7 +388,7 @@ namespace synaptic
     // Reset cancellation flag before starting
     ResetCancellationFlag();
 
-    std::thread([this, files = std::move(files), sampleRate, channels, chunkSize, totalFiles, onProgress, onComplete]() mutable
+    LaunchThread([this, files = std::move(files), sampleRate, channels, chunkSize, totalFiles, onProgress, onComplete]() mutable
     {
       // Pre-scan files to estimate total chunks for cumulative progress tracking
       int estimatedTotalChunks = 0;
@@ -561,9 +458,6 @@ namespace synaptic
         DBGMSG("Imported file: %s (id=%d)\n", fileData.name.c_str(), newId);
       }
 
-      // Queue UI updates
-      mUIBridge->MarkBrainSummaryPending();
-
       // Check if any file was cancelled (if we broke out of loop early due to cancellation)
       bool wasCancelled = mCancellationRequested.load();
 
@@ -572,7 +466,6 @@ namespace synaptic
         onComplete(wasCancelled);
 
       mOperationInProgress = false;
-    }).detach();
+    });
   }
 }
-

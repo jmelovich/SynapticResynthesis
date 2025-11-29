@@ -11,6 +11,7 @@
 
 #include "BrainFileHelpers.h"
 #include "SynapticResynthesis.h"
+#include "plugin_src/ui_bridge/MessageTags.h"
 #include <algorithm>
 #include <cctype>
 #include <fstream>
@@ -94,7 +95,7 @@ bool LoadAndSendFile(const char* path, IGraphics* pGraphics)
   if (!pDelegate)
     return false;
 
-  pDelegate->SendArbitraryMsgFromUI(kMsgTagBrainAddFile, kNoTag,
+  pDelegate->SendArbitraryMsgFromUI(synaptic::kMsgTagBrainAddFile, kNoTag,
                                     static_cast<int>(totalSize), buffer.data());
 
   return true;

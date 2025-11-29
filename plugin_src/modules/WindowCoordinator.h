@@ -2,9 +2,10 @@
 
 #include <functional>
 #include <string>
+#include "IPlug_include_in_plug_hdr.h"
 
-// Forward declarations - avoid including heavy headers
-// Use void* for Plugin/IGraphics to avoid header dependency issues
+// Forward declarations
+// Use namespace forward declarations to avoid type conflicts
 namespace synaptic {
 
 // Forward declarations
@@ -16,9 +17,8 @@ class ParameterManager;
 class BrainManager;
 struct DSPConfig;
 
-namespace ui {
-  class ProgressOverlayManager;
-}
+namespace ui { class ProgressOverlayManager; }
+
 
 /**
  * @brief Coordinates window operations across the plugin
@@ -41,7 +41,6 @@ public:
    * @param chunker Reference to audio stream chunker
    * @param paramManager Reference to parameter manager
    * @param brainManager Reference to brain manager
-   * @param progressOverlayMgr Reference to progress overlay manager (can be nullptr)
    */
   WindowCoordinator(
     Window* analysisWindow,
@@ -49,8 +48,7 @@ public:
     Brain* brain,
     AudioStreamChunker* chunker,
     ParameterManager* paramManager,
-    BrainManager* brainManager,
-    ui::ProgressOverlayManager* progressOverlayMgr
+    BrainManager* brainManager
   );
 
   /**
@@ -151,7 +149,9 @@ public:
 
 private:
   // Helper: Create progress callback for brain operations
-  std::function<void(const std::string&, int, int)> MakeProgressCallback();
+  // Takes overlay manager to capture for multi-instance safety
+  std::function<void(const std::string&, int, int)> MakeProgressCallback(
+    ui::ProgressOverlayManager* overlayMgr);
 
   // Dependencies (non-owning references)
   Window* mAnalysisWindow;
@@ -160,8 +160,6 @@ private:
   AudioStreamChunker* mChunker;
   ParameterManager* mParamManager;
   BrainManager* mBrainManager;
-  ui::ProgressOverlayManager* mProgressOverlayMgr;
 };
 
 } // namespace synaptic
-

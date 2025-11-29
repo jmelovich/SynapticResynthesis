@@ -1,16 +1,10 @@
 /**
  * @file SynapticUI.cpp
  * @brief Implementation of the main UI coordinator for Synaptic Resynthesis
- *
- * Implements the core UI management logic including:
- * - Initial UI construction and rebuild operations
- * - Dynamic parameter control creation and positioning
- * - Card panel resizing and layout adjustment
- * - Control visibility management for tab switching
- * - Window resize-to-fit calculations
  */
 
 #include "SynapticUI.h"
+#include "UIConstants.h"
 #include "../tabs/TabViews.h"
 #include "../styles/UITheme.h"
 #include "../controls/BrainFileListControl.h"
@@ -36,13 +30,11 @@ void SynapticUI::build()
 #if IPLUG_EDITOR
   if (!mGraphics) return;
 
-  // Configure number of columns from compile-time config
   mNumColumns = UI_NUM_COLUMNS > 0 ? UI_NUM_COLUMNS : 1;
 
   IRECT bounds = mGraphics->GetBounds();
   mLayout = UILayout::Calculate(bounds);
 
-  // If using multiple columns, ensure the window is wide enough
   if (mNumColumns > 1)
   {
     const int targetWidth = (UI_BASE_COLUMN_WIDTH * mNumColumns) + (UI_COLUMN_GAP * (mNumColumns - 1));
@@ -54,35 +46,29 @@ void SynapticUI::build()
     }
   }
 
-  // One-time feature setup
-  mGraphics->SetLayoutOnResize(false); // Disable auto-resize to prevent parameter reset
+  mGraphics->SetLayoutOnResize(false);
   mGraphics->LoadFont("Roboto-Regular", ROBOTO_FN);
   mGraphics->LoadFont("ForkAwesome", FORK_AWESOME_FN);
   mGraphics->EnableMouseOver(true);
   mGraphics->EnableTooltips(true);
   mGraphics->AttachTextEntryControl();
-  
-  // Attach background panel and keep reference for resizing
+
   mBackgroundPanel = new IPanelControl(bounds, kBGDark);
   mGraphics->AttachControl(mBackgroundPanel);
-  mGraphics->GetControl(0)->SetDelegate(*mGraphics->GetDelegate()); // Ensure it's at the bottom
+  mGraphics->GetControl(0)->SetDelegate(*mGraphics->GetDelegate());
 
   float yPos = mLayout.padding;
 
-  // Header
   buildHeader(bounds);
 
   IRECT headerRow = GetHeaderRowBounds(bounds, mLayout);
   yPos = headerRow.B + mLayout.sectionGap;
 
-  // Tabs
   tabs::BuildDSPTab(*this, bounds, mLayout, yPos);
   tabs::BuildBrainTab(*this, bounds, mLayout, yPos);
 
   setActiveTab(Tab::DSP);
 
-  // Progress overlay (attached last to be on top, initially hidden)
-  // Don't use attach() helper - manage this control completely independently
   mProgressOverlay = new ProgressOverlay(bounds);
   mGraphics->AttachControl(mProgressOverlay);
 #endif
@@ -93,13 +79,11 @@ void SynapticUI::rebuild()
 #if IPLUG_EDITOR
   if (!mGraphics) return;
 
-  // Re-apply column configuration (compile-time for now)
   mNumColumns = UI_NUM_COLUMNS > 0 ? UI_NUM_COLUMNS : 1;
 
   IRECT bounds = mGraphics->GetBounds();
   mLayout = UILayout::Calculate(bounds);
 
-  // Ensure width for multi-column mode
   if (mNumColumns > 1)
   {
     const int targetWidth = (UI_BASE_COLUMN_WIDTH * mNumColumns) + (UI_COLUMN_GAP * (mNumColumns - 1));
@@ -113,11 +97,10 @@ void SynapticUI::rebuild()
 
   Tab previousTab = mCurrentTab;
 
-  // Clear state and controls
   mDSPControls.clear();
   mBrainControls.clear();
-  mTransformerParamControls.clear(); // Clear before RemoveAllControls to avoid double-removal
-  mMorphParamControls.clear(); // Clear before RemoveAllControls to avoid double-removal
+  mTransformerParamControls.clear();
+  mMorphParamControls.clear();
   mDSPTabButton = nullptr;
   mBrainTabButton = nullptr;
   mBrainFileListControl = nullptr;
@@ -131,25 +114,21 @@ void SynapticUI::rebuild()
   mBackgroundPanel = nullptr;
   mGraphics->RemoveAllControls();
 
-  // Attach background panel and keep reference for resizing
   mBackgroundPanel = new IPanelControl(bounds, kBGDark);
   mGraphics->AttachControl(mBackgroundPanel);
-  mGraphics->GetControl(0)->SetDelegate(*mGraphics->GetDelegate()); // Ensure it's at the bottom
+  mGraphics->GetControl(0)->SetDelegate(*mGraphics->GetDelegate());
 
   float yPos = mLayout.padding;
 
-  // Header
   buildHeader(bounds);
   IRECT headerRow = GetHeaderRowBounds(bounds, mLayout);
   yPos = headerRow.B + mLayout.sectionGap;
 
-  // Tabs
   tabs::BuildDSPTab(*this, bounds, mLayout, yPos);
   tabs::BuildBrainTab(*this, bounds, mLayout, yPos);
 
   setActiveTab(previousTab);
 
-  // Sync all static controls with their current parameter values
   if (mRebuildContext.plugin)
   {
     for (auto* ctrl : mDSPControls)
@@ -158,7 +137,6 @@ void SynapticUI::rebuild()
     }
   }
 
-  // Rebuild dynamic params using cached context if available
   if (mRebuildContext.transformer && mRebuildContext.paramManager && mRebuildContext.plugin)
   {
     rebuildDynamicParams(DynamicParamType::Transformer, mRebuildContext.transformer.get(), *mRebuildContext.paramManager, mRebuildContext.plugin);
@@ -168,32 +146,25 @@ void SynapticUI::rebuild()
     rebuildDynamicParams(DynamicParamType::Morph, mRebuildContext.morph.get(), *mRebuildContext.paramManager, mRebuildContext.plugin);
   }
 
-  // Progress overlay (attached ABSOLUTELY LAST to be on top of everything, initially hidden)
-  // Don't use attach() helper - manage this control completely independently
   mProgressOverlay = new ProgressOverlay(bounds);
   mGraphics->AttachControl(mProgressOverlay);
 
-  // Resize window to fit content
   resizeWindowToFitContent();
 #endif
 }
 
 void SynapticUI::setActiveTab(Tab tab)
 {
-  if (!mGraphics) return; // Safety check
+  if (!mGraphics) return;
 
   mCurrentTab = tab;
 
-  // Set visibility for each control group
   SetControlGroupVisibility(mDSPControls, tab == Tab::DSP);
   SetControlGroupVisibility(mBrainControls, tab == Tab::Brain);
 
-  // Update tab buttons
   if (mDSPTabButton) mDSPTabButton->SetActive(tab == Tab::DSP);
   if (mBrainTabButton) mBrainTabButton->SetActive(tab == Tab::Brain);
 
-  // Update Create New Brain button visibility based on current tab and brain state
-  // Button should only be visible when: (1) no brain is loaded AND (2) Brain tab is active
   if (mCreateNewBrainButton)
   {
     bool shouldHide = mHasBrainLoaded || (tab != Tab::Brain);
@@ -201,7 +172,6 @@ void SynapticUI::setActiveTab(Tab tab)
     mCreateNewBrainButton->SetDisabled(shouldHide);
   }
 
-  // Auto-resize window to fit content when switching tabs
   resizeWindowToFitContent();
 }
 
@@ -231,23 +201,20 @@ void SynapticUI::SyncControlWithParam(IControl* ctrl, Plugin* plugin)
   }
 }
 
-
 void SynapticUI::RemoveAndClearControls(std::vector<IControl*>& paramControls, std::vector<IControl*>& dspControls)
 {
 #if IPLUG_EDITOR
   if (!mGraphics || paramControls.empty())
   {
-    paramControls.clear(); // Clear even if graphics is null to prevent stale pointers
+    paramControls.clear();
     return;
   }
-  
+
   for (auto* ctrl : paramControls)
   {
-    // Check if control exists in graphics before removing (prevents crash from stale pointers)
     if (ctrl && mGraphics->GetControlIdx(ctrl) >= 0)
     {
       mGraphics->RemoveControl(ctrl);
-      // Also remove from dspControls
       auto it = std::find(dspControls.begin(), dspControls.end(), ctrl);
       if (it != dspControls.end())
         dspControls.erase(it);
@@ -267,8 +234,6 @@ void SynapticUI::AttachAndSyncControls(std::vector<IControl*>& newControls, std:
     {
       auto* attached = attach(ctrl, ControlGroup::DSP);
       paramControls.push_back(attached);
-
-      // Sync control with current parameter value
       SyncControlWithParam(attached, plugin);
     }
   }
@@ -282,7 +247,6 @@ float SynapticUI::ResizeCardToFitContent(IControl* cardPanel, const IRECT& param
   if (!cardPanel)
     return 0.f;
 
-  // Calculate required height
   float paramHeight = 0.f;
   if (!controls.empty())
   {
@@ -297,8 +261,7 @@ float SynapticUI::ResizeCardToFitContent(IControl* cardPanel, const IRECT& param
     }
   }
 
-  float cardPadding = 16.f;
-  float totalHeight = (paramBounds.T - cardPanel->GetRECT().T) + paramHeight + cardPadding;
+  float totalHeight = (paramBounds.T - cardPanel->GetRECT().T) + paramHeight + LayoutConstants::kCardPadding;
   totalHeight = std::max(totalHeight, minHeight);
 
   IRECT oldBounds = cardPanel->GetRECT();
@@ -314,7 +277,6 @@ float SynapticUI::ResizeCardToFitContent(IControl* cardPanel, const IRECT& param
   return 0.f;
 }
 
-
 void SynapticUI::rebuildDynamicParams(
   DynamicParamType type,
   const void* owner,
@@ -325,10 +287,6 @@ void SynapticUI::rebuildDynamicParams(
   if (!mGraphics || !owner || !plugin)
     return;
 
-  // Note: mRebuildContext is set via setDynamicParamContext with shared_ptr copies
-  // to prevent race conditions. We don't update it here with raw pointers.
-
-  // Select appropriate control list and bounds
   std::vector<IControl*>& paramControls = (type == DynamicParamType::Transformer)
     ? mTransformerParamControls : mMorphParamControls;
   const IRECT& bounds = (type == DynamicParamType::Transformer)
@@ -336,10 +294,8 @@ void SynapticUI::rebuildDynamicParams(
   IControl* cardPanel = (type == DynamicParamType::Transformer)
     ? mTransformerCardPanel : mMorphCardPanel;
 
-  // Remove old controls
   RemoveAndClearControls(paramControls, mDSPControls);
 
-  // Build new controls
   std::vector<IControl*> newControls;
   if (type == DynamicParamType::Transformer)
   {
@@ -348,7 +304,7 @@ void SynapticUI::rebuildDynamicParams(
       static_cast<const synaptic::IChunkBufferTransformer*>(owner),
       paramManager, plugin);
   }
-  else // Morph
+  else
   {
     newControls = mDynamicParamMgr.BuildMorphParams(
       mGraphics, bounds, mLayout,
@@ -356,20 +312,17 @@ void SynapticUI::rebuildDynamicParams(
       paramManager, plugin);
   }
 
-  // Attach and sync new controls
   AttachAndSyncControls(newControls, paramControls, mDSPControls, plugin);
 
-  // Ensure progress overlay stays on top after adding dynamic params
   EnsureOverlayOnTop();
 
-  // Resize card and reposition subsequent cards
-  float heightDelta = ResizeCardToFitContent(cardPanel, bounds, paramControls, 120.f);
+  float heightDelta = ResizeCardToFitContent(cardPanel, bounds, paramControls, LayoutConstants::kMinCardHeight);
   if (heightDelta != 0.f)
   {
     repositionSubsequentCards(cardPanel, heightDelta);
     if (type == DynamicParamType::Transformer || type == DynamicParamType::Morph)
     {
-      anchorMorphLayoutToCard(); // Re-anchor morph layout
+      anchorMorphLayoutToCard();
     }
   }
 
@@ -383,7 +336,6 @@ IControl* SynapticUI::attach(IControl* ctrl, ControlGroup group)
   IControl* added = mGraphics->AttachControl(ctrl);
   if (!added) return nullptr;
 
-  // Add to appropriate control group and set visibility
   switch (group)
   {
     case ControlGroup::DSP:
@@ -403,7 +355,6 @@ IControl* SynapticUI::attach(IControl* ctrl, ControlGroup group)
       break;
 
     case ControlGroup::Global:
-      // Global controls are always visible
       break;
   }
 
@@ -418,18 +369,15 @@ void SynapticUI::repositionSubsequentCards(IControl* startCard, float heightDelt
   const IRECT startRect = startCard->GetRECT();
   const float startY = startRect.B;
 
-  // Reposition all cards and controls below the start card
   for (auto* ctrl : mDSPControls)
   {
     if (ctrl && ctrl != startCard)
     {
       IRECT ctrlBounds = ctrl->GetRECT();
-      // Move only controls in the same column (horizontal overlap within the start card's bounds),
-      // and that are positioned below the start card.
       const bool sameColumn =
-        (ctrlBounds.L >= startRect.L - 1.f) &&
-        (ctrlBounds.R <= startRect.R + 1.f);
-      if (sameColumn && ctrlBounds.T >= startY - 10.f) // 10px tolerance for positioning
+        (ctrlBounds.L >= startRect.L - LayoutConstants::kColumnBoundsEpsilon) &&
+        (ctrlBounds.R <= startRect.R + LayoutConstants::kColumnBoundsEpsilon);
+      if (sameColumn && ctrlBounds.T >= startY - LayoutConstants::kVerticalPositionTolerance)
       {
         ctrlBounds.T += heightDelta;
         ctrlBounds.B += heightDelta;
@@ -440,20 +388,18 @@ void SynapticUI::repositionSubsequentCards(IControl* startCard, float heightDelt
 #endif
 }
 
-
 void SynapticUI::anchorMorphLayoutToCard()
 {
 #if IPLUG_EDITOR
   if (!mGraphics || !mMorphCardPanel) return;
 
   const IRECT card = mMorphCardPanel->GetRECT();
-  const float dropdownHeight = 48.f;
-  const float dropdownWidth = card.W() * 0.5f;
+  const float dropdownHeight = LayoutConstants::kDropdownHeight;
+  const float dropdownWidth = card.W() * LayoutConstants::kMorphDropdownWidthRatio;
   const float dropdownStartX = card.L + (card.W() - dropdownWidth) / 2.f;
   const float rowY = card.T + mLayout.cardPadding + 24.f;
   IRECT morphRow(dropdownStartX, rowY, dropdownStartX + dropdownWidth, rowY + dropdownHeight);
 
-  // Position morph dropdown by param index
   for (auto* ctrl : mDSPControls)
   {
     if (ctrl && ctrl->GetParamIdx() == kMorphMode)
@@ -463,10 +409,9 @@ void SynapticUI::anchorMorphLayoutToCard()
     }
   }
 
-  // Set morph param area bounds directly from card and dropdown
   mMorphParamBounds = IRECT(
     card.L + mLayout.cardPadding,
-    morphRow.B + 16.f,
+    morphRow.B + LayoutConstants::kDynamicParamSpacing,
     card.R - mLayout.cardPadding,
     card.B - mLayout.cardPadding
   );
@@ -478,13 +423,10 @@ void SynapticUI::resizeWindowToFitContent()
 #if IPLUG_EDITOR
   if (!mGraphics) return;
 
-  // Find the bottom-most control to determine required height
-  // Only check controls for the ACTIVE tab
   float maxBottom = 0.f;
 
   if (mCurrentTab == Tab::DSP)
   {
-    // Check DSP tab controls
     for (auto* ctrl : mDSPControls)
     {
       if (ctrl)
@@ -495,7 +437,6 @@ void SynapticUI::resizeWindowToFitContent()
   }
   else if (mCurrentTab == Tab::Brain)
   {
-    // Check Brain tab controls
     for (auto* ctrl : mBrainControls)
     {
       if (ctrl)
@@ -505,30 +446,25 @@ void SynapticUI::resizeWindowToFitContent()
     }
   }
 
-  // Add bottom padding
   const float bottomPadding = mLayout.padding;
   const float requiredHeight = maxBottom + bottomPadding;
 
-  // Get current size
   const int currentWidth = mGraphics->Width();
   const int currentHeight = mGraphics->Height();
   const float currentScale = mGraphics->GetDrawScale();
 
-  // Only resize if height changed significantly (> 10 pixels)
-  if (std::abs(requiredHeight - currentHeight) > 10.f)
+  if (std::abs(requiredHeight - currentHeight) > LayoutConstants::kResizeThreshold)
   {
     mGraphics->Resize(currentWidth, static_cast<int>(requiredHeight), currentScale, true);
   }
 
-  // Always update background panel and progress overlay bounds to ensure they cover the entire window
-  // (regardless of whether we resized or not, in case previous resizes were missed)
   const IRECT currentBounds = mGraphics->GetBounds();
-  
+
   if (mBackgroundPanel)
   {
     mBackgroundPanel->SetTargetAndDrawRECTs(currentBounds);
   }
-  
+
   if (mProgressOverlay)
   {
     mProgressOverlay->UpdateBounds(currentBounds);
@@ -586,7 +522,6 @@ void SynapticUI::updateBrainFileList(const std::vector<BrainFileEntry>& files)
     mBrainFileListControl->UpdateList(files);
   }
 
-  // Update file count in status line
   if (mBrainStatusControl)
   {
     mBrainStatusControl->SetFileCount((int)files.size());
@@ -597,15 +532,12 @@ void SynapticUI::updateBrainFileList(const std::vector<BrainFileEntry>& files)
 void SynapticUI::updateBrainState(bool useExternal, const std::string& externalPath)
 {
 #if IPLUG_EDITOR
-  // Store state for tab switching and button visibility (single source of truth)
   mHasBrainLoaded = useExternal;
 
-  // Update brain storage status display
   if (mBrainStatusControl)
   {
     if (useExternal && !externalPath.empty())
     {
-      // Extract filename from full path for display
       size_t lastSlash = externalPath.find_last_of("/\\");
       std::string filename = (lastSlash != std::string::npos)
         ? externalPath.substr(lastSlash + 1)
@@ -618,7 +550,6 @@ void SynapticUI::updateBrainState(bool useExternal, const std::string& externalP
     }
   }
 
-  // Update file list control
   if (mBrainFileListControl)
   {
     mBrainFileListControl->SetHasExternalBrain(useExternal);
@@ -627,7 +558,6 @@ void SynapticUI::updateBrainState(bool useExternal, const std::string& externalP
     mBrainFileListControl->SetDirty(true);
   }
 
-  // Update drop control
   if (mBrainDropControl)
   {
     mBrainDropControl->SetHasExternalBrain(useExternal);
@@ -636,8 +566,6 @@ void SynapticUI::updateBrainState(bool useExternal, const std::string& externalP
     mBrainDropControl->SetDirty(true);
   }
 
-  // Show/hide "Create New Brain" button
-  // Button should only be visible when: (1) no brain is loaded AND (2) Brain tab is active
   if (mCreateNewBrainButton)
   {
     bool shouldHide = useExternal || (mCurrentTab != Tab::Brain);
@@ -682,18 +610,15 @@ void SynapticUI::EnsureOverlayOnTop()
 #if IPLUG_EDITOR
   if (!mGraphics || !mProgressOverlay) return;
 
-  // Store current state
   bool wasVisible = mProgressOverlay->IsVisible();
   std::string title = mProgressOverlay->GetTitle();
   std::string message = mProgressOverlay->GetMessage();
   float progress = mProgressOverlay->GetProgress();
 
-  // Remove and re-attach overlay to ensure it's last (on top)
   mGraphics->RemoveControl(mProgressOverlay);
   mProgressOverlay = new ProgressOverlay(mGraphics->GetBounds());
   mGraphics->AttachControl(mProgressOverlay);
 
-  // Restore state if it was visible
   if (wasVisible)
   {
     mProgressOverlay->Show(title, message, progress);
@@ -703,6 +628,3 @@ void SynapticUI::EnsureOverlayOnTop()
 
 } // namespace ui
 } // namespace synaptic
-
-
-

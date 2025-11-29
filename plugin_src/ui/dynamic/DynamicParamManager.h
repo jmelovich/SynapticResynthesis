@@ -8,10 +8,6 @@
  * - Layouts controls in a 2-column grid
  * - Calculates required height for parameter sections
  * - Maps parameter IDs to IParam indices
- *
- * This class bridges the dynamic parameter system (ExposedParamDesc) with
- * IPlug's static control system, generating UI controls on-the-fly as
- * transformers and morphs are switched.
  */
 
 #pragma once
@@ -20,6 +16,7 @@
 #include "IControls.h"
 #include "plugin_src/params/DynamicParamSchema.h"
 #include "plugin_src/params/ParameterManager.h"
+#include "plugin_src/ui/core/UIConstants.h"
 #include "../layout/UILayout.h"
 #include "../styles/UIStyles.h"
 #include <vector>
@@ -27,7 +24,6 @@
 
 namespace synaptic {
 namespace ui {
-// Note: namespace ig alias is defined in UITheme.h
 
 /**
  * @brief Manages dynamic parameter control generation and lifecycle
@@ -130,4 +126,3 @@ private:
 
 } // namespace ui
 } // namespace synaptic
-

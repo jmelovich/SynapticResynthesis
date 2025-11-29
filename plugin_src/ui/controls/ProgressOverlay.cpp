@@ -125,7 +125,7 @@ void ProgressOverlay::OnMouseDown(float x, float y, const IMouseMod& mod)
         auto* pDelegate = dynamic_cast<iplug::IEditorDelegate*>(GetUI()->GetDelegate());
         if (pDelegate)
         {
-          pDelegate->SendArbitraryMsgFromUI(kMsgTagCancelOperation, kNoTag, 0, nullptr);
+          pDelegate->SendArbitraryMsgFromUI(synaptic::kMsgTagCancelOperation, kNoTag, 0, nullptr);
         }
       }
     }

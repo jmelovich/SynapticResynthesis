@@ -2,25 +2,16 @@
  * @file UILayout.h
  * @brief Layout constants and geometry helper functions
  *
- * Responsibilities:
- * - Defines UILayout struct with padding, spacing, and size constants
- * - Provides Calculate() function to compute layout from window bounds
- * - Provides helper functions for header geometry (title, tabs)
- * - Provides utility function for centered box calculation
- *
- * All layout values are computed dynamically from the window size to support
- * different screen scales and potential future resizing.
+ * Defines UILayout struct with padding, spacing, and size constants.
+ * Provides Calculate() function to compute layout from window bounds.
  */
 
 #pragma once
 
-#include "IPlug_include_in_plug_hdr.h"
-#include "IControls.h"
+#include "plugin_src/ui/core/UIConstants.h"
 
 namespace synaptic {
 namespace ui {
-// Note: namespace ig alias is defined in UITheme.h (but we forward-declare it for standalone use)
-namespace ig = iplug::igraphics;
 
 struct UILayout
 {
@@ -38,7 +29,7 @@ struct UILayout
     layout.width = bounds.W();
     layout.height = bounds.H();
     layout.padding = 18.f;
-    layout.cardPadding = 16.f;
+    layout.cardPadding = LayoutConstants::kCardPadding;
     layout.lineHeight = 36.f;
     layout.sectionGap = 24.f;
     layout.controlHeight = 32.f;
@@ -72,7 +63,6 @@ inline ig::IRECT GetBrainTabBounds(const ig::IRECT& headerRow)
   return headerRow.GetFromRight(85.f);
 }
 
-// Simple primitives
 inline ig::IRECT CenteredBox(const ig::IRECT& parent, float w, float h)
 {
   float x = parent.L + (parent.W() - w) / 2.f;
@@ -82,5 +72,3 @@ inline ig::IRECT CenteredBox(const ig::IRECT& parent, float w, float h)
 
 } // namespace ui
 } // namespace synaptic
-
-

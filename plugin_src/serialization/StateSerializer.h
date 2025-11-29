@@ -8,11 +8,6 @@ namespace synaptic
 {
   class Brain;
   class BrainManager;
-
-  namespace ui
-  {
-    class ProgressOverlayManager;
-  }
 }
 
 namespace synaptic
@@ -43,17 +38,16 @@ namespace synaptic
      * Called after Plugin::SerializeState() to append brain section.
      * Handles both inline brain data and external file references.
      * If external mode with dirty brain, writes brain to external file.
+     * Uses ProgressOverlayManager::Get() for showing save progress if available.
      *
      * @param chunk Chunk to append brain state to
      * @param brain Brain instance to serialize
-     * @param brainMgr BrainManager for state info
-     * @param progressMgr Optional progress overlay manager for showing save progress
+     * @param brainMgr BrainManager for state info (non-const to allow dirty flag updates)
      * @return true on success
      */
     bool SerializeBrainState(iplug::IByteChunk& chunk,
                             const Brain& brain,
-                            const BrainManager& brainMgr,
-                            ui::ProgressOverlayManager* progressMgr = nullptr) const;
+                            BrainManager& brainMgr) const;
 
     /**
      * @brief Deserialize brain state from chunk

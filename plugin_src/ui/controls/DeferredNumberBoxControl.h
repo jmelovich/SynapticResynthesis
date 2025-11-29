@@ -50,6 +50,7 @@ public:
       mMaxValue = GetParam()->GetMax();
       // Get current value, not default, to avoid triggering updates on init
       mRealValue = GetParam()->Value();
+      SetValue(GetParam()->ToNormalized(mRealValue));
     }
   }
 
@@ -158,6 +159,7 @@ public:
     if (GetParam())
     {
       mRealValue = GetParam()->Value();
+      SetValue(GetParam()->ToNormalized(mRealValue));
     }
     mTextReadout->SetStrFmt(32, mFmtStr.Get(), mRealValue);
 

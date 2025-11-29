@@ -2,25 +2,16 @@
  * @file UITheme.h
  * @brief Color palette and theme definitions for the Synaptic Resynthesis UI
  *
- * Responsibilities:
- * - Defines all UI colors as named constants (backgrounds, borders, text, accents)
- * - Provides the canonical namespace alias (ig = iplug::igraphics) used throughout UI code
- * - Defines text styles for different UI elements (title, headers, labels, etc.)
- *
- * All UI files should include this header to access theme colors and the ig namespace.
+ * Defines all UI colors as named constants and text styles for different UI elements.
  * Colors are chosen to be WCAG 2.1 AA compliant where applicable.
  */
 
 #pragma once
 
-#include "IPlug_include_in_plug_hdr.h"
-#include "IControls.h"
+#include "plugin_src/ui/core/UIConstants.h"
 
 namespace synaptic {
 namespace ui {
-// Shorthand alias for iplug::igraphics types within UI headers
-// This is defined once here and used by all UI files
-namespace ig = iplug::igraphics;
 
 // Theme colors (WCAG 2.1 AA compliant where applicable)
 inline const ig::IColor kBGDark        = ig::IColor(255, 20, 20, 20);      // Main background
@@ -50,5 +41,3 @@ inline const ig::IText kValueText           = ig::IText(14.f, kTextPrimary, "Rob
 
 } // namespace ui
 } // namespace synaptic
-
-
