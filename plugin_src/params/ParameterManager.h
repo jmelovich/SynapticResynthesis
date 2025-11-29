@@ -197,6 +197,7 @@ namespace synaptic
     int GetAutotuneModeParamIdx() const { return mParamIdxAutotuneMode; }
     int GetAutotuneToleranceOctavesParamIdx() const { return mParamIdxAutotuneToleranceOctaves; }
     int GetMorphModeParamIdx() const { return mParamIdxMorphMode; }
+    int GetWindowLockParamIdx() const { return mParamIdxWindowLock; }
 
     // === Main Entry Point for Parameter Changes ===
 
@@ -289,6 +290,7 @@ namespace synaptic
     int mParamIdxAutotuneMode = -1;
     int mParamIdxAutotuneToleranceOctaves = -1;
     int mParamIdxMorphMode = -1;
+    int mParamIdxWindowLock = -1;
 
     int mTransformerParamBase = -1;
   };

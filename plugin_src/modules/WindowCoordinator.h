@@ -17,6 +17,8 @@ class ParameterManager;
 class BrainManager;
 struct DSPConfig;
 
+namespace ui { class ProgressOverlayManager; }
+
 
 /**
  * @brief Coordinates window operations across the plugin
@@ -147,7 +149,9 @@ public:
 
 private:
   // Helper: Create progress callback for brain operations
-  std::function<void(const std::string&, int, int)> MakeProgressCallback();
+  // Takes overlay manager to capture for multi-instance safety
+  std::function<void(const std::string&, int, int)> MakeProgressCallback(
+    ui::ProgressOverlayManager* overlayMgr);
 
   // Dependencies (non-owning references)
   Window* mAnalysisWindow;

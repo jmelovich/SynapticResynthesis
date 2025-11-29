@@ -13,6 +13,7 @@
 #include "plugin_src/brain/Brain.h"
 #include "plugin_src/brain/BrainManager.h"
 #include "plugin_src/ui/core/ProgressOverlayManager.h"
+#include "plugin_src/ui/core/UIConstants.h"
 #include "plugin_src/Structs.h"
 #include "plugin_src/modules/UISyncManager.h"
 
@@ -188,6 +189,9 @@ namespace synaptic
       for (int i = 0; i < (int)labels.size(); ++i)
         plugin->GetParam(mParamIdxMorphMode)->SetDisplayText(i, labels[i].c_str());
     }
+
+    // WindowLock is initialized in the main plugin constructor, but we track the index here
+    mParamIdxWindowLock = kWindowLock;
   }
 
   void ParameterManager::InitializeTransformerParameters(iplug::Plugin* plugin)
@@ -480,7 +484,7 @@ namespace synaptic
       HandleAutotuneToleranceParam(paramIdx);
     else if (paramIdx == mParamIdxMorphMode)
       HandleMorphModeParam(paramIdx);
-    else if (paramIdx == kWindowLock)
+    else if (paramIdx == mParamIdxWindowLock)
       HandleWindowLockParam(paramIdx);
     else
       HandleDynamicParam(paramIdx);
@@ -514,7 +518,9 @@ namespace synaptic
 
     if (chunkSizeChanged && mBrainManager)
     {
-      if (auto* overlayMgr = ui::ProgressOverlayManager::Get())
+      // Capture overlay manager at operation start for multi-instance safety
+      auto* overlayMgr = ui::ProgressOverlayManager::Get();
+      if (overlayMgr)
         overlayMgr->Show("Rechunking", "Starting...", 0.0f, true);
 
       // Capture what we need for the async callback
@@ -526,19 +532,21 @@ namespace synaptic
 
       mBrainManager->RechunkAllFilesAsync(
         mConfig->chunkSize, (int)mPlugin->GetSampleRate(),
-        [](const std::string& fileName, int current, int total) {
-          if (auto* mgr = ui::ProgressOverlayManager::Get())
+        [overlayMgr](const std::string& fileName, int current, int total) {
+          if (overlayMgr)
           {
-            const float p = (total > 0) ? ((float)current / (float)total * 100.0f) : 50.0f;
+            const float p = (total > 0)
+              ? ((float)current / (float)total * ui::Progress::kMaxProgress)
+              : ui::Progress::kDefaultProgress;
             char buf[256];
             snprintf(buf, sizeof(buf), "%s (chunk %d/%d)", fileName.c_str(), current, total);
-            mgr->Update(buf, p);
+            overlayMgr->Update(buf, p);
           }
         },
         [self, plugin, config, chunker, windowCoordinator, dspContext,
-         oldChunkSize, paramIdx](bool wasCancelled) {
-          if (auto* mgr = ui::ProgressOverlayManager::Get())
-            mgr->Hide();
+         oldChunkSize, paramIdx, overlayMgr](bool wasCancelled) {
+          if (overlayMgr)
+            overlayMgr->Hide();
           if (!wasCancelled)
           {
             self->SetPendingUpdate((uint32_t)PendingUpdate::BrainSummary);
@@ -595,7 +603,7 @@ namespace synaptic
     if (mWindowCoordinator && mDSPContext)
       mWindowCoordinator->UpdateChunkerWindowing(*mConfig, mDSPContext->GetTransformerRaw());
 
-    const bool windowsAreLocked = mPlugin->GetParam(kWindowLock)->Bool();
+    const bool windowsAreLocked = mPlugin->GetParam(mParamIdxWindowLock)->Bool();
     if (windowsAreLocked)
     {
       const int outputWindowIdx = mPlugin->GetParam(kOutputWindow)->Int();
@@ -664,7 +672,7 @@ namespace synaptic
       ? HandleAnalysisWindowChange(paramIdx, mPlugin->GetParam(paramIdx), *mConfig, *mAnalysisWindow, *mBrain)
       : false;
 
-    const bool windowsAreLocked = mPlugin->GetParam(kWindowLock)->Bool();
+    const bool windowsAreLocked = mPlugin->GetParam(mParamIdxWindowLock)->Bool();
     if (windowsAreLocked)
     {
       const int analysisWindowIdx = mPlugin->GetParam(kAnalysisWindow)->Int();
@@ -773,7 +781,7 @@ namespace synaptic
 
   void ParameterManager::HandleWindowLockParam(int paramIdx)
   {
-    if (mPlugin->GetParam(kWindowLock)->Bool())
+    if (mPlugin->GetParam(mParamIdxWindowLock)->Bool())
     {
 #if IPLUG_EDITOR
       int clickedWindowParam = synaptic::ui::LockButtonControl::GetLastClickedWindowParam();

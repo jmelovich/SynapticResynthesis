@@ -65,7 +65,7 @@ namespace synaptic
   {
   public:
     /**
-     * @brief Global flag to enable compact brain format
+     * @brief Get/set compact brain format for this instance
      *
      * When true, .sbrain files save only reconstructed original audio + metadata.
      * This dramatically reduces file size (~100MB input = ~100MB output vs 800MB).
@@ -74,11 +74,12 @@ namespace synaptic
      * When false (default), saves full chunked data with all analysis (faster load, larger files).
      *
      * Usage:
-     *   Brain::sUseCompactBrainFormat = true;   // Enable compact mode
+     *   brain.SetUseCompactFormat(true);        // Enable compact mode
      *   brain.SerializeSnapshotToChunk(chunk);  // Saves in compact format
      *   brain.DeserializeSnapshotFromChunk(...);// Auto-detects and re-chunks
      */
-    static bool sUseCompactBrainFormat;
+    bool GetUseCompactFormat() const { return mUseCompactFormat; }
+    void SetUseCompactFormat(bool compact) { mUseCompactFormat = compact; }
 
     void Reset()
     {
@@ -164,6 +165,8 @@ namespace synaptic
     Window::Type mSavedAnalysisWindowType = Window::Type::Hann;
     // Track if the last loaded brain was in compact format (for UI sync)
     bool mLastLoadedWasCompact = false;
+    // Per-instance compact format setting (default: true for smaller files)
+    bool mUseCompactFormat = true;
   };
 }
 

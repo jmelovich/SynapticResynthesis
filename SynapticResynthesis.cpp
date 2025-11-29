@@ -31,8 +31,10 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
 , mWindowCoordinator(&mAnalysisWindow, &mDSPContext.GetOutputWindow(), &mBrain, &mDSPContext.GetChunker(), &mParamManager, &mBrainManager)
 , mUISyncManager(this, &mBrain, &mBrainManager, &mParamManager, &mWindowCoordinator, &mDSPConfig)
 {
-  // Register progress overlay manager
-  synaptic::ui::ProgressOverlayManager::SetCurrent(&mProgressOverlayMgr);
+  // Register progress overlay manager for multi-instance support
+  synaptic::ui::ProgressOverlayManager::Register(this, &mProgressOverlayMgr);
+  synaptic::ui::ProgressOverlayManager::SetCurrentContext(&mProgressOverlayMgr);
+
   GetParam(kInGain)->InitGain("Input Gain", 0.0, -70, 12.);
   GetParam(kOutGain)->InitGain("Output Gain", 0.0, -70, 12.);
   GetParam(kAGC)->InitBool("AGC", false);
@@ -83,6 +85,12 @@ SynapticResynthesis::SynapticResynthesis(const InstanceInfo& info)
     &mBrainManager,
     &mUISyncManager
   );
+}
+
+SynapticResynthesis::~SynapticResynthesis()
+{
+  // Unregister progress overlay manager
+  synaptic::ui::ProgressOverlayManager::Unregister(this);
 }
 
 void SynapticResynthesis::ProcessBlock(sample** inputs, sample** outputs, int nFrames)
@@ -153,6 +161,8 @@ void SynapticResynthesis::OnUIClose()
 
 void SynapticResynthesis::OnIdle()
 {
+  // Set context for this plugin instance during idle processing
+  synaptic::ui::ProgressOverlayManager::SetCurrentContext(&mProgressOverlayMgr);
   mUISyncManager.OnIdle();
 }
 
@@ -187,7 +197,7 @@ int SynapticResynthesis::UnserializeState(const IByteChunk& chunk, int startPos)
 
   pos = mStateSerializer.DeserializeBrainState(chunk, pos, mBrain, mBrainManager);
 
-  synaptic::Brain::sUseCompactBrainFormat = mBrain.WasLastLoadedInCompactFormat();
+  mBrain.SetUseCompactFormat(mBrain.WasLastLoadedInCompactFormat());
 
   mBrain.SetWindow(&mAnalysisWindow);
   mUISyncManager.SetPendingUpdate(synaptic::PendingUpdate::BrainSummary);

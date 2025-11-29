@@ -26,7 +26,10 @@ class AudioStreamChunker;
 class DSPContext;
 struct DSPConfig;
 
-namespace ui { class SynapticUI; }
+namespace ui {
+  class SynapticUI;
+  class ProgressOverlayManager;
+}
 
 /**
  * @brief Bitflags for pending deferred updates
@@ -100,7 +103,6 @@ private:
   void DrainUiQueue();
   void SyncBrainUIState();
   void SyncAllUIState();
-  void SyncAndSendDSPConfig();
 
   // Message handlers
   bool HandleBrainAddFileMsg(int dataSize, const void* pData);
@@ -113,9 +115,9 @@ private:
   bool HandleBrainSetCompactModeMsg(int enabled);
   bool HandleCancelOperationMsg();
 
-  // Callbacks
-  synaptic::BrainManager::ProgressFn MakeProgressCallback();
-  synaptic::BrainManager::CompletionFn MakeStandardCompletionCallback();
+  // Callbacks - take overlay manager for multi-instance safety
+  synaptic::BrainManager::ProgressFn MakeProgressCallback(ui::ProgressOverlayManager* overlayMgr);
+  synaptic::BrainManager::CompletionFn MakeStandardCompletionCallback(ui::ProgressOverlayManager* overlayMgr);
 
   // Dependencies
   iplug::Plugin* mPlugin;

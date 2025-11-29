@@ -66,6 +66,7 @@ namespace Progress
 {
   constexpr float kDefaultProgress = 50.0f;         // Default progress when total is unknown
   constexpr float kMaxProgress = 100.0f;            // Maximum progress value
+  constexpr int kCoalesceIdleTicks = 2;             // Number of idle ticks before processing dropped files
 }
 
 } // namespace ui

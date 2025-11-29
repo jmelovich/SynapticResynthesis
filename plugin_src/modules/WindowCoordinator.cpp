@@ -137,6 +137,7 @@ void WindowCoordinator::TriggerBrainReanalysisAsync(
   int sampleRate,
   std::function<void(bool wasCancelled)> completion)
 {
+  // Capture overlay manager at operation start for multi-instance safety
   auto* overlayMgr = ui::ProgressOverlayManager::Get();
   if (overlayMgr)
   {
@@ -145,12 +146,12 @@ void WindowCoordinator::TriggerBrainReanalysisAsync(
 
   mBrainManager->ReanalyzeAllChunksAsync(
     sampleRate,
-    MakeProgressCallback(),
-    [completion](bool wasCancelled)
+    MakeProgressCallback(overlayMgr),
+    [completion, overlayMgr](bool wasCancelled)
     {
-      if (auto* mgr = ui::ProgressOverlayManager::Get())
+      if (overlayMgr)
       {
-        mgr->Hide();
+        overlayMgr->Hide();
       }
       if (completion)
       {
@@ -192,11 +193,11 @@ void WindowCoordinator::HandleWindowLockToggle(
   }
 }
 
-std::function<void(const std::string&, int, int)> WindowCoordinator::MakeProgressCallback()
+std::function<void(const std::string&, int, int)> WindowCoordinator::MakeProgressCallback(
+  ui::ProgressOverlayManager* overlayMgr)
 {
-  return [](const std::string& fileName, int current, int total)
+  return [overlayMgr](const std::string& fileName, int current, int total)
   {
-    auto* overlayMgr = ui::ProgressOverlayManager::Get();
     if (!overlayMgr)
       return;
 

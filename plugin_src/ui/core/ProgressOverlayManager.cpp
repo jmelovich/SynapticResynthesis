@@ -17,6 +17,11 @@
 namespace synaptic {
 namespace ui {
 
+// Static member definitions
+std::mutex ProgressOverlayManager::sRegistryMutex;
+std::unordered_map<void*, ProgressOverlayManager*> ProgressOverlayManager::sRegistry;
+std::atomic<ProgressOverlayManager*> ProgressOverlayManager::sCurrentContext { nullptr };
+
 namespace {
   // Helper function to pump platform messages and ensure UI updates are painted
   // This is necessary for synchronous operations where we need UI feedback before blocking
@@ -56,6 +61,45 @@ namespace {
     #endif
   }
 } // anonymous namespace
+
+// === Multi-Instance Registry ===
+
+void ProgressOverlayManager::Register(void* pluginPtr, ProgressOverlayManager* manager)
+{
+  if (!pluginPtr || !manager) return;
+
+  std::lock_guard<std::mutex> lock(sRegistryMutex);
+  sRegistry[pluginPtr] = manager;
+}
+
+void ProgressOverlayManager::Unregister(void* pluginPtr)
+{
+  if (!pluginPtr) return;
+
+  std::lock_guard<std::mutex> lock(sRegistryMutex);
+  sRegistry.erase(pluginPtr);
+}
+
+ProgressOverlayManager* ProgressOverlayManager::GetFor(void* pluginPtr)
+{
+  if (!pluginPtr) return nullptr;
+
+  std::lock_guard<std::mutex> lock(sRegistryMutex);
+  auto it = sRegistry.find(pluginPtr);
+  return (it != sRegistry.end()) ? it->second : nullptr;
+}
+
+void ProgressOverlayManager::SetCurrentContext(ProgressOverlayManager* manager)
+{
+  sCurrentContext.store(manager);
+}
+
+ProgressOverlayManager* ProgressOverlayManager::Get()
+{
+  return sCurrentContext.load();
+}
+
+// === Thread-Safe Operations ===
 
 void ProgressOverlayManager::Show(const std::string& title, const std::string& message, float progress, bool showCancelButton)
 {
@@ -111,9 +155,9 @@ void ProgressOverlayManager::ProcessPendingUpdates(SynapticUI* ui)
   // Apply update on UI thread
   switch (update.type)
   {
-      case UpdateType::Show:
-        ui->ShowProgressOverlay(update.title, update.message, update.progress, update.showCancelButton);
-        break;
+    case UpdateType::Show:
+      ui->ShowProgressOverlay(update.title, update.message, update.progress, update.showCancelButton);
+      break;
 
     case UpdateType::Update:
       ui->UpdateProgressOverlay(update.message, update.progress);
@@ -157,4 +201,3 @@ void ProgressOverlayManager::HideImmediate()
 
 } // namespace ui
 } // namespace synaptic
-

@@ -27,6 +27,7 @@
 #endif
 
 using namespace iplug;
+using namespace synaptic;
 
 const int kNumPresets = 3;
 
@@ -34,6 +35,7 @@ class SynapticResynthesis final : public Plugin
 {
 public:
   SynapticResynthesis(const InstanceInfo& info);
+  ~SynapticResynthesis();
 
   void ProcessBlock(sample** inputs, sample** outputs, int nFrames) override;
   void ProcessMidiMsg(const IMidiMsg& msg) override;
@@ -68,6 +70,6 @@ private:
   std::unique_ptr<synaptic::ui::SynapticUI> mUI;
 #endif
 
-  // === Progress overlay (centralized access via ProgressOverlayManager::Get()) ===
+  // === Progress overlay (access via ProgressOverlayManager::GetFor(this)) ===
   synaptic::ui::ProgressOverlayManager mProgressOverlayMgr;
 };

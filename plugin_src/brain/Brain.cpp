@@ -15,8 +15,6 @@
 
 namespace synaptic
 {
-  // Initialize compact brain format flag (disabled by default for backwards compatibility)
-  bool Brain::sUseCompactBrainFormat = true;
 
   static constexpr uint32_t kSnapshotMagic = 0x53424252; // 'SBBR' Synaptic Brain BRain
   static constexpr uint16_t kSnapshotVersion = 3; // v3: added extended features
@@ -664,7 +662,7 @@ namespace synaptic
     out.Put(&kSnapshotMagic);
 
     // Check if we should use compact format
-    if (sUseCompactBrainFormat)
+    if (mUseCompactFormat)
     {
       // Compact format: save only metadata + reconstructed original audio
       // New writes use float32 for audio payload to reduce size; we keep v100 reader for backwards compatibility.
