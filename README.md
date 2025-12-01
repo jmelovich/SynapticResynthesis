@@ -1,6 +1,6 @@
 # Synaptic Resynthesis
 
-A VST (Virtual Studio Technology) plugin utilizing principles of granular synthesis to recreate target sounds using a library of other sounds. The basic idea is this tool would let the user ‘upload’ a collection of sounds/samples, which it would then chop up into chunks- from which a network is created mapping each chunk to each other based on similarity. Then a target/input sound could be similarly chunked out, and have its chunks replaced in real time by the closest matching chunk(s) in the uploaded collection. This tool could support multiple algorithms for matching these chunks, yielding different results. This is essentially a creative tool for creating unique sounds from collections of other sounds, while retaining key distinct characteristics of the input sound.
+Synaptic Resynthesis is a VST3 plugin utilizing principles of granular synthesis to recreate target sounds using a library of other sounds, inspired by Aphex Twin's Samplebrain. The basic idea is this tool would let the user ‘upload’ a collection of sounds/samples, which it would then chop up into chunks. Then a target/input sound could be similarly chunked out, and have its chunks replaced in real time by the closest matching chunks in the uploaded collection. This tool is designed with modularity in mind, and new transformers can easily be added for matching these chunks (or synthesizing new ones entirely), yielding different results. This is essentially a creative tool for creating unique sounds from collections of other sounds, while retaining key distinct characteristics of the input sound. 
 
 ## Setting Up This Project Environment
 
@@ -35,24 +35,23 @@ This is an IPlug2 non-out-of-source project, as such- there is some initial setu
 
 3. Compile the project
 
+   ### Windows
+
     - Open the Visual Studio Solution
 
     ```
     cd SynapticResynthesis
     start SynapticResynthesis.sln
     ```
+    - Right click the 'SynapticResynthesis-vst3' project, and set it as the startup project. Hit the Run/Debug button, and Reaper should open up (if installed) to a demo project with the plugin open as a VST3.
+  
+   ### MacOS
 
-    - Right click the 'SynapticResynthesis-app' project in the solution explorer, and click 'Set As Startup Project'. Then click the Run/Debug button (says 'Local Windows Debugger'). This should compile & run the plugin as a standalone application.
+   - Open the XCode workspace
+  
+   ```
+   cd SynapticResynthesis
+   open SynapticResynthesis.xcworkspace
+   ```
+   - Build/run the VST3-Release target
 
-    - Now right click the 'SynapticResynthesis-vst3' project, and set it as the startup project. Hit the Run/Debug button, and Reaper should open up (if installed) to a demo project with the plugin open as a VST3.
-
-
-## Original IPlug Template Readme:
-
-A basic volume control effect plug-in which uses a platform web view to host an HTML/CSS GUI
-
-The UI for this example can be found in `resources/web`. On macOS and iOS, it will be copied to the bundle resources folder. On Windows, you currently need to manually package and put the files somewhere.
-
-You need to be careful if you edit `index.html`, to make sure you are editing the right version.
-
-You can read more about using WebViews [here](https://github.com/iPlug2/iPlug2/wiki/Using-WebViews)
