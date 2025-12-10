@@ -27,8 +27,11 @@ void AudioStreamChunker::Configure(int numChannels, int chunkSize, int windowSiz
   const int newChunkSize = std::max(1, chunkSize);
   const int newBufferWindowSize = std::max(1, windowSize);
 
+  // Check if accumulation buffer needs reallocation
+  // Note: Also check if mAccumulation is empty (first-time initialization)
   const bool needsReallocation = (newNumChannels != mNumChannels ||
-                                  newChunkSize != mChunkSize);
+                                  newChunkSize != mChunkSize ||
+                                  mAccumulation.empty());
 
   mNumChannels = newNumChannels;
   mChunkSize = newChunkSize;

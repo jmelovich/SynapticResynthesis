@@ -106,9 +106,12 @@ public:
     const int newWindowSize = std::max(1, windowSize);
     const int newPoolCapacity = newWindowSize + extraPool;
 
+    // Check if pool needs reallocation
+    // Note: Also check if mPool is empty (first-time initialization)
     const bool needsReallocation = (newNumChannels != mNumChannels ||
                                     newChunkSize != mChunkSize ||
-                                    newPoolCapacity != mPoolCapacity);
+                                    newPoolCapacity != mPoolCapacity ||
+                                    mPool.empty());
 
     mNumChannels = newNumChannels;
     mChunkSize = newChunkSize;

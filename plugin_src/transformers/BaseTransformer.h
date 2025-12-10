@@ -40,12 +40,6 @@ namespace synaptic
     // If false, the chunker will use simple sequential playback.
     virtual bool WantsOverlapAdd() const { return true; }
 
-    // Import shared schema types into this class scope for backward compatibility
-    using ParamType = synaptic::ParamType;
-    using ControlType = synaptic::ControlType;
-    using ParamOption = synaptic::ParamOption;
-    using ExposedParamDesc = synaptic::ExposedParamDesc;
-
     // Describe all exposed parameters (schema)
     void GetParamDescs(std::vector<ExposedParamDesc>& out, bool /*includeAll*/) const override { out.clear(); }
 
@@ -58,10 +52,6 @@ namespace synaptic
     bool SetParamFromNumber(const std::string& /*id*/, double /*v*/) override { return false; }
     bool SetParamFromBool(const std::string& /*id*/, bool /*v*/) override { return false; }
     bool SetParamFromString(const std::string& /*id*/, const std::string& /*v*/) override { return false; }
-
-  protected:
-    // NOTE: CopyInputToOutput helper removed - no longer needed with dual-chunk pool entries.
-    // Use GetInputChunk() / GetOutputChunk() / CommitOutputChunk() instead.
   };
 
   // Simple passthrough transformer: no additional latency and no lookahead.
@@ -75,7 +65,7 @@ namespace synaptic
       int idx;
       while (chunker.PopPendingInputChunkIndex(idx))
       {
-        // NEW API: Input and output are in the same pool entry
+        // Input and output are in the same pool entry
         const AudioChunk* in = chunker.GetInputChunk(idx);
         AudioChunk* out = chunker.GetOutputChunk(idx);
 
@@ -380,8 +370,6 @@ namespace synaptic
     bool mChannelIndependent = false;
 
   };
-
-  // Simple Samplebrain transformer moved to transformers/SimpleSampleBrainTransformer.h
 }
 
 
