@@ -2,9 +2,15 @@
 
 Synaptic Resynthesis is a VST3 plugin utilizing principles of granular synthesis to recreate target sounds using a library of other sounds, inspired by Aphex Twin's Samplebrain. The basic idea is this tool would let the user ‘upload’ a collection of sounds/samples, which it would then chop up into chunks. Then a target/input sound could be similarly chunked out, and have its chunks replaced in real time by the closest matching chunks in the uploaded collection. This tool is designed with modularity in mind, and new transformers can easily be added for matching these chunks (or synthesizing new ones entirely), yielding different results. This is essentially a creative tool for creating unique sounds from collections of other sounds, while retaining key distinct characteristics of the input sound. 
 
-Be sure to check out the [Wiki Pages](https://github.com/jmelovich/SynapticResynthesis/wiki) for information on actually using this plugin.
+## Installing & Using This Plugin
 
-## Setting Up This Project Environment
+The latest VST3 binaries can be downloaded from the [releases page here](https://github.com/jmelovich/SynapticResynthesis/releases). Download the latest release '.vst3' file and place it wherever your DAW will find it (often ```C:/Program Files/Common Files/VST3``` on Windows).
+
+Other targets (such as VST2, AAX, Standalone, etc...) are not currently supported. They may work fine, as iPlug2 supports them, but likely will require some adjustments. Feel free to build from source if you need another target. 
+
+Be sure to check out the [Wiki Pages](https://github.com/jmelovich/SynapticResynthesis/wiki) for information on using this plugin.
+
+## Building From Source
 
 This is an IPlug2 non-out-of-source project, as such- there is some initial setup.
 
