@@ -25,11 +25,18 @@ This is an IPlug2 non-out-of-source project, as such- there is some initial setu
 
     - After doing these steps, you should have cloned the IPlug2 repo somewhere on your computer and have run the scripts to download all the dependencies
 
-2. Clone this repo into the 'Examples' folder:
+2. Clone this repo into the 'Examples' folder (or any parallel folder you create, like 'Projects'):
 
     (from the iPlug2 repo root folder):
     ```
     cd Examples
+    git clone https://github.com/jmelovich/SynapticResynthesis.git
+    ```
+
+    Alternatively:
+    ```
+    mkdir Projects
+    cd Projects
     git clone https://github.com/jmelovich/SynapticResynthesis.git
     ```
 
